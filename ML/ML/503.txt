@@ -1,0 +1,1651 @@
+CS 229: Machine Learning, Autumn 2014
+Final Writeup
+
+Yelp Restaurants’ Open Hours
+Samuel Bakouch1, Adrien Boch2, Benjamin Favreau3
+
+Abstract
+This paper aims at identifying when restaurants registered on Yelp are open or closed based on the reviews
+written by Yelp’s users. Our initial approach was to use a binary classiﬁcation model with a bag-of-words
+representation of the reviews. We then conducted multiclass classiﬁcation where logistic regression reaches
+83.22% accuracy but with a 11.22% false-positive error rate which is critical for Yelp’s user experience. We then
+pointed out that there is a tradeoff between model accuracy and false-positive error rate.
+1sbakouch@stanford.edu, Department of Management Science and Engineering, Stanford University
+2aboch@stanford.edu, Department of Earth Sciences, Stanford University
+3bfavreau@stanford.edu, Department of Management Science and Engineering, Stanford University
+
+Introduction
+
+Yelp is an online platform publishing crowd-sourced re-
+views about local businesses. It is now a platform broadly
+used and it attracts numerous types of businesses. It has even
+become a key success factor in several industries such as
+restaurants and bars. It is now essential for these types of
+businesses to be referenced on Yelp with positive reviews,
+high rating and meaningful information.
+Objectives and Motivation To keep on growing and taking
+an increasing importance in our everyday life, Yelp aims
+at providing valuable and complete information to its users.
+Unfortunately, when entering information into the platform,
+restaurants often forget to include and update elements that are
+particularly relevant for Yelp’s users - e.g. the open hours of a
+business. Yelp must provide its users a consistent experience
+across the platform, and a restaurant without registered or
+accurate open hours should not jeopardize the overall user
+experience. Indeed, what is worse than choosing a restaurant
+on Yelp, driving there thinking about the menu to eventually
+ﬁnd the door closed? This need for consistency and accuracy
+led us to apply machine learning techniques to determine the
+open hours of a restaurant from Yelp users’ reviews.
+Dataset We used the dataset publicly available, from the
+Yelp Dataset Challenge website. The dataset provides two
+.json ﬁles that we used in our study:
+• A ﬁle containing information and characteristics about
+more than 42,000 businesses from the city of Phoenix
+• A second ﬁle consisting of more than 1,125,000 reviews
+
+over these businesses
+
+Among the characteristics available for a business are some
+labeling/category settings - e.g. Restaurants, Bars, Health&
+Beauty, ... and open hours.
+
+1. Data Transformation
+
+In order to be able to apply learning algorithms on reviews to
+predict the hours of operation of a restaurant, we ﬁrst needed
+
+to transform the .json ﬁles we received. In the review ﬁle,
+every line contained one review for a given business. In the
+business ﬁle, one line contained the hours of operation of a
+given business. In order to facilitate processing, we not only
+needed to merge both ﬁles, but also to aggregate all the reviews
+of a business and to ﬁlter businesses that are restaurants.
+
+1.1 Map-Reduce on Stanford Corn cluster
+The business and review ﬁles contained about 42,000 lines
+and 1,200,000 lines respectively. Looping over these two ﬁles
+would potentially entail over 42,000× 1,200,000 ≈ 5× 1010
+iterations. However, as we only consider restaurants, the num-
+ber of iterations boils down to 9× 109 iterations.
+Nevertheless, it is still a massive number of iterations and
+as a result extremely time consuming. That is why we de-
+signed a Map-Reduce algorithm to do parallel computing on
+the Stanford Corn cluster. In the mapping part, we broke
+down the business ﬁle into 480 different new ﬁles or pieces.
+For every single one of these pieces, a script was submitted a
+job on the Corn cluster so that multiple tasks could be run in
+parallel, using up to 30 different nodes. 480 output ﬁles were
+therefore created in the process. A second script has reduced
+these 480 output ﬁles together in order to get the output into
+one single ﬁle. At this point, we built a .json ﬁle of 8,079 lines
+in which one line corresponds to one restaurant, containing
+its aggregated reviews and its open hours.
+
+1.2 Data preprocessing
+We performed stemming on the reviews in order to reduce
+the dimension of our feature vectors. Stemming is a common
+practice used in Natural Language Processing, which reduces
+words to their root - e.g.
+thinking is represented by think
+after stemming processing. We used the nltk python library,
+which performs Porter’s stemming algorithm [1]. We also
+removed stop-words to eliminate tokens that do not convey
+any information. Applying stop-words algorithm enabled us
+to remove high-frequency words such as ”the”, ”I”, ”and”.
+
+CS 229: Machine Learning, Autumn 2014
+Final Writeup
+
+Yelp Restaurants’ Open Hours
+Samuel Bakouch1, Adrien Boch2, Benjamin Favreau3
+
+Abstract
+This paper aims at identifying when restaurants registered on Yelp are open or closed based on the reviews
+written by Yelp’s users. Our initial approach was to use a binary classiﬁcation model with a bag-of-words
+representation of the reviews. We then conducted multiclass classiﬁcation where logistic regression reaches
+83.22% accuracy but with a 11.22% false-positive error rate which is critical for Yelp’s user experience. We then
+pointed out that there is a tradeoff between model accuracy and false-positive error rate.
+1sbakouch@stanford.edu, Department of Management Science and Engineering, Stanford University
+2aboch@stanford.edu, Department of Earth Sciences, Stanford University
+3bfavreau@stanford.edu, Department of Management Science and Engineering, Stanford University
+
+Introduction
+
+Yelp is an online platform publishing crowd-sourced re-
+views about local businesses. It is now a platform broadly
+used and it attracts numerous types of businesses. It has even
+become a key success factor in several industries such as
+restaurants and bars. It is now essential for these types of
+businesses to be referenced on Yelp with positive reviews,
+high rating and meaningful information.
+Objectives and Motivation To keep on growing and taking
+an increasing importance in our everyday life, Yelp aims
+at providing valuable and complete information to its users.
+Unfortunately, when entering information into the platform,
+restaurants often forget to include and update elements that are
+particularly relevant for Yelp’s users - e.g. the open hours of a
+business. Yelp must provide its users a consistent experience
+across the platform, and a restaurant without registered or
+accurate open hours should not jeopardize the overall user
+experience. Indeed, what is worse than choosing a restaurant
+on Yelp, driving there thinking about the menu to eventually
+ﬁnd the door closed? This need for consistency and accuracy
+led us to apply machine learning techniques to determine the
+open hours of a restaurant from Yelp users’ reviews.
+Dataset We used the dataset publicly available, from the
+Yelp Dataset Challenge website. The dataset provides two
+.json ﬁles that we used in our study:
+• A ﬁle containing information and characteristics about
+more than 42,000 businesses from the city of Phoenix
+• A second ﬁle consisting of more than 1,125,000 reviews
+
+over these businesses
+
+Among the characteristics available for a business are some
+labeling/category settings - e.g. Restaurants, Bars, Health&
+Beauty, ... and open hours.
+
+1. Data Transformation
+
+In order to be able to apply learning algorithms on reviews to
+predict the hours of operation of a restaurant, we ﬁrst needed
+
+to transform the .json ﬁles we received. In the review ﬁle,
+every line contained one review for a given business. In the
+business ﬁle, one line contained the hours of operation of a
+given business. In order to facilitate processing, we not only
+needed to merge both ﬁles, but also to aggregate all the reviews
+of a business and to ﬁlter businesses that are restaurants.
+
+1.1 Map-Reduce on Stanford Corn cluster
+The business and review ﬁles contained about 42,000 lines
+and 1,200,000 lines respectively. Looping over these two ﬁles
+would potentially entail over 42,000× 1,200,000 ≈ 5× 1010
+iterations. However, as we only consider restaurants, the num-
+ber of iterations boils down to 9× 109 iterations.
+Nevertheless, it is still a massive number of iterations and
+as a result extremely time consuming. That is why we de-
+signed a Map-Reduce algorithm to do parallel computing on
+the Stanford Corn cluster. In the mapping part, we broke
+down the business ﬁle into 480 different new ﬁles or pieces.
+For every single one of these pieces, a script was submitted a
+job on the Corn cluster so that multiple tasks could be run in
+parallel, using up to 30 different nodes. 480 output ﬁles were
+therefore created in the process. A second script has reduced
+these 480 output ﬁles together in order to get the output into
+one single ﬁle. At this point, we built a .json ﬁle of 8,079 lines
+in which one line corresponds to one restaurant, containing
+its aggregated reviews and its open hours.
+
+1.2 Data preprocessing
+We performed stemming on the reviews in order to reduce
+the dimension of our feature vectors. Stemming is a common
+practice used in Natural Language Processing, which reduces
+words to their root - e.g.
+thinking is represented by think
+after stemming processing. We used the nltk python library,
+which performs Porter’s stemming algorithm [1]. We also
+removed stop-words to eliminate tokens that do not convey
+any information. Applying stop-words algorithm enabled us
+to remove high-frequency words such as ”the”, ”I”, ”and”.
+
+Yelp Restaurants’ Open Hours — 2/5
+
+2. Binary Models
+
+Our goal being to predict the hours of operation of a restaurant
+from users’ reviews, we must predict for each day of the week,
+if a restaurant is open or closed for each one-hour block of
+the day. Due to the large computing requirements needed for
+such an operation, we chose to focus on Tuesday exclusively -
+one of the most representative day of the week for restaurants
+excluding the weekend. We ran all our models on python.
+
+2.1 Model hypotheses
+First, our feature selection will follow the bag-of-words model,
+i.e. the dictionary used by the learning algorithms is deﬁned as
+the union of all the words that appear in the reviews included
+in our training set.
+
+Size o f dictionary
+
+(cid:122)
+
+
+1 1
+0 1
+...
+...
+1 0
+
+(cid:125)(cid:124)
+
+···
+···
+...
+···
+
+F =
+
+(cid:123)
+
+nb. rest.
+
+
+0
+0
+...
+0
+
+0
+1
+...
+1
+
+where Fi, j indicates whether feature j appears in the reviews
+of restaurant i.
+Our aim is to predict for each one-hour block of Tuesday
+if a restaurant is open or closed. There are several ways
+to represent this output and deﬁne the labels predicted by
+the learning algorithm. For instance, we could look at the
+24-hour vectors, or we could view the output representation
+as 24 binary predictions where - for each one-hour block -
+the learning algorithm will predict 0 or 1. In this case, we
+apply a binary algorithm for every one-hour block, thus the
+number of labels is |{0,1}| = 2. In this section, we chose
+to take the latter approach considering the potential huge
+number of classes of the previous output representation - 224 =
+16,777,216.
+
+2.2 Methodology
+2.2.1 Error metric
+When choosing an error metric, a key characteristic should be
+the ability to benchmark our results against several types of
+algorithms. We chose the standard average test error looking
+at the accuracy of the prediction for each one-hour block
+
+t
+∑
+i=1
+
+24
+∑
+ho=1
+
+1
+
+ε = 1−
+
+(cid:110)
+h(x(i))ho = y(ho)(cid:111)
+
+24×t
+
+where t is the size of the test set, y(ho) is the true state of
+operation of the restaurant at hour ho, h(x(i))ho being the
+predicted output for hour ho and training example i . We
+then used a 10-fold cross validation which is standard for text
+classiﬁcation problems [2].
+
+2.2.2 Training set size
+In order to determine the training set size on which we will
+train our algorithms, we ﬁrst decided to plot - cf. Figure 1, the
+training and test errors for different training set sizes ranging
+
+Figure 1. Learing curve for Binomial Naive Bayes
+
+from 100 to the maximum 8,079. We used the Binomial Naive
+Bayes algorithm to perform this analysis. We observe two
+main behaviors: from 100 to 1,000, the algorithm overﬁts and
+from 1,000 to 8,079, the behavior is similar as the training
+and test errors slightly differ in functon of the training set
+size. Thus, as the complexity of the learning algorithms is at
+least O(t2) where t is the size of the training set, we decided
+to choose 1,000 training examples for the rest of our study.
+Also, one can notice that 1,000 training examples correspond
+to the one standard error rule, which is a standard parameter
+selection criterion used in statistics [3].
+
+2.2.3 Baseline algorithm
+In order to accurately measure the performance of the learning
+algorithms we choose to apply, we need a baseline model for
+which the previously-deﬁned error metric will be computed.
+We will consider two baseline algorithms:
+
+• Predict close - i.e. 0 for every hour, error: ε0
+• Predict open - i.e. 1 for every hour, error: ε1
+
+To compute the error metric that should be the reference to
+benchmark against, we will compute the quantity
+
+εre f = min (ε0,ε1)
+
+Running these two naive algorithms on our dataset outputs, we
+obtained εre f = 42.08%. Thus, we will not consider learning
+algorithms with an error greater than 42.08% as the baseline
+algorithm performs better.
+
+2.3 Learning algorithms
+2.3.1 Naive Bayes
+First, we decided to apply the binomial (bNB) and multi-
+nomial (mNB) Naive Bayes’ algorithms in order to test our
+hypotheses. The bNB led to 35.31% of error and the mNB led
+to 37.96% of error. We note that these errors have the same
+order of magnitude and both are under the baseline error cap.
+
+2.3.2 KNN, SVM, Logistic regression, Perceptron
+Then, we decided to test additional algorithms and thus to
+reﬁne our model. Indeed, applying Naive Bayes to our dataset,
+
+0204060801001214161820222426% of the total number of restaurants consideredError (%)  test errortrain error1000 restaurants consideredCS 229: Machine Learning, Autumn 2014
+Final Writeup
+
+Yelp Restaurants’ Open Hours
+Samuel Bakouch1, Adrien Boch2, Benjamin Favreau3
+
+Abstract
+This paper aims at identifying when restaurants registered on Yelp are open or closed based on the reviews
+written by Yelp’s users. Our initial approach was to use a binary classiﬁcation model with a bag-of-words
+representation of the reviews. We then conducted multiclass classiﬁcation where logistic regression reaches
+83.22% accuracy but with a 11.22% false-positive error rate which is critical for Yelp’s user experience. We then
+pointed out that there is a tradeoff between model accuracy and false-positive error rate.
+1sbakouch@stanford.edu, Department of Management Science and Engineering, Stanford University
+2aboch@stanford.edu, Department of Earth Sciences, Stanford University
+3bfavreau@stanford.edu, Department of Management Science and Engineering, Stanford University
+
+Introduction
+
+Yelp is an online platform publishing crowd-sourced re-
+views about local businesses. It is now a platform broadly
+used and it attracts numerous types of businesses. It has even
+become a key success factor in several industries such as
+restaurants and bars. It is now essential for these types of
+businesses to be referenced on Yelp with positive reviews,
+high rating and meaningful information.
+Objectives and Motivation To keep on growing and taking
+an increasing importance in our everyday life, Yelp aims
+at providing valuable and complete information to its users.
+Unfortunately, when entering information into the platform,
+restaurants often forget to include and update elements that are
+particularly relevant for Yelp’s users - e.g. the open hours of a
+business. Yelp must provide its users a consistent experience
+across the platform, and a restaurant without registered or
+accurate open hours should not jeopardize the overall user
+experience. Indeed, what is worse than choosing a restaurant
+on Yelp, driving there thinking about the menu to eventually
+ﬁnd the door closed? This need for consistency and accuracy
+led us to apply machine learning techniques to determine the
+open hours of a restaurant from Yelp users’ reviews.
+Dataset We used the dataset publicly available, from the
+Yelp Dataset Challenge website. The dataset provides two
+.json ﬁles that we used in our study:
+• A ﬁle containing information and characteristics about
+more than 42,000 businesses from the city of Phoenix
+• A second ﬁle consisting of more than 1,125,000 reviews
+
+over these businesses
+
+Among the characteristics available for a business are some
+labeling/category settings - e.g. Restaurants, Bars, Health&
+Beauty, ... and open hours.
+
+1. Data Transformation
+
+In order to be able to apply learning algorithms on reviews to
+predict the hours of operation of a restaurant, we ﬁrst needed
+
+to transform the .json ﬁles we received. In the review ﬁle,
+every line contained one review for a given business. In the
+business ﬁle, one line contained the hours of operation of a
+given business. In order to facilitate processing, we not only
+needed to merge both ﬁles, but also to aggregate all the reviews
+of a business and to ﬁlter businesses that are restaurants.
+
+1.1 Map-Reduce on Stanford Corn cluster
+The business and review ﬁles contained about 42,000 lines
+and 1,200,000 lines respectively. Looping over these two ﬁles
+would potentially entail over 42,000× 1,200,000 ≈ 5× 1010
+iterations. However, as we only consider restaurants, the num-
+ber of iterations boils down to 9× 109 iterations.
+Nevertheless, it is still a massive number of iterations and
+as a result extremely time consuming. That is why we de-
+signed a Map-Reduce algorithm to do parallel computing on
+the Stanford Corn cluster. In the mapping part, we broke
+down the business ﬁle into 480 different new ﬁles or pieces.
+For every single one of these pieces, a script was submitted a
+job on the Corn cluster so that multiple tasks could be run in
+parallel, using up to 30 different nodes. 480 output ﬁles were
+therefore created in the process. A second script has reduced
+these 480 output ﬁles together in order to get the output into
+one single ﬁle. At this point, we built a .json ﬁle of 8,079 lines
+in which one line corresponds to one restaurant, containing
+its aggregated reviews and its open hours.
+
+1.2 Data preprocessing
+We performed stemming on the reviews in order to reduce
+the dimension of our feature vectors. Stemming is a common
+practice used in Natural Language Processing, which reduces
+words to their root - e.g.
+thinking is represented by think
+after stemming processing. We used the nltk python library,
+which performs Porter’s stemming algorithm [1]. We also
+removed stop-words to eliminate tokens that do not convey
+any information. Applying stop-words algorithm enabled us
+to remove high-frequency words such as ”the”, ”I”, ”and”.
+
+Yelp Restaurants’ Open Hours — 2/5
+
+2. Binary Models
+
+Our goal being to predict the hours of operation of a restaurant
+from users’ reviews, we must predict for each day of the week,
+if a restaurant is open or closed for each one-hour block of
+the day. Due to the large computing requirements needed for
+such an operation, we chose to focus on Tuesday exclusively -
+one of the most representative day of the week for restaurants
+excluding the weekend. We ran all our models on python.
+
+2.1 Model hypotheses
+First, our feature selection will follow the bag-of-words model,
+i.e. the dictionary used by the learning algorithms is deﬁned as
+the union of all the words that appear in the reviews included
+in our training set.
+
+Size o f dictionary
+
+(cid:122)
+
+
+1 1
+0 1
+...
+...
+1 0
+
+(cid:125)(cid:124)
+
+···
+···
+...
+···
+
+F =
+
+(cid:123)
+
+nb. rest.
+
+
+0
+0
+...
+0
+
+0
+1
+...
+1
+
+where Fi, j indicates whether feature j appears in the reviews
+of restaurant i.
+Our aim is to predict for each one-hour block of Tuesday
+if a restaurant is open or closed. There are several ways
+to represent this output and deﬁne the labels predicted by
+the learning algorithm. For instance, we could look at the
+24-hour vectors, or we could view the output representation
+as 24 binary predictions where - for each one-hour block -
+the learning algorithm will predict 0 or 1. In this case, we
+apply a binary algorithm for every one-hour block, thus the
+number of labels is |{0,1}| = 2. In this section, we chose
+to take the latter approach considering the potential huge
+number of classes of the previous output representation - 224 =
+16,777,216.
+
+2.2 Methodology
+2.2.1 Error metric
+When choosing an error metric, a key characteristic should be
+the ability to benchmark our results against several types of
+algorithms. We chose the standard average test error looking
+at the accuracy of the prediction for each one-hour block
+
+t
+∑
+i=1
+
+24
+∑
+ho=1
+
+1
+
+ε = 1−
+
+(cid:110)
+h(x(i))ho = y(ho)(cid:111)
+
+24×t
+
+where t is the size of the test set, y(ho) is the true state of
+operation of the restaurant at hour ho, h(x(i))ho being the
+predicted output for hour ho and training example i . We
+then used a 10-fold cross validation which is standard for text
+classiﬁcation problems [2].
+
+2.2.2 Training set size
+In order to determine the training set size on which we will
+train our algorithms, we ﬁrst decided to plot - cf. Figure 1, the
+training and test errors for different training set sizes ranging
+
+Figure 1. Learing curve for Binomial Naive Bayes
+
+from 100 to the maximum 8,079. We used the Binomial Naive
+Bayes algorithm to perform this analysis. We observe two
+main behaviors: from 100 to 1,000, the algorithm overﬁts and
+from 1,000 to 8,079, the behavior is similar as the training
+and test errors slightly differ in functon of the training set
+size. Thus, as the complexity of the learning algorithms is at
+least O(t2) where t is the size of the training set, we decided
+to choose 1,000 training examples for the rest of our study.
+Also, one can notice that 1,000 training examples correspond
+to the one standard error rule, which is a standard parameter
+selection criterion used in statistics [3].
+
+2.2.3 Baseline algorithm
+In order to accurately measure the performance of the learning
+algorithms we choose to apply, we need a baseline model for
+which the previously-deﬁned error metric will be computed.
+We will consider two baseline algorithms:
+
+• Predict close - i.e. 0 for every hour, error: ε0
+• Predict open - i.e. 1 for every hour, error: ε1
+
+To compute the error metric that should be the reference to
+benchmark against, we will compute the quantity
+
+εre f = min (ε0,ε1)
+
+Running these two naive algorithms on our dataset outputs, we
+obtained εre f = 42.08%. Thus, we will not consider learning
+algorithms with an error greater than 42.08% as the baseline
+algorithm performs better.
+
+2.3 Learning algorithms
+2.3.1 Naive Bayes
+First, we decided to apply the binomial (bNB) and multi-
+nomial (mNB) Naive Bayes’ algorithms in order to test our
+hypotheses. The bNB led to 35.31% of error and the mNB led
+to 37.96% of error. We note that these errors have the same
+order of magnitude and both are under the baseline error cap.
+
+2.3.2 KNN, SVM, Logistic regression, Perceptron
+Then, we decided to test additional algorithms and thus to
+reﬁne our model. Indeed, applying Naive Bayes to our dataset,
+
+0204060801001214161820222426% of the total number of restaurants consideredError (%)  test errortrain error1000 restaurants consideredwe made the implicit Naive Bayes assumption that the features
+are conditionally independent given a label. As this is a strong
+assumption that is not veriﬁed in our problem, we applied
+SVM with a Gaussian kernel (SVM), K-nearest neighbors
+(KNN), logistic regression, and the perceptron algorithms and
+compared their respective performances.
+
+Feature weighting Before applying learning algorithms, it
+is standard in text classiﬁcation problems to apply feature
+weighting to our count matrix in order to reﬂect the relative
+importance of features[4]. To do so, we used the tf-idf mea-
+sure, which increases proportionally to the number of times a
+word appears in the document, but is offset by the frequency of
+the word in the corpus, which helps to adjust for the fact that
+some words appear more frequently in general. The formula
+to compute tf-idf is the following:
+
+wi, j = t f i, j × log
+
+N
+d f i
+
+where t f i, j is the number of occurrences of word i in training
+example j, d f i is the number of training examples containing
+the word i, and N is the total number of training examples.
+Applying tf-idf to weight our features and running the afor-
+mentionned learning algorithms, we note that KNN with
+K = 240 ranks ﬁrst with 16.93% of error while logistic re-
+gression with regularization parameter λ = 10−3 and SVM
+and a regularization parameter C = 10−6 closely follow with
+respectively 16.97% and 17.39% of error - cf. Figure 2. Mul-
+tiple parameters K,λ ,C were tested and the chosen ones were
+determined as they minimized the cross validated error.
+
+2.4 Feature selection
+Another way to account for the relevancy of features to a
+given classiﬁcation problem is to select a subset of features.
+Indeed, the dataset contains many redundant and irrelevant
+features. Redundant features are those which provide no more
+information than the currently selected features, and irrelevant
+features provide no useful information in any context. The
+main advantages of applying feature selection are to improve
+the model interpretability, to enhance generalization by reduc-
+ing overﬁtting, and to shorten training times.
+
+Yelp Restaurants’ Open Hours — 3/5
+
+Figure 2. Binary Classiﬁcation Results
+
+We applied the bisection algorithm in order to ﬁnd the op-
+timal number of features to use for each learning algorithm,
+corresponding to the minimum of the cross validated error for
+the hour 11am - cf. Figure 3. We chose 11am as a proxy since
+it is the hour for which our baseline algorithm performs the
+worst: 11am represents 12% of the total error compared to
+4.2% if the error was uniformly distributed.
+
+2.5 Analysis
+After applying feature selection, we conclude that KNN with
+K = 240, logistic regression with parameter λ = 10−3 and
+SVM and parameter C = 10−6 perform similarly as in the no
+feature selection case. Moreover, we note that the algorithms
+that were performing worse - i.e. bNB, mNB, and the percep-
+tron algorithm, now perform signiﬁcantly better with feature
+selection: 15% improvement for bNB, 28% improvement for
+mNB, and 15% improvement for perceptron. Though these
+algorithms improved with feature selection, they still do not
+reach the level of performance provided by KNN, SVM, and
+logistic regression.
+
+To perform feature selection, we applied the chi-square method
+that is standard in the text classiﬁcation literature [5]. We use
+it to test whether the occurrence of a speciﬁc term and the oc-
+currence of a speciﬁc class are independent. Thus we estimate
+the following quantity for each feature j and we rank them by
+their score:
+χ2( j) =
+
+1
+2 ∑i∈{0,1}∑ei∈{0,1}∑e j∈{0,1}
+
+(Neie j − Eeie j )2
+
+Eeie j
+
+where e j denotes the occurrence of feature j, ei denotes the oc-
+currence of the class i, and Neie j denotes the counts of training
+examples when either ei or e j is equal to 1. Last, Eeie j is the
+expected frequency asserting that the occurrence of feature j
+and the occurrence of class i are independent.
+
+Figure 3. Feature Selection for Binomial Naive Bayes
+
+Binomial NBMultinomial NBK−nearest neighborsGaussian SVMLogistic RegressionPerceptron051015202530354045Cross validated error (%)  Without feature selectionWith feature selectionBaseline50055060065070075080085090095010006.16.26.36.46.56.66.76.86.9Number of featuresCross validated error (%)CS 229: Machine Learning, Autumn 2014
+Final Writeup
+
+Yelp Restaurants’ Open Hours
+Samuel Bakouch1, Adrien Boch2, Benjamin Favreau3
+
+Abstract
+This paper aims at identifying when restaurants registered on Yelp are open or closed based on the reviews
+written by Yelp’s users. Our initial approach was to use a binary classiﬁcation model with a bag-of-words
+representation of the reviews. We then conducted multiclass classiﬁcation where logistic regression reaches
+83.22% accuracy but with a 11.22% false-positive error rate which is critical for Yelp’s user experience. We then
+pointed out that there is a tradeoff between model accuracy and false-positive error rate.
+1sbakouch@stanford.edu, Department of Management Science and Engineering, Stanford University
+2aboch@stanford.edu, Department of Earth Sciences, Stanford University
+3bfavreau@stanford.edu, Department of Management Science and Engineering, Stanford University
+
+Introduction
+
+Yelp is an online platform publishing crowd-sourced re-
+views about local businesses. It is now a platform broadly
+used and it attracts numerous types of businesses. It has even
+become a key success factor in several industries such as
+restaurants and bars. It is now essential for these types of
+businesses to be referenced on Yelp with positive reviews,
+high rating and meaningful information.
+Objectives and Motivation To keep on growing and taking
+an increasing importance in our everyday life, Yelp aims
+at providing valuable and complete information to its users.
+Unfortunately, when entering information into the platform,
+restaurants often forget to include and update elements that are
+particularly relevant for Yelp’s users - e.g. the open hours of a
+business. Yelp must provide its users a consistent experience
+across the platform, and a restaurant without registered or
+accurate open hours should not jeopardize the overall user
+experience. Indeed, what is worse than choosing a restaurant
+on Yelp, driving there thinking about the menu to eventually
+ﬁnd the door closed? This need for consistency and accuracy
+led us to apply machine learning techniques to determine the
+open hours of a restaurant from Yelp users’ reviews.
+Dataset We used the dataset publicly available, from the
+Yelp Dataset Challenge website. The dataset provides two
+.json ﬁles that we used in our study:
+• A ﬁle containing information and characteristics about
+more than 42,000 businesses from the city of Phoenix
+• A second ﬁle consisting of more than 1,125,000 reviews
+
+over these businesses
+
+Among the characteristics available for a business are some
+labeling/category settings - e.g. Restaurants, Bars, Health&
+Beauty, ... and open hours.
+
+1. Data Transformation
+
+In order to be able to apply learning algorithms on reviews to
+predict the hours of operation of a restaurant, we ﬁrst needed
+
+to transform the .json ﬁles we received. In the review ﬁle,
+every line contained one review for a given business. In the
+business ﬁle, one line contained the hours of operation of a
+given business. In order to facilitate processing, we not only
+needed to merge both ﬁles, but also to aggregate all the reviews
+of a business and to ﬁlter businesses that are restaurants.
+
+1.1 Map-Reduce on Stanford Corn cluster
+The business and review ﬁles contained about 42,000 lines
+and 1,200,000 lines respectively. Looping over these two ﬁles
+would potentially entail over 42,000× 1,200,000 ≈ 5× 1010
+iterations. However, as we only consider restaurants, the num-
+ber of iterations boils down to 9× 109 iterations.
+Nevertheless, it is still a massive number of iterations and
+as a result extremely time consuming. That is why we de-
+signed a Map-Reduce algorithm to do parallel computing on
+the Stanford Corn cluster. In the mapping part, we broke
+down the business ﬁle into 480 different new ﬁles or pieces.
+For every single one of these pieces, a script was submitted a
+job on the Corn cluster so that multiple tasks could be run in
+parallel, using up to 30 different nodes. 480 output ﬁles were
+therefore created in the process. A second script has reduced
+these 480 output ﬁles together in order to get the output into
+one single ﬁle. At this point, we built a .json ﬁle of 8,079 lines
+in which one line corresponds to one restaurant, containing
+its aggregated reviews and its open hours.
+
+1.2 Data preprocessing
+We performed stemming on the reviews in order to reduce
+the dimension of our feature vectors. Stemming is a common
+practice used in Natural Language Processing, which reduces
+words to their root - e.g.
+thinking is represented by think
+after stemming processing. We used the nltk python library,
+which performs Porter’s stemming algorithm [1]. We also
+removed stop-words to eliminate tokens that do not convey
+any information. Applying stop-words algorithm enabled us
+to remove high-frequency words such as ”the”, ”I”, ”and”.
+
+Yelp Restaurants’ Open Hours — 2/5
+
+2. Binary Models
+
+Our goal being to predict the hours of operation of a restaurant
+from users’ reviews, we must predict for each day of the week,
+if a restaurant is open or closed for each one-hour block of
+the day. Due to the large computing requirements needed for
+such an operation, we chose to focus on Tuesday exclusively -
+one of the most representative day of the week for restaurants
+excluding the weekend. We ran all our models on python.
+
+2.1 Model hypotheses
+First, our feature selection will follow the bag-of-words model,
+i.e. the dictionary used by the learning algorithms is deﬁned as
+the union of all the words that appear in the reviews included
+in our training set.
+
+Size o f dictionary
+
+(cid:122)
+
+
+1 1
+0 1
+...
+...
+1 0
+
+(cid:125)(cid:124)
+
+···
+···
+...
+···
+
+F =
+
+(cid:123)
+
+nb. rest.
+
+
+0
+0
+...
+0
+
+0
+1
+...
+1
+
+where Fi, j indicates whether feature j appears in the reviews
+of restaurant i.
+Our aim is to predict for each one-hour block of Tuesday
+if a restaurant is open or closed. There are several ways
+to represent this output and deﬁne the labels predicted by
+the learning algorithm. For instance, we could look at the
+24-hour vectors, or we could view the output representation
+as 24 binary predictions where - for each one-hour block -
+the learning algorithm will predict 0 or 1. In this case, we
+apply a binary algorithm for every one-hour block, thus the
+number of labels is |{0,1}| = 2. In this section, we chose
+to take the latter approach considering the potential huge
+number of classes of the previous output representation - 224 =
+16,777,216.
+
+2.2 Methodology
+2.2.1 Error metric
+When choosing an error metric, a key characteristic should be
+the ability to benchmark our results against several types of
+algorithms. We chose the standard average test error looking
+at the accuracy of the prediction for each one-hour block
+
+t
+∑
+i=1
+
+24
+∑
+ho=1
+
+1
+
+ε = 1−
+
+(cid:110)
+h(x(i))ho = y(ho)(cid:111)
+
+24×t
+
+where t is the size of the test set, y(ho) is the true state of
+operation of the restaurant at hour ho, h(x(i))ho being the
+predicted output for hour ho and training example i . We
+then used a 10-fold cross validation which is standard for text
+classiﬁcation problems [2].
+
+2.2.2 Training set size
+In order to determine the training set size on which we will
+train our algorithms, we ﬁrst decided to plot - cf. Figure 1, the
+training and test errors for different training set sizes ranging
+
+Figure 1. Learing curve for Binomial Naive Bayes
+
+from 100 to the maximum 8,079. We used the Binomial Naive
+Bayes algorithm to perform this analysis. We observe two
+main behaviors: from 100 to 1,000, the algorithm overﬁts and
+from 1,000 to 8,079, the behavior is similar as the training
+and test errors slightly differ in functon of the training set
+size. Thus, as the complexity of the learning algorithms is at
+least O(t2) where t is the size of the training set, we decided
+to choose 1,000 training examples for the rest of our study.
+Also, one can notice that 1,000 training examples correspond
+to the one standard error rule, which is a standard parameter
+selection criterion used in statistics [3].
+
+2.2.3 Baseline algorithm
+In order to accurately measure the performance of the learning
+algorithms we choose to apply, we need a baseline model for
+which the previously-deﬁned error metric will be computed.
+We will consider two baseline algorithms:
+
+• Predict close - i.e. 0 for every hour, error: ε0
+• Predict open - i.e. 1 for every hour, error: ε1
+
+To compute the error metric that should be the reference to
+benchmark against, we will compute the quantity
+
+εre f = min (ε0,ε1)
+
+Running these two naive algorithms on our dataset outputs, we
+obtained εre f = 42.08%. Thus, we will not consider learning
+algorithms with an error greater than 42.08% as the baseline
+algorithm performs better.
+
+2.3 Learning algorithms
+2.3.1 Naive Bayes
+First, we decided to apply the binomial (bNB) and multi-
+nomial (mNB) Naive Bayes’ algorithms in order to test our
+hypotheses. The bNB led to 35.31% of error and the mNB led
+to 37.96% of error. We note that these errors have the same
+order of magnitude and both are under the baseline error cap.
+
+2.3.2 KNN, SVM, Logistic regression, Perceptron
+Then, we decided to test additional algorithms and thus to
+reﬁne our model. Indeed, applying Naive Bayes to our dataset,
+
+0204060801001214161820222426% of the total number of restaurants consideredError (%)  test errortrain error1000 restaurants consideredwe made the implicit Naive Bayes assumption that the features
+are conditionally independent given a label. As this is a strong
+assumption that is not veriﬁed in our problem, we applied
+SVM with a Gaussian kernel (SVM), K-nearest neighbors
+(KNN), logistic regression, and the perceptron algorithms and
+compared their respective performances.
+
+Feature weighting Before applying learning algorithms, it
+is standard in text classiﬁcation problems to apply feature
+weighting to our count matrix in order to reﬂect the relative
+importance of features[4]. To do so, we used the tf-idf mea-
+sure, which increases proportionally to the number of times a
+word appears in the document, but is offset by the frequency of
+the word in the corpus, which helps to adjust for the fact that
+some words appear more frequently in general. The formula
+to compute tf-idf is the following:
+
+wi, j = t f i, j × log
+
+N
+d f i
+
+where t f i, j is the number of occurrences of word i in training
+example j, d f i is the number of training examples containing
+the word i, and N is the total number of training examples.
+Applying tf-idf to weight our features and running the afor-
+mentionned learning algorithms, we note that KNN with
+K = 240 ranks ﬁrst with 16.93% of error while logistic re-
+gression with regularization parameter λ = 10−3 and SVM
+and a regularization parameter C = 10−6 closely follow with
+respectively 16.97% and 17.39% of error - cf. Figure 2. Mul-
+tiple parameters K,λ ,C were tested and the chosen ones were
+determined as they minimized the cross validated error.
+
+2.4 Feature selection
+Another way to account for the relevancy of features to a
+given classiﬁcation problem is to select a subset of features.
+Indeed, the dataset contains many redundant and irrelevant
+features. Redundant features are those which provide no more
+information than the currently selected features, and irrelevant
+features provide no useful information in any context. The
+main advantages of applying feature selection are to improve
+the model interpretability, to enhance generalization by reduc-
+ing overﬁtting, and to shorten training times.
+
+Yelp Restaurants’ Open Hours — 3/5
+
+Figure 2. Binary Classiﬁcation Results
+
+We applied the bisection algorithm in order to ﬁnd the op-
+timal number of features to use for each learning algorithm,
+corresponding to the minimum of the cross validated error for
+the hour 11am - cf. Figure 3. We chose 11am as a proxy since
+it is the hour for which our baseline algorithm performs the
+worst: 11am represents 12% of the total error compared to
+4.2% if the error was uniformly distributed.
+
+2.5 Analysis
+After applying feature selection, we conclude that KNN with
+K = 240, logistic regression with parameter λ = 10−3 and
+SVM and parameter C = 10−6 perform similarly as in the no
+feature selection case. Moreover, we note that the algorithms
+that were performing worse - i.e. bNB, mNB, and the percep-
+tron algorithm, now perform signiﬁcantly better with feature
+selection: 15% improvement for bNB, 28% improvement for
+mNB, and 15% improvement for perceptron. Though these
+algorithms improved with feature selection, they still do not
+reach the level of performance provided by KNN, SVM, and
+logistic regression.
+
+To perform feature selection, we applied the chi-square method
+that is standard in the text classiﬁcation literature [5]. We use
+it to test whether the occurrence of a speciﬁc term and the oc-
+currence of a speciﬁc class are independent. Thus we estimate
+the following quantity for each feature j and we rank them by
+their score:
+χ2( j) =
+
+1
+2 ∑i∈{0,1}∑ei∈{0,1}∑e j∈{0,1}
+
+(Neie j − Eeie j )2
+
+Eeie j
+
+where e j denotes the occurrence of feature j, ei denotes the oc-
+currence of the class i, and Neie j denotes the counts of training
+examples when either ei or e j is equal to 1. Last, Eeie j is the
+expected frequency asserting that the occurrence of feature j
+and the occurrence of class i are independent.
+
+Figure 3. Feature Selection for Binomial Naive Bayes
+
+Binomial NBMultinomial NBK−nearest neighborsGaussian SVMLogistic RegressionPerceptron051015202530354045Cross validated error (%)  Without feature selectionWith feature selectionBaseline50055060065070075080085090095010006.16.26.36.46.56.66.76.86.9Number of featuresCross validated error (%)Yelp Restaurants’ Open Hours — 4/5
+
+3. Multi-class models
+
+3.1 Motivation
+In section 2, we applied several algorithms based on binary
+classiﬁcation outputs. For a given business, the predicted
+operation hours are obtained by concatenating the prediction
+of one algorithm over 24 hours. Thus, algorithms are run
+independently every hour and the prediction from one hour is
+completely independent from the prediction of the adjacent
+hours. As mentioned earlier, in this setting, K-nearest neigh-
+bor, SVM and logistic regression have a similar prediction
+accuracy, but lead to unrealistic predicted answers as we can
+see in the example below. Such example would mean that the
+associated restaurant opens 5 times during Tuesday.
+
+ˆY = [001100011100110101111000]T
+
+Figure 4. Multi-class Classiﬁcation Results
+
+One solution to avoid this kind of patterns would be to group
+a given number of hours and make prediction over this group
+of hours. Such algorithms are called multi-class classiﬁcation.
+However, how to make a prediction on a speciﬁc hour-slot ho?
+We would need either to make several predictions based on
+all the groups containing the slot ho or to arbitrarily choose
+one of these groups.
+
+To withdraw the uncertainty on how to make our predictions
+on each time slot, we decided to use the entire 24-hour vector
+as mentioned in part 2.1. We noticed that our dataset con-
+tains only 229 different vectors. Thus, running multi-class
+classiﬁcation algorithms on 229 classes over more than 8,000
+businesses seems realistic. In order to be able to benchmark
+these new algorithms, we used the same measure of accuracy
+as in section 2 using the same notations, h(x(i))(ho) being the
+hoth element of the predicted class h(x(i)).
+
+3.2 Results
+We extended the models tested in section 2 to ﬁt the new
+type of answer - except the SVM classiﬁer only accepting
+binary answer vectors. In short, we tested bNB, mNB, KNN,
+logistic regression and perceptron algorithms. We used the
+same methodology as in section 2 for every models:
+
+1. We used a bag-of-words model to transform reviews
+
+into usable feature vectors
+
+2. We weighted the features based on tf-idf - except in the
+
+Naive Bayes algorithms
+
+3. We ﬁtted algorithms using all features available
+4. Using χ2 test, we reduced the number of features
+5. We ﬁtted our algorithms with the optimal number of
+
+features obtained at step 4
+
+Based on this methodology, we obtained the results presented
+in Figure 4. We not only did not lose any prediction power,
+but we even improved it! Multi-class logistic regression hits
+16.81% prediction accuracy improving our former perfor-
+mance by 0.7%.
+
+3.3 Analysis
+Even though our new methodology does not focus on max-
+imizing the cross validated error and the F1− score on an
+hourly basis, it classiﬁes restaurants in observed classes. Bi-
+nary classiﬁcation reduces the bias on every hour-slot con-
+sidered, but increases the overall variance of our prediction
+algorithm - as predictions are independent from one hour to
+another, variances are simply summed over the hours. Using
+multi-class classiﬁcation, we have introduced an additional
+bias to our model, but we decreased the variance on a 24-
+hour metric - variance pooling, which explains why our new
+methodology has good performance.
+
+We can also observe that our models are less sensitive to
+feature selection than earlier. This might be explained by the
+fact that the answer vectors contain more information than
+earlier. Moreover, in our subset of restaurants, we have 123
+classes, i.e. on average one class has a size of less than 10
+restaurants. While reducing the number of features, our algo-
+rithms tended to be less performant, and the performance was
+monotically increasing with the number of features included
+in the model, which tends to support our theory.
+
+As we can see in Figure 5, the prediction error is not uniformly
+
+Figure 5. Multi-class logistic regression CV error per hour
+
+Binomial NBMultinomial NBK−nearest neighborsLogistic RegressionPerceptron051015202530354045Cross validated error (%)  Without feature selectionWith feature selectionBaseline051015202500.10.20.30.40.5hoursCross validated errorCS 229: Machine Learning, Autumn 2014
+Final Writeup
+
+Yelp Restaurants’ Open Hours
+Samuel Bakouch1, Adrien Boch2, Benjamin Favreau3
+
+Abstract
+This paper aims at identifying when restaurants registered on Yelp are open or closed based on the reviews
+written by Yelp’s users. Our initial approach was to use a binary classiﬁcation model with a bag-of-words
+representation of the reviews. We then conducted multiclass classiﬁcation where logistic regression reaches
+83.22% accuracy but with a 11.22% false-positive error rate which is critical for Yelp’s user experience. We then
+pointed out that there is a tradeoff between model accuracy and false-positive error rate.
+1sbakouch@stanford.edu, Department of Management Science and Engineering, Stanford University
+2aboch@stanford.edu, Department of Earth Sciences, Stanford University
+3bfavreau@stanford.edu, Department of Management Science and Engineering, Stanford University
+
+Introduction
+
+Yelp is an online platform publishing crowd-sourced re-
+views about local businesses. It is now a platform broadly
+used and it attracts numerous types of businesses. It has even
+become a key success factor in several industries such as
+restaurants and bars. It is now essential for these types of
+businesses to be referenced on Yelp with positive reviews,
+high rating and meaningful information.
+Objectives and Motivation To keep on growing and taking
+an increasing importance in our everyday life, Yelp aims
+at providing valuable and complete information to its users.
+Unfortunately, when entering information into the platform,
+restaurants often forget to include and update elements that are
+particularly relevant for Yelp’s users - e.g. the open hours of a
+business. Yelp must provide its users a consistent experience
+across the platform, and a restaurant without registered or
+accurate open hours should not jeopardize the overall user
+experience. Indeed, what is worse than choosing a restaurant
+on Yelp, driving there thinking about the menu to eventually
+ﬁnd the door closed? This need for consistency and accuracy
+led us to apply machine learning techniques to determine the
+open hours of a restaurant from Yelp users’ reviews.
+Dataset We used the dataset publicly available, from the
+Yelp Dataset Challenge website. The dataset provides two
+.json ﬁles that we used in our study:
+• A ﬁle containing information and characteristics about
+more than 42,000 businesses from the city of Phoenix
+• A second ﬁle consisting of more than 1,125,000 reviews
+
+over these businesses
+
+Among the characteristics available for a business are some
+labeling/category settings - e.g. Restaurants, Bars, Health&
+Beauty, ... and open hours.
+
+1. Data Transformation
+
+In order to be able to apply learning algorithms on reviews to
+predict the hours of operation of a restaurant, we ﬁrst needed
+
+to transform the .json ﬁles we received. In the review ﬁle,
+every line contained one review for a given business. In the
+business ﬁle, one line contained the hours of operation of a
+given business. In order to facilitate processing, we not only
+needed to merge both ﬁles, but also to aggregate all the reviews
+of a business and to ﬁlter businesses that are restaurants.
+
+1.1 Map-Reduce on Stanford Corn cluster
+The business and review ﬁles contained about 42,000 lines
+and 1,200,000 lines respectively. Looping over these two ﬁles
+would potentially entail over 42,000× 1,200,000 ≈ 5× 1010
+iterations. However, as we only consider restaurants, the num-
+ber of iterations boils down to 9× 109 iterations.
+Nevertheless, it is still a massive number of iterations and
+as a result extremely time consuming. That is why we de-
+signed a Map-Reduce algorithm to do parallel computing on
+the Stanford Corn cluster. In the mapping part, we broke
+down the business ﬁle into 480 different new ﬁles or pieces.
+For every single one of these pieces, a script was submitted a
+job on the Corn cluster so that multiple tasks could be run in
+parallel, using up to 30 different nodes. 480 output ﬁles were
+therefore created in the process. A second script has reduced
+these 480 output ﬁles together in order to get the output into
+one single ﬁle. At this point, we built a .json ﬁle of 8,079 lines
+in which one line corresponds to one restaurant, containing
+its aggregated reviews and its open hours.
+
+1.2 Data preprocessing
+We performed stemming on the reviews in order to reduce
+the dimension of our feature vectors. Stemming is a common
+practice used in Natural Language Processing, which reduces
+words to their root - e.g.
+thinking is represented by think
+after stemming processing. We used the nltk python library,
+which performs Porter’s stemming algorithm [1]. We also
+removed stop-words to eliminate tokens that do not convey
+any information. Applying stop-words algorithm enabled us
+to remove high-frequency words such as ”the”, ”I”, ”and”.
+
+Yelp Restaurants’ Open Hours — 2/5
+
+2. Binary Models
+
+Our goal being to predict the hours of operation of a restaurant
+from users’ reviews, we must predict for each day of the week,
+if a restaurant is open or closed for each one-hour block of
+the day. Due to the large computing requirements needed for
+such an operation, we chose to focus on Tuesday exclusively -
+one of the most representative day of the week for restaurants
+excluding the weekend. We ran all our models on python.
+
+2.1 Model hypotheses
+First, our feature selection will follow the bag-of-words model,
+i.e. the dictionary used by the learning algorithms is deﬁned as
+the union of all the words that appear in the reviews included
+in our training set.
+
+Size o f dictionary
+
+(cid:122)
+
+
+1 1
+0 1
+...
+...
+1 0
+
+(cid:125)(cid:124)
+
+···
+···
+...
+···
+
+F =
+
+(cid:123)
+
+nb. rest.
+
+
+0
+0
+...
+0
+
+0
+1
+...
+1
+
+where Fi, j indicates whether feature j appears in the reviews
+of restaurant i.
+Our aim is to predict for each one-hour block of Tuesday
+if a restaurant is open or closed. There are several ways
+to represent this output and deﬁne the labels predicted by
+the learning algorithm. For instance, we could look at the
+24-hour vectors, or we could view the output representation
+as 24 binary predictions where - for each one-hour block -
+the learning algorithm will predict 0 or 1. In this case, we
+apply a binary algorithm for every one-hour block, thus the
+number of labels is |{0,1}| = 2. In this section, we chose
+to take the latter approach considering the potential huge
+number of classes of the previous output representation - 224 =
+16,777,216.
+
+2.2 Methodology
+2.2.1 Error metric
+When choosing an error metric, a key characteristic should be
+the ability to benchmark our results against several types of
+algorithms. We chose the standard average test error looking
+at the accuracy of the prediction for each one-hour block
+
+t
+∑
+i=1
+
+24
+∑
+ho=1
+
+1
+
+ε = 1−
+
+(cid:110)
+h(x(i))ho = y(ho)(cid:111)
+
+24×t
+
+where t is the size of the test set, y(ho) is the true state of
+operation of the restaurant at hour ho, h(x(i))ho being the
+predicted output for hour ho and training example i . We
+then used a 10-fold cross validation which is standard for text
+classiﬁcation problems [2].
+
+2.2.2 Training set size
+In order to determine the training set size on which we will
+train our algorithms, we ﬁrst decided to plot - cf. Figure 1, the
+training and test errors for different training set sizes ranging
+
+Figure 1. Learing curve for Binomial Naive Bayes
+
+from 100 to the maximum 8,079. We used the Binomial Naive
+Bayes algorithm to perform this analysis. We observe two
+main behaviors: from 100 to 1,000, the algorithm overﬁts and
+from 1,000 to 8,079, the behavior is similar as the training
+and test errors slightly differ in functon of the training set
+size. Thus, as the complexity of the learning algorithms is at
+least O(t2) where t is the size of the training set, we decided
+to choose 1,000 training examples for the rest of our study.
+Also, one can notice that 1,000 training examples correspond
+to the one standard error rule, which is a standard parameter
+selection criterion used in statistics [3].
+
+2.2.3 Baseline algorithm
+In order to accurately measure the performance of the learning
+algorithms we choose to apply, we need a baseline model for
+which the previously-deﬁned error metric will be computed.
+We will consider two baseline algorithms:
+
+• Predict close - i.e. 0 for every hour, error: ε0
+• Predict open - i.e. 1 for every hour, error: ε1
+
+To compute the error metric that should be the reference to
+benchmark against, we will compute the quantity
+
+εre f = min (ε0,ε1)
+
+Running these two naive algorithms on our dataset outputs, we
+obtained εre f = 42.08%. Thus, we will not consider learning
+algorithms with an error greater than 42.08% as the baseline
+algorithm performs better.
+
+2.3 Learning algorithms
+2.3.1 Naive Bayes
+First, we decided to apply the binomial (bNB) and multi-
+nomial (mNB) Naive Bayes’ algorithms in order to test our
+hypotheses. The bNB led to 35.31% of error and the mNB led
+to 37.96% of error. We note that these errors have the same
+order of magnitude and both are under the baseline error cap.
+
+2.3.2 KNN, SVM, Logistic regression, Perceptron
+Then, we decided to test additional algorithms and thus to
+reﬁne our model. Indeed, applying Naive Bayes to our dataset,
+
+0204060801001214161820222426% of the total number of restaurants consideredError (%)  test errortrain error1000 restaurants consideredwe made the implicit Naive Bayes assumption that the features
+are conditionally independent given a label. As this is a strong
+assumption that is not veriﬁed in our problem, we applied
+SVM with a Gaussian kernel (SVM), K-nearest neighbors
+(KNN), logistic regression, and the perceptron algorithms and
+compared their respective performances.
+
+Feature weighting Before applying learning algorithms, it
+is standard in text classiﬁcation problems to apply feature
+weighting to our count matrix in order to reﬂect the relative
+importance of features[4]. To do so, we used the tf-idf mea-
+sure, which increases proportionally to the number of times a
+word appears in the document, but is offset by the frequency of
+the word in the corpus, which helps to adjust for the fact that
+some words appear more frequently in general. The formula
+to compute tf-idf is the following:
+
+wi, j = t f i, j × log
+
+N
+d f i
+
+where t f i, j is the number of occurrences of word i in training
+example j, d f i is the number of training examples containing
+the word i, and N is the total number of training examples.
+Applying tf-idf to weight our features and running the afor-
+mentionned learning algorithms, we note that KNN with
+K = 240 ranks ﬁrst with 16.93% of error while logistic re-
+gression with regularization parameter λ = 10−3 and SVM
+and a regularization parameter C = 10−6 closely follow with
+respectively 16.97% and 17.39% of error - cf. Figure 2. Mul-
+tiple parameters K,λ ,C were tested and the chosen ones were
+determined as they minimized the cross validated error.
+
+2.4 Feature selection
+Another way to account for the relevancy of features to a
+given classiﬁcation problem is to select a subset of features.
+Indeed, the dataset contains many redundant and irrelevant
+features. Redundant features are those which provide no more
+information than the currently selected features, and irrelevant
+features provide no useful information in any context. The
+main advantages of applying feature selection are to improve
+the model interpretability, to enhance generalization by reduc-
+ing overﬁtting, and to shorten training times.
+
+Yelp Restaurants’ Open Hours — 3/5
+
+Figure 2. Binary Classiﬁcation Results
+
+We applied the bisection algorithm in order to ﬁnd the op-
+timal number of features to use for each learning algorithm,
+corresponding to the minimum of the cross validated error for
+the hour 11am - cf. Figure 3. We chose 11am as a proxy since
+it is the hour for which our baseline algorithm performs the
+worst: 11am represents 12% of the total error compared to
+4.2% if the error was uniformly distributed.
+
+2.5 Analysis
+After applying feature selection, we conclude that KNN with
+K = 240, logistic regression with parameter λ = 10−3 and
+SVM and parameter C = 10−6 perform similarly as in the no
+feature selection case. Moreover, we note that the algorithms
+that were performing worse - i.e. bNB, mNB, and the percep-
+tron algorithm, now perform signiﬁcantly better with feature
+selection: 15% improvement for bNB, 28% improvement for
+mNB, and 15% improvement for perceptron. Though these
+algorithms improved with feature selection, they still do not
+reach the level of performance provided by KNN, SVM, and
+logistic regression.
+
+To perform feature selection, we applied the chi-square method
+that is standard in the text classiﬁcation literature [5]. We use
+it to test whether the occurrence of a speciﬁc term and the oc-
+currence of a speciﬁc class are independent. Thus we estimate
+the following quantity for each feature j and we rank them by
+their score:
+χ2( j) =
+
+1
+2 ∑i∈{0,1}∑ei∈{0,1}∑e j∈{0,1}
+
+(Neie j − Eeie j )2
+
+Eeie j
+
+where e j denotes the occurrence of feature j, ei denotes the oc-
+currence of the class i, and Neie j denotes the counts of training
+examples when either ei or e j is equal to 1. Last, Eeie j is the
+expected frequency asserting that the occurrence of feature j
+and the occurrence of class i are independent.
+
+Figure 3. Feature Selection for Binomial Naive Bayes
+
+Binomial NBMultinomial NBK−nearest neighborsGaussian SVMLogistic RegressionPerceptron051015202530354045Cross validated error (%)  Without feature selectionWith feature selectionBaseline50055060065070075080085090095010006.16.26.36.46.56.66.76.86.9Number of featuresCross validated error (%)Yelp Restaurants’ Open Hours — 4/5
+
+3. Multi-class models
+
+3.1 Motivation
+In section 2, we applied several algorithms based on binary
+classiﬁcation outputs. For a given business, the predicted
+operation hours are obtained by concatenating the prediction
+of one algorithm over 24 hours. Thus, algorithms are run
+independently every hour and the prediction from one hour is
+completely independent from the prediction of the adjacent
+hours. As mentioned earlier, in this setting, K-nearest neigh-
+bor, SVM and logistic regression have a similar prediction
+accuracy, but lead to unrealistic predicted answers as we can
+see in the example below. Such example would mean that the
+associated restaurant opens 5 times during Tuesday.
+
+ˆY = [001100011100110101111000]T
+
+Figure 4. Multi-class Classiﬁcation Results
+
+One solution to avoid this kind of patterns would be to group
+a given number of hours and make prediction over this group
+of hours. Such algorithms are called multi-class classiﬁcation.
+However, how to make a prediction on a speciﬁc hour-slot ho?
+We would need either to make several predictions based on
+all the groups containing the slot ho or to arbitrarily choose
+one of these groups.
+
+To withdraw the uncertainty on how to make our predictions
+on each time slot, we decided to use the entire 24-hour vector
+as mentioned in part 2.1. We noticed that our dataset con-
+tains only 229 different vectors. Thus, running multi-class
+classiﬁcation algorithms on 229 classes over more than 8,000
+businesses seems realistic. In order to be able to benchmark
+these new algorithms, we used the same measure of accuracy
+as in section 2 using the same notations, h(x(i))(ho) being the
+hoth element of the predicted class h(x(i)).
+
+3.2 Results
+We extended the models tested in section 2 to ﬁt the new
+type of answer - except the SVM classiﬁer only accepting
+binary answer vectors. In short, we tested bNB, mNB, KNN,
+logistic regression and perceptron algorithms. We used the
+same methodology as in section 2 for every models:
+
+1. We used a bag-of-words model to transform reviews
+
+into usable feature vectors
+
+2. We weighted the features based on tf-idf - except in the
+
+Naive Bayes algorithms
+
+3. We ﬁtted algorithms using all features available
+4. Using χ2 test, we reduced the number of features
+5. We ﬁtted our algorithms with the optimal number of
+
+features obtained at step 4
+
+Based on this methodology, we obtained the results presented
+in Figure 4. We not only did not lose any prediction power,
+but we even improved it! Multi-class logistic regression hits
+16.81% prediction accuracy improving our former perfor-
+mance by 0.7%.
+
+3.3 Analysis
+Even though our new methodology does not focus on max-
+imizing the cross validated error and the F1− score on an
+hourly basis, it classiﬁes restaurants in observed classes. Bi-
+nary classiﬁcation reduces the bias on every hour-slot con-
+sidered, but increases the overall variance of our prediction
+algorithm - as predictions are independent from one hour to
+another, variances are simply summed over the hours. Using
+multi-class classiﬁcation, we have introduced an additional
+bias to our model, but we decreased the variance on a 24-
+hour metric - variance pooling, which explains why our new
+methodology has good performance.
+
+We can also observe that our models are less sensitive to
+feature selection than earlier. This might be explained by the
+fact that the answer vectors contain more information than
+earlier. Moreover, in our subset of restaurants, we have 123
+classes, i.e. on average one class has a size of less than 10
+restaurants. While reducing the number of features, our algo-
+rithms tended to be less performant, and the performance was
+monotically increasing with the number of features included
+in the model, which tends to support our theory.
+
+As we can see in Figure 5, the prediction error is not uniformly
+
+Figure 5. Multi-class logistic regression CV error per hour
+
+Binomial NBMultinomial NBK−nearest neighborsLogistic RegressionPerceptron051015202530354045Cross validated error (%)  Without feature selectionWith feature selectionBaseline051015202500.10.20.30.40.5hoursCross validated errorYelp Restaurants’ Open Hours — 5/5
+
+distributed over the 24 hours of the day. In particular, we ob-
+serve two error peaks centered at hour = 11 and 22. Even if
+the logistic regression model performs well in-between and
+outside of these peaks, there is still room for improvement.
+
+4. Improvement strategies
+
+At this point, we chose to focus on the logistic regression
+model based on the results observed in section 3. As men-
+tioned earlier, multi-class logistic regression is not sensitive
+to feature selection, it performs even worse when we reduce
+the number of features. Given Yelp’s business strategy, pre-
+dicting that a restaurant is open while it is currently closed
+is particularly harmful for its brand image. Thus, we will try
+to implement new strategies not only to improve the overall
+prediction power of our model, but also to reduce the 11.2%
+false-positive error rate obtained so far.
+Predicted
+
+
+
+Close Open
+
+88.8% 11.2%
+23.3% 76.7%
+
+Actual
+
+Close
+Open
+
+
+
+4.1 Bigram, trigram
+Based on the observation that cross-validated error tends to its
+optimum while increasing the number of features, we decided
+to introduce new features in the model. Our model intrinsi-
+cally depends on the order of words in a review. A simple
+observation supports this argument: ”11am” is one of the top
+features in our current prediction algorithm. However, while
+”tuesday 11am” is relevant to our problem, ”friday 11am” is
+particularly misleading! These observations motivated us to
+introduce a new type of feature: bigrams i.e. on top of the
+usual bag-of-word model, we added all the sequences of two
+consecutive words in the reviews. Therefore, from 60,000
+unigram dictionary used so far, we introduced > 1,300,000
+new bigram features. We then ran our multi-class algorithm
+on the new input matrix and obtained an error rate of 16.80%,
+which did not lead to a signiﬁcant improvement in terms of
+prediction power. We then ran our algorithm including tri-
+grams - consecutive sequence of three words, and obtained
+16.82% error rate. Thus, we can conclude that neither bigram
+nor trigram enabled signiﬁcant accuracy jump.
+
+4.2 Classiﬁcation error weighting
+One strategy to align our algorithm with our objective to
+decrease the false-positive error rate is to weight the misclassi-
+ﬁcation of the class ”closed” more heavily than the misclassi-
+ﬁcation of the class ”open”. In order to be able to implement
+this strategy, we came back to binary algorithms. We can
+notice in Figure 6 that our optimal cross-validated test error
+16.78% is obtained when penalization false-positive misclassi-
+ﬁcation three times more - false-positive error rate of 10.18%
+. We note that there is a tradeoff between decreasing the cross-
+validated error and reducing the false-positive error rate. To
+
+Figure 6. CV error vs. false-positive error rate
+
+further reduce the false-positive error rate, we thus need to
+tolerate a lower prediction accuracy.
+
+5. Discussion
+
+During this project, we have implemented several supervised
+text-classiﬁer algorithms with different output representations.
+While binary models gave good prediction power, they pro-
+duced unrealistic predictions. We then transformed our out-
+puts and performed multi-class classiﬁcation. Using a very
+large dataset of Yelp reviews and a logistic classiﬁer, we have
+been able to correctly predict hours of operation 83.22% of
+the time - error rate of 16.78%. Moreover, multi-class clas-
+siﬁcation algorithms performed particularly well, since they
+signiﬁcantly reduced the variance problem observed for bi-
+nary models. We then particularly focused on reﬁning our
+algorithm in order not only to increase its prediction power
+but also to ﬁt to Yelp’s overall strategy. By penalizing a
+certain type of misclassiﬁcation, we have been able to signiﬁ-
+cantly cut the false positive error rate, which is critical to Yelp.
+In the future, it would be interesting to consider several new
+strategies to improve the performance of our algorithm:
+
+• Training set selection: monitor more closely the busi-
+nesses present in our dataset - restaurants with fewer
+reviews introduce bias due to the lack of information
+• Feature ﬁltering: use backward or forward selections
+to reduce the noise due to the high number of features
+• Feature representation: test new feature representa-
+tion instead of the usual count, which is slightly biased
+toward businesses that contain more reviews
+
+References
+
+[1] E. Loper. (2009), Natural Language Toolkit, http://www.
+[2] M. Stone. (1977), Asymptotics for and against cross-validation
+nltk.org/
+[3] R. Tibshirani. (2013), Model assessment and cross-validation
+[4] P. Meesad. (2011), A chi-square-test for word importance differ-
+entiation in text classiﬁcation
+[5] S. M. Weiss & al. (2004), Text mining: predictive methods for
+analyzing unstructured information
+
+123456710203040Class weightCross validated error (%)1234567051015FP (%)

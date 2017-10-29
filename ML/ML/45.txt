@@ -1,0 +1,1822 @@
+Melody Extraction from Generic Audio Clips
+
+Thaminda Edirisooriya, Hansohl Kim, Connie Zeng
+
+Introduction
+
+In this project we were interested in extracting
+the melody from generic audio ﬁles. Due to the
+context-dependent nature of music, particularly
+the melodic voice, we decided to use a recurrent
+neural network (RNN), which keeps a memory of
+previous inputs. The input layer to the network
+captures a time step of a song, containing the dis-
+tribution of frequencies, the main chord, and the
+single loudest frequency in that time step, which
+are all preprocessed from raw audio. The output
+layer is a softmax classiﬁcation of the note pre-
+dicted to be the melody. We implemented this
+in Python, with several modules from NumPy [1]
+and SciPy [2].
+
+Related Work
+
+One of the most accurate methods to date, from
+Salamon, et al.
+[3], computes the harmonic
+sum of each pitch as a salience function to es-
+timate its likelihood in an audio signal. The
+most salient pitches are then grouped into con-
+tinuous contours, and the contours are ﬁltered
+based on characteristics such as average pitch
+and pitch deviation. This is well suited for vocal
+melodies, but performs poorly on instrumental
+music, which has more overlapping voices and
+sudden changes.
+
+Bosch and G´omez [4] created a variation of
+this method, designed to improve performance
+on an orchestral dataset. Instead of using har-
+monic summing, the audio signal is modeled as a
+lead plus accompaniment, with the lead further
+approximated as a source-ﬁlter model. The pitch
+salience is then calculated using maximum like-
+lihood. As expected, this method yielded better
+results on orchestral music, while still maintain-
+ing moderate accuracy on vocal music.
+
+Other approaches include that of Arora and
+Behera [5], which ﬁnds harmonic clusters and
+thresholds them based on their summed squared
+
+[6],
+amplitudes, and that of Tachibana et al.
+which separates out sustained harmonies by us-
+ing varying time windows, and then separates
+out aperiodic percussion by using varying fre-
+quency windows. These methods are more math-
+ematically straightforward but rely on simpliﬁed
+assumptions.
+
+Our work is similar to that of Salamon’s, but
+instead of manually specifying the salience func-
+tion, we want to see if an RNN can learn to
+identify the notes from an audio sample. There
+are many interactions between sound frequencies
+that may be hard to model mathematically, so a
+neural network might be able to perform better
+on this task. Johnson [7] has done related work,
+using a bidirectional RNN to compose music.
+
+Dataset
+
+Our primary dataset is a collection of Bach
+chorale harmonizations, from jsbchorales.net
+[8]. These chorales have harmonic patterns that
+are still widely used and can help make inferences
+about the melody. They are in MIDI form, with
+one track per piece containing the melody. We
+converted each raw MIDI ﬁle into a WAV ﬁle as a
+sum of sawtooth waves, and also created a WAV
+ﬁle containing the isolated melody as simple sine
+waves.
+
+We supplemented our dataset with clips used
+in the annual Music Information Retrieval Eval-
+uation eXchange (MIREX) melody extraction
+task [9]. They are drawn from a variety of genres,
+including pop, jazz, and classical. These already
+come as WAV audio ﬁles, along with a reference
+ﬁle containing the annotated melody.
+
+Since melody extraction is a complex task, we
+started by focusing on the chorale melodies. We
+used a training set of 80 chorales, from which
+10% was randomly selected for the validation set,
+and a test set of 20 chorales. Then to start learn-
+ing more general melodies, we added 12 MIREX
+
+1
+
+Melody Extraction from Generic Audio Clips
+
+Thaminda Edirisooriya, Hansohl Kim, Connie Zeng
+
+Introduction
+
+In this project we were interested in extracting
+the melody from generic audio ﬁles. Due to the
+context-dependent nature of music, particularly
+the melodic voice, we decided to use a recurrent
+neural network (RNN), which keeps a memory of
+previous inputs. The input layer to the network
+captures a time step of a song, containing the dis-
+tribution of frequencies, the main chord, and the
+single loudest frequency in that time step, which
+are all preprocessed from raw audio. The output
+layer is a softmax classiﬁcation of the note pre-
+dicted to be the melody. We implemented this
+in Python, with several modules from NumPy [1]
+and SciPy [2].
+
+Related Work
+
+One of the most accurate methods to date, from
+Salamon, et al.
+[3], computes the harmonic
+sum of each pitch as a salience function to es-
+timate its likelihood in an audio signal. The
+most salient pitches are then grouped into con-
+tinuous contours, and the contours are ﬁltered
+based on characteristics such as average pitch
+and pitch deviation. This is well suited for vocal
+melodies, but performs poorly on instrumental
+music, which has more overlapping voices and
+sudden changes.
+
+Bosch and G´omez [4] created a variation of
+this method, designed to improve performance
+on an orchestral dataset. Instead of using har-
+monic summing, the audio signal is modeled as a
+lead plus accompaniment, with the lead further
+approximated as a source-ﬁlter model. The pitch
+salience is then calculated using maximum like-
+lihood. As expected, this method yielded better
+results on orchestral music, while still maintain-
+ing moderate accuracy on vocal music.
+
+Other approaches include that of Arora and
+Behera [5], which ﬁnds harmonic clusters and
+thresholds them based on their summed squared
+
+[6],
+amplitudes, and that of Tachibana et al.
+which separates out sustained harmonies by us-
+ing varying time windows, and then separates
+out aperiodic percussion by using varying fre-
+quency windows. These methods are more math-
+ematically straightforward but rely on simpliﬁed
+assumptions.
+
+Our work is similar to that of Salamon’s, but
+instead of manually specifying the salience func-
+tion, we want to see if an RNN can learn to
+identify the notes from an audio sample. There
+are many interactions between sound frequencies
+that may be hard to model mathematically, so a
+neural network might be able to perform better
+on this task. Johnson [7] has done related work,
+using a bidirectional RNN to compose music.
+
+Dataset
+
+Our primary dataset is a collection of Bach
+chorale harmonizations, from jsbchorales.net
+[8]. These chorales have harmonic patterns that
+are still widely used and can help make inferences
+about the melody. They are in MIDI form, with
+one track per piece containing the melody. We
+converted each raw MIDI ﬁle into a WAV ﬁle as a
+sum of sawtooth waves, and also created a WAV
+ﬁle containing the isolated melody as simple sine
+waves.
+
+We supplemented our dataset with clips used
+in the annual Music Information Retrieval Eval-
+uation eXchange (MIREX) melody extraction
+task [9]. They are drawn from a variety of genres,
+including pop, jazz, and classical. These already
+come as WAV audio ﬁles, along with a reference
+ﬁle containing the annotated melody.
+
+Since melody extraction is a complex task, we
+started by focusing on the chorale melodies. We
+used a training set of 80 chorales, from which
+10% was randomly selected for the validation set,
+and a test set of 20 chorales. Then to start learn-
+ing more general melodies, we added 12 MIREX
+
+1
+
+clips to the training set and 3 MIREX clips to
+the test set.
+
+Feature Extraction
+
+We took the fast Fourier transform (FFT) of the
+full audio WAV ﬁles to obtain a matrix of all con-
+stituent frequencies over 0.25-second time steps.
+For the chorales, we similarly took the transform
+of the melody WAV ﬁles to identify the main fre-
+quency of the melody at each time step. For the
+MIREX clips, we simply read the frequency val-
+ues of the melody from the reference ﬁle. As
+a simpliﬁcation, we only considered frequencies
+from 0-2000 Hz, based on the typical range of
+music.
+
+The full audio FFT was fed to a chord-
+recognition SVM to identify the main chord per
+time step. Each input vector to the neural net-
+work then consisted of the FFT (2000 features),
+the predicted chord from the SVM (24 features),
+and the frequency with the highest amplitude (1
+feature) for a given time step. All time steps of
+a song were combined into a single matrix and
+stored with the target melody frequencies in a
+CSV ﬁle.
+
+Chord-Recognition SVM
+
+As part of our feature extraction, we created an
+SVM to predict the most likely chord in an audio
+sample. The SVM we used operates by solving
+the optimization problem:
+
+To generate data for the SVM, we created
+chords by summing sawtooth waves and taking
+the FFT. For each base note and tonality, we
+considered the three notes that make up the cor-
+responding chord and, at each octave, included
+each note with a random chance. We used a
+span of 6 octaves, from 3 below middle C to 2
+above middle C, as a reasonable range for chords
+in actual music. This process essentially creates
+a random sampling of all the permutations and
+multiplicities of a chord.
+
+Kernel
+RBF
+Linear
+Polynomial
+
+Accuracy
+
+80%
+83%
+51%
+
+Table 1: Comparison of kernels for the chord-
+recognition SVM.
+
+We used a training set of 200 samples per
+chord and a validation set of 50 samples per
+chord to select the kernel for the SVM. As shown
+in Table 1, the linear kernel resulted in the best
+classiﬁcation. We further tested it on a set of
+more complete chords, containing at least one
+instance of the base note and the middle note.
+The SVM achieved 97% accuracy on a set of 50
+samples per chord. Finally, we tested a small
+sample of Bach chorales, with 86% accuracy.
+
+Which is can be expressed as the dual opti-
+
+mization problem:
+
+Implemented using the scikit-learn SVC class
+[10], the SVM takes an FFT as input, and out-
+puts an indicator vector with one of 24 chords
+chosen. The 24 possible chords come from 12
+half-step base notes and 2 tonalities, major or
+minor.
+
+Percussion Processing
+
+As part of the preprocessing on pop audio sam-
+ples in particular, we tried to remove the spikes
+in frequency that occur when loud percussion
+such as a kick or snare drum occurs. A kick
+or snare often has high power levels in the fre-
+quency ranges also shared by vocal and other
+instruments, and can thus obscure the melody
+
+2
+
+Melody Extraction from Generic Audio Clips
+
+Thaminda Edirisooriya, Hansohl Kim, Connie Zeng
+
+Introduction
+
+In this project we were interested in extracting
+the melody from generic audio ﬁles. Due to the
+context-dependent nature of music, particularly
+the melodic voice, we decided to use a recurrent
+neural network (RNN), which keeps a memory of
+previous inputs. The input layer to the network
+captures a time step of a song, containing the dis-
+tribution of frequencies, the main chord, and the
+single loudest frequency in that time step, which
+are all preprocessed from raw audio. The output
+layer is a softmax classiﬁcation of the note pre-
+dicted to be the melody. We implemented this
+in Python, with several modules from NumPy [1]
+and SciPy [2].
+
+Related Work
+
+One of the most accurate methods to date, from
+Salamon, et al.
+[3], computes the harmonic
+sum of each pitch as a salience function to es-
+timate its likelihood in an audio signal. The
+most salient pitches are then grouped into con-
+tinuous contours, and the contours are ﬁltered
+based on characteristics such as average pitch
+and pitch deviation. This is well suited for vocal
+melodies, but performs poorly on instrumental
+music, which has more overlapping voices and
+sudden changes.
+
+Bosch and G´omez [4] created a variation of
+this method, designed to improve performance
+on an orchestral dataset. Instead of using har-
+monic summing, the audio signal is modeled as a
+lead plus accompaniment, with the lead further
+approximated as a source-ﬁlter model. The pitch
+salience is then calculated using maximum like-
+lihood. As expected, this method yielded better
+results on orchestral music, while still maintain-
+ing moderate accuracy on vocal music.
+
+Other approaches include that of Arora and
+Behera [5], which ﬁnds harmonic clusters and
+thresholds them based on their summed squared
+
+[6],
+amplitudes, and that of Tachibana et al.
+which separates out sustained harmonies by us-
+ing varying time windows, and then separates
+out aperiodic percussion by using varying fre-
+quency windows. These methods are more math-
+ematically straightforward but rely on simpliﬁed
+assumptions.
+
+Our work is similar to that of Salamon’s, but
+instead of manually specifying the salience func-
+tion, we want to see if an RNN can learn to
+identify the notes from an audio sample. There
+are many interactions between sound frequencies
+that may be hard to model mathematically, so a
+neural network might be able to perform better
+on this task. Johnson [7] has done related work,
+using a bidirectional RNN to compose music.
+
+Dataset
+
+Our primary dataset is a collection of Bach
+chorale harmonizations, from jsbchorales.net
+[8]. These chorales have harmonic patterns that
+are still widely used and can help make inferences
+about the melody. They are in MIDI form, with
+one track per piece containing the melody. We
+converted each raw MIDI ﬁle into a WAV ﬁle as a
+sum of sawtooth waves, and also created a WAV
+ﬁle containing the isolated melody as simple sine
+waves.
+
+We supplemented our dataset with clips used
+in the annual Music Information Retrieval Eval-
+uation eXchange (MIREX) melody extraction
+task [9]. They are drawn from a variety of genres,
+including pop, jazz, and classical. These already
+come as WAV audio ﬁles, along with a reference
+ﬁle containing the annotated melody.
+
+Since melody extraction is a complex task, we
+started by focusing on the chorale melodies. We
+used a training set of 80 chorales, from which
+10% was randomly selected for the validation set,
+and a test set of 20 chorales. Then to start learn-
+ing more general melodies, we added 12 MIREX
+
+1
+
+clips to the training set and 3 MIREX clips to
+the test set.
+
+Feature Extraction
+
+We took the fast Fourier transform (FFT) of the
+full audio WAV ﬁles to obtain a matrix of all con-
+stituent frequencies over 0.25-second time steps.
+For the chorales, we similarly took the transform
+of the melody WAV ﬁles to identify the main fre-
+quency of the melody at each time step. For the
+MIREX clips, we simply read the frequency val-
+ues of the melody from the reference ﬁle. As
+a simpliﬁcation, we only considered frequencies
+from 0-2000 Hz, based on the typical range of
+music.
+
+The full audio FFT was fed to a chord-
+recognition SVM to identify the main chord per
+time step. Each input vector to the neural net-
+work then consisted of the FFT (2000 features),
+the predicted chord from the SVM (24 features),
+and the frequency with the highest amplitude (1
+feature) for a given time step. All time steps of
+a song were combined into a single matrix and
+stored with the target melody frequencies in a
+CSV ﬁle.
+
+Chord-Recognition SVM
+
+As part of our feature extraction, we created an
+SVM to predict the most likely chord in an audio
+sample. The SVM we used operates by solving
+the optimization problem:
+
+To generate data for the SVM, we created
+chords by summing sawtooth waves and taking
+the FFT. For each base note and tonality, we
+considered the three notes that make up the cor-
+responding chord and, at each octave, included
+each note with a random chance. We used a
+span of 6 octaves, from 3 below middle C to 2
+above middle C, as a reasonable range for chords
+in actual music. This process essentially creates
+a random sampling of all the permutations and
+multiplicities of a chord.
+
+Kernel
+RBF
+Linear
+Polynomial
+
+Accuracy
+
+80%
+83%
+51%
+
+Table 1: Comparison of kernels for the chord-
+recognition SVM.
+
+We used a training set of 200 samples per
+chord and a validation set of 50 samples per
+chord to select the kernel for the SVM. As shown
+in Table 1, the linear kernel resulted in the best
+classiﬁcation. We further tested it on a set of
+more complete chords, containing at least one
+instance of the base note and the middle note.
+The SVM achieved 97% accuracy on a set of 50
+samples per chord. Finally, we tested a small
+sample of Bach chorales, with 86% accuracy.
+
+Which is can be expressed as the dual opti-
+
+mization problem:
+
+Implemented using the scikit-learn SVC class
+[10], the SVM takes an FFT as input, and out-
+puts an indicator vector with one of 24 chords
+chosen. The 24 possible chords come from 12
+half-step base notes and 2 tonalities, major or
+minor.
+
+Percussion Processing
+
+As part of the preprocessing on pop audio sam-
+ples in particular, we tried to remove the spikes
+in frequency that occur when loud percussion
+such as a kick or snare drum occurs. A kick
+or snare often has high power levels in the fre-
+quency ranges also shared by vocal and other
+instruments, and can thus obscure the melody
+
+2
+
+information that we want to extract. This is
+a problem because the chorales did not contain
+percussion, and thus our algorithm did not gen-
+eralize too well to percussion heavy music.
+
+In an attempt to correct this issue, we created
+a model of the FFT of a kick drum and a snare
+drum by taking the means of the FFTs of 500
+diﬀerent kick and snare samples respectively. We
+used this to detect percussion in audio samples
+by taking the FFT of 0.05-second time steps of
+the audio, and computing the dot product with
+the kick or snare model as a similarity measure.
+The higher the value, the more likely it was to
+contain a kick or snare sample. We then chose
+the median of every 5 time slices (in terms of
+similarity) as a representative of the entire 0.25-
+second time step, to avoid spikes due to loud
+percussion.
+
+However, when we tested this method, we
+found no improvement on our accuracy. We no-
+ticed that the heuristic we used to remove per-
+cussion also removed important melody informa-
+tion. Future work could seek to reﬁne this pro-
+cess as a means of improving the generalization
+of the algorithm as a whole.
+
+Recurrent Neural Network
+
+The 2025 features from preprocessing are input
+into our RNN (implemented with PyBrain [11])
+with a 17-node hidden layer and an output layer
+of 60 classiﬁcation nodes (see Figure 1). The
+hidden layer is split into two sections based on
+connectivity. The 5-node “octave layer” only
+connects to the 2000 frequency inputs, and each
+“octave” node only outputs to 12 of the 60 out-
+put notes, corresponding to an octave. The 12-
+node “note” layer is fully connected to the in-
+put and output. When activated, the output
+node with the maximum value is taken as the
+predicted melody note.
+
+Hidden layer nodes are implemented as Long
+Short-Term Memory (LSTM) recurrent modules.
+These miniature networks can store input val-
+ues for near-arbitrary lengths of time. LSTM
+architectures vary, but all include “gate” nodes
+
+Figure 1: RNN Structure
+
+that control when an input will be remembered,
+when an input should be forgotten, and when
+the memorized value should be output. The
+frequency information in music can ﬂuctuate
+wildly, so these LSTM recurrent modules provide
+the potential to judge when a change in inputs
+should be ignored and when a change is signiﬁ-
+cant enough to warrant changing the note of the
+predicted melody.
+
+The 60 output nodes represent 60 possible out-
+
+put notes, and they use the softmax equation:
+
+softmax(x) =
+
+(cid:80)
+
+exp(−wT xj)
+exp(−wT xk)
+
+k
+
+This is a multi-class generalization of the sig-
+moid classiﬁer, and all nodes sum to 1, repre-
+senting the estimated probabilities of each class.
+The maximum value output node is taken as the
+output note.
+
+The neural network is trained with Resilient
+Backpropagation, which is variant of the stan-
+dard backpropagation algorithm. The weights
+are updated by multiplying by one of two con-
+stants decided by the relative signs of the gradi-
+ent in the current and previous iterations, while
+the magnitude of the gradient is ignored. Re-
+silient Backpropagation was chosen for its speed
+
+3
+
+Melody Extraction from Generic Audio Clips
+
+Thaminda Edirisooriya, Hansohl Kim, Connie Zeng
+
+Introduction
+
+In this project we were interested in extracting
+the melody from generic audio ﬁles. Due to the
+context-dependent nature of music, particularly
+the melodic voice, we decided to use a recurrent
+neural network (RNN), which keeps a memory of
+previous inputs. The input layer to the network
+captures a time step of a song, containing the dis-
+tribution of frequencies, the main chord, and the
+single loudest frequency in that time step, which
+are all preprocessed from raw audio. The output
+layer is a softmax classiﬁcation of the note pre-
+dicted to be the melody. We implemented this
+in Python, with several modules from NumPy [1]
+and SciPy [2].
+
+Related Work
+
+One of the most accurate methods to date, from
+Salamon, et al.
+[3], computes the harmonic
+sum of each pitch as a salience function to es-
+timate its likelihood in an audio signal. The
+most salient pitches are then grouped into con-
+tinuous contours, and the contours are ﬁltered
+based on characteristics such as average pitch
+and pitch deviation. This is well suited for vocal
+melodies, but performs poorly on instrumental
+music, which has more overlapping voices and
+sudden changes.
+
+Bosch and G´omez [4] created a variation of
+this method, designed to improve performance
+on an orchestral dataset. Instead of using har-
+monic summing, the audio signal is modeled as a
+lead plus accompaniment, with the lead further
+approximated as a source-ﬁlter model. The pitch
+salience is then calculated using maximum like-
+lihood. As expected, this method yielded better
+results on orchestral music, while still maintain-
+ing moderate accuracy on vocal music.
+
+Other approaches include that of Arora and
+Behera [5], which ﬁnds harmonic clusters and
+thresholds them based on their summed squared
+
+[6],
+amplitudes, and that of Tachibana et al.
+which separates out sustained harmonies by us-
+ing varying time windows, and then separates
+out aperiodic percussion by using varying fre-
+quency windows. These methods are more math-
+ematically straightforward but rely on simpliﬁed
+assumptions.
+
+Our work is similar to that of Salamon’s, but
+instead of manually specifying the salience func-
+tion, we want to see if an RNN can learn to
+identify the notes from an audio sample. There
+are many interactions between sound frequencies
+that may be hard to model mathematically, so a
+neural network might be able to perform better
+on this task. Johnson [7] has done related work,
+using a bidirectional RNN to compose music.
+
+Dataset
+
+Our primary dataset is a collection of Bach
+chorale harmonizations, from jsbchorales.net
+[8]. These chorales have harmonic patterns that
+are still widely used and can help make inferences
+about the melody. They are in MIDI form, with
+one track per piece containing the melody. We
+converted each raw MIDI ﬁle into a WAV ﬁle as a
+sum of sawtooth waves, and also created a WAV
+ﬁle containing the isolated melody as simple sine
+waves.
+
+We supplemented our dataset with clips used
+in the annual Music Information Retrieval Eval-
+uation eXchange (MIREX) melody extraction
+task [9]. They are drawn from a variety of genres,
+including pop, jazz, and classical. These already
+come as WAV audio ﬁles, along with a reference
+ﬁle containing the annotated melody.
+
+Since melody extraction is a complex task, we
+started by focusing on the chorale melodies. We
+used a training set of 80 chorales, from which
+10% was randomly selected for the validation set,
+and a test set of 20 chorales. Then to start learn-
+ing more general melodies, we added 12 MIREX
+
+1
+
+clips to the training set and 3 MIREX clips to
+the test set.
+
+Feature Extraction
+
+We took the fast Fourier transform (FFT) of the
+full audio WAV ﬁles to obtain a matrix of all con-
+stituent frequencies over 0.25-second time steps.
+For the chorales, we similarly took the transform
+of the melody WAV ﬁles to identify the main fre-
+quency of the melody at each time step. For the
+MIREX clips, we simply read the frequency val-
+ues of the melody from the reference ﬁle. As
+a simpliﬁcation, we only considered frequencies
+from 0-2000 Hz, based on the typical range of
+music.
+
+The full audio FFT was fed to a chord-
+recognition SVM to identify the main chord per
+time step. Each input vector to the neural net-
+work then consisted of the FFT (2000 features),
+the predicted chord from the SVM (24 features),
+and the frequency with the highest amplitude (1
+feature) for a given time step. All time steps of
+a song were combined into a single matrix and
+stored with the target melody frequencies in a
+CSV ﬁle.
+
+Chord-Recognition SVM
+
+As part of our feature extraction, we created an
+SVM to predict the most likely chord in an audio
+sample. The SVM we used operates by solving
+the optimization problem:
+
+To generate data for the SVM, we created
+chords by summing sawtooth waves and taking
+the FFT. For each base note and tonality, we
+considered the three notes that make up the cor-
+responding chord and, at each octave, included
+each note with a random chance. We used a
+span of 6 octaves, from 3 below middle C to 2
+above middle C, as a reasonable range for chords
+in actual music. This process essentially creates
+a random sampling of all the permutations and
+multiplicities of a chord.
+
+Kernel
+RBF
+Linear
+Polynomial
+
+Accuracy
+
+80%
+83%
+51%
+
+Table 1: Comparison of kernels for the chord-
+recognition SVM.
+
+We used a training set of 200 samples per
+chord and a validation set of 50 samples per
+chord to select the kernel for the SVM. As shown
+in Table 1, the linear kernel resulted in the best
+classiﬁcation. We further tested it on a set of
+more complete chords, containing at least one
+instance of the base note and the middle note.
+The SVM achieved 97% accuracy on a set of 50
+samples per chord. Finally, we tested a small
+sample of Bach chorales, with 86% accuracy.
+
+Which is can be expressed as the dual opti-
+
+mization problem:
+
+Implemented using the scikit-learn SVC class
+[10], the SVM takes an FFT as input, and out-
+puts an indicator vector with one of 24 chords
+chosen. The 24 possible chords come from 12
+half-step base notes and 2 tonalities, major or
+minor.
+
+Percussion Processing
+
+As part of the preprocessing on pop audio sam-
+ples in particular, we tried to remove the spikes
+in frequency that occur when loud percussion
+such as a kick or snare drum occurs. A kick
+or snare often has high power levels in the fre-
+quency ranges also shared by vocal and other
+instruments, and can thus obscure the melody
+
+2
+
+information that we want to extract. This is
+a problem because the chorales did not contain
+percussion, and thus our algorithm did not gen-
+eralize too well to percussion heavy music.
+
+In an attempt to correct this issue, we created
+a model of the FFT of a kick drum and a snare
+drum by taking the means of the FFTs of 500
+diﬀerent kick and snare samples respectively. We
+used this to detect percussion in audio samples
+by taking the FFT of 0.05-second time steps of
+the audio, and computing the dot product with
+the kick or snare model as a similarity measure.
+The higher the value, the more likely it was to
+contain a kick or snare sample. We then chose
+the median of every 5 time slices (in terms of
+similarity) as a representative of the entire 0.25-
+second time step, to avoid spikes due to loud
+percussion.
+
+However, when we tested this method, we
+found no improvement on our accuracy. We no-
+ticed that the heuristic we used to remove per-
+cussion also removed important melody informa-
+tion. Future work could seek to reﬁne this pro-
+cess as a means of improving the generalization
+of the algorithm as a whole.
+
+Recurrent Neural Network
+
+The 2025 features from preprocessing are input
+into our RNN (implemented with PyBrain [11])
+with a 17-node hidden layer and an output layer
+of 60 classiﬁcation nodes (see Figure 1). The
+hidden layer is split into two sections based on
+connectivity. The 5-node “octave layer” only
+connects to the 2000 frequency inputs, and each
+“octave” node only outputs to 12 of the 60 out-
+put notes, corresponding to an octave. The 12-
+node “note” layer is fully connected to the in-
+put and output. When activated, the output
+node with the maximum value is taken as the
+predicted melody note.
+
+Hidden layer nodes are implemented as Long
+Short-Term Memory (LSTM) recurrent modules.
+These miniature networks can store input val-
+ues for near-arbitrary lengths of time. LSTM
+architectures vary, but all include “gate” nodes
+
+Figure 1: RNN Structure
+
+that control when an input will be remembered,
+when an input should be forgotten, and when
+the memorized value should be output. The
+frequency information in music can ﬂuctuate
+wildly, so these LSTM recurrent modules provide
+the potential to judge when a change in inputs
+should be ignored and when a change is signiﬁ-
+cant enough to warrant changing the note of the
+predicted melody.
+
+The 60 output nodes represent 60 possible out-
+
+put notes, and they use the softmax equation:
+
+softmax(x) =
+
+(cid:80)
+
+exp(−wT xj)
+exp(−wT xk)
+
+k
+
+This is a multi-class generalization of the sig-
+moid classiﬁer, and all nodes sum to 1, repre-
+senting the estimated probabilities of each class.
+The maximum value output node is taken as the
+output note.
+
+The neural network is trained with Resilient
+Backpropagation, which is variant of the stan-
+dard backpropagation algorithm. The weights
+are updated by multiplying by one of two con-
+stants decided by the relative signs of the gradi-
+ent in the current and previous iterations, while
+the magnitude of the gradient is ignored. Re-
+silient Backpropagation was chosen for its speed
+
+3
+
+and its ability to store individual learning rates
+that can adapt for each weight.
+
+on many of the chorales, but also fails to grasp
+certain anomalous patterns.
+
+Results
+
+We trained the neural network for 525 iterations,
+using a validation set to estimate convergence.
+The training curve, in Figure 2, shows that con-
+vergence was reached near 100 iterations.
+
+Note that the classiﬁcation error rate alone
+does not take into account similarities between
+certain notes. The note C is more diﬀerent from
+a D than it is from a C one octave above. Exam-
+ining a sample predicted melody, we note that
+the prediction is generally accurate,
+including
+the absence of melody at the start, but a closer
+look at some of the errors reveals a pattern to
+some of the missed predictions.
+
+Figure 2: Training Curve
+
+Figure 4: Predicted Chorale Melody
+
+Here, the note 64 in the melody is often (and in
+a regular repeating pattern) wrongly classiﬁed as
+note 76. This is in fact the same note, transposed
+one octave up. This provides further indication
+that our trained network is learning harmonic
+patterns. Examination of the wrongly classiﬁed
+notes often reveals a shift of 4, 5, or 8 half steps,
+which correspond to the minor and major third
+as well as the dominant ﬁfth, all of which play
+important roles in established harmonic rules.
+
+The results up to this point have been from
+testing on chorales. One of our motivations was
+to use the chorales and harmonic training as a
+base for later extension to other genres and styles
+of music. While we do not expect the classiﬁca-
+tion to perform as well on other styles of music,
+we are interested in testing how useful the har-
+monic patterns in chorales are for melody extrac-
+
+Figure 3: Error Rate Histogram
+
+The average classiﬁcation error on the test set
+was 33%. This relatively low error rate likely
+demonstrates that the neural network has found
+and taken advantage of patterns in the frequency
+and chord data to aid in predicting the melodic
+pitch. Looking beyond the average of the er-
+ror rate, we note that 40% of the test chorales
+are clustered below 20% classiﬁcation error, with
+four outliers accounting for much of the error.
+This indicates that the trained net is accurate
+
+4
+
+Melody Extraction from Generic Audio Clips
+
+Thaminda Edirisooriya, Hansohl Kim, Connie Zeng
+
+Introduction
+
+In this project we were interested in extracting
+the melody from generic audio ﬁles. Due to the
+context-dependent nature of music, particularly
+the melodic voice, we decided to use a recurrent
+neural network (RNN), which keeps a memory of
+previous inputs. The input layer to the network
+captures a time step of a song, containing the dis-
+tribution of frequencies, the main chord, and the
+single loudest frequency in that time step, which
+are all preprocessed from raw audio. The output
+layer is a softmax classiﬁcation of the note pre-
+dicted to be the melody. We implemented this
+in Python, with several modules from NumPy [1]
+and SciPy [2].
+
+Related Work
+
+One of the most accurate methods to date, from
+Salamon, et al.
+[3], computes the harmonic
+sum of each pitch as a salience function to es-
+timate its likelihood in an audio signal. The
+most salient pitches are then grouped into con-
+tinuous contours, and the contours are ﬁltered
+based on characteristics such as average pitch
+and pitch deviation. This is well suited for vocal
+melodies, but performs poorly on instrumental
+music, which has more overlapping voices and
+sudden changes.
+
+Bosch and G´omez [4] created a variation of
+this method, designed to improve performance
+on an orchestral dataset. Instead of using har-
+monic summing, the audio signal is modeled as a
+lead plus accompaniment, with the lead further
+approximated as a source-ﬁlter model. The pitch
+salience is then calculated using maximum like-
+lihood. As expected, this method yielded better
+results on orchestral music, while still maintain-
+ing moderate accuracy on vocal music.
+
+Other approaches include that of Arora and
+Behera [5], which ﬁnds harmonic clusters and
+thresholds them based on their summed squared
+
+[6],
+amplitudes, and that of Tachibana et al.
+which separates out sustained harmonies by us-
+ing varying time windows, and then separates
+out aperiodic percussion by using varying fre-
+quency windows. These methods are more math-
+ematically straightforward but rely on simpliﬁed
+assumptions.
+
+Our work is similar to that of Salamon’s, but
+instead of manually specifying the salience func-
+tion, we want to see if an RNN can learn to
+identify the notes from an audio sample. There
+are many interactions between sound frequencies
+that may be hard to model mathematically, so a
+neural network might be able to perform better
+on this task. Johnson [7] has done related work,
+using a bidirectional RNN to compose music.
+
+Dataset
+
+Our primary dataset is a collection of Bach
+chorale harmonizations, from jsbchorales.net
+[8]. These chorales have harmonic patterns that
+are still widely used and can help make inferences
+about the melody. They are in MIDI form, with
+one track per piece containing the melody. We
+converted each raw MIDI ﬁle into a WAV ﬁle as a
+sum of sawtooth waves, and also created a WAV
+ﬁle containing the isolated melody as simple sine
+waves.
+
+We supplemented our dataset with clips used
+in the annual Music Information Retrieval Eval-
+uation eXchange (MIREX) melody extraction
+task [9]. They are drawn from a variety of genres,
+including pop, jazz, and classical. These already
+come as WAV audio ﬁles, along with a reference
+ﬁle containing the annotated melody.
+
+Since melody extraction is a complex task, we
+started by focusing on the chorale melodies. We
+used a training set of 80 chorales, from which
+10% was randomly selected for the validation set,
+and a test set of 20 chorales. Then to start learn-
+ing more general melodies, we added 12 MIREX
+
+1
+
+clips to the training set and 3 MIREX clips to
+the test set.
+
+Feature Extraction
+
+We took the fast Fourier transform (FFT) of the
+full audio WAV ﬁles to obtain a matrix of all con-
+stituent frequencies over 0.25-second time steps.
+For the chorales, we similarly took the transform
+of the melody WAV ﬁles to identify the main fre-
+quency of the melody at each time step. For the
+MIREX clips, we simply read the frequency val-
+ues of the melody from the reference ﬁle. As
+a simpliﬁcation, we only considered frequencies
+from 0-2000 Hz, based on the typical range of
+music.
+
+The full audio FFT was fed to a chord-
+recognition SVM to identify the main chord per
+time step. Each input vector to the neural net-
+work then consisted of the FFT (2000 features),
+the predicted chord from the SVM (24 features),
+and the frequency with the highest amplitude (1
+feature) for a given time step. All time steps of
+a song were combined into a single matrix and
+stored with the target melody frequencies in a
+CSV ﬁle.
+
+Chord-Recognition SVM
+
+As part of our feature extraction, we created an
+SVM to predict the most likely chord in an audio
+sample. The SVM we used operates by solving
+the optimization problem:
+
+To generate data for the SVM, we created
+chords by summing sawtooth waves and taking
+the FFT. For each base note and tonality, we
+considered the three notes that make up the cor-
+responding chord and, at each octave, included
+each note with a random chance. We used a
+span of 6 octaves, from 3 below middle C to 2
+above middle C, as a reasonable range for chords
+in actual music. This process essentially creates
+a random sampling of all the permutations and
+multiplicities of a chord.
+
+Kernel
+RBF
+Linear
+Polynomial
+
+Accuracy
+
+80%
+83%
+51%
+
+Table 1: Comparison of kernels for the chord-
+recognition SVM.
+
+We used a training set of 200 samples per
+chord and a validation set of 50 samples per
+chord to select the kernel for the SVM. As shown
+in Table 1, the linear kernel resulted in the best
+classiﬁcation. We further tested it on a set of
+more complete chords, containing at least one
+instance of the base note and the middle note.
+The SVM achieved 97% accuracy on a set of 50
+samples per chord. Finally, we tested a small
+sample of Bach chorales, with 86% accuracy.
+
+Which is can be expressed as the dual opti-
+
+mization problem:
+
+Implemented using the scikit-learn SVC class
+[10], the SVM takes an FFT as input, and out-
+puts an indicator vector with one of 24 chords
+chosen. The 24 possible chords come from 12
+half-step base notes and 2 tonalities, major or
+minor.
+
+Percussion Processing
+
+As part of the preprocessing on pop audio sam-
+ples in particular, we tried to remove the spikes
+in frequency that occur when loud percussion
+such as a kick or snare drum occurs. A kick
+or snare often has high power levels in the fre-
+quency ranges also shared by vocal and other
+instruments, and can thus obscure the melody
+
+2
+
+information that we want to extract. This is
+a problem because the chorales did not contain
+percussion, and thus our algorithm did not gen-
+eralize too well to percussion heavy music.
+
+In an attempt to correct this issue, we created
+a model of the FFT of a kick drum and a snare
+drum by taking the means of the FFTs of 500
+diﬀerent kick and snare samples respectively. We
+used this to detect percussion in audio samples
+by taking the FFT of 0.05-second time steps of
+the audio, and computing the dot product with
+the kick or snare model as a similarity measure.
+The higher the value, the more likely it was to
+contain a kick or snare sample. We then chose
+the median of every 5 time slices (in terms of
+similarity) as a representative of the entire 0.25-
+second time step, to avoid spikes due to loud
+percussion.
+
+However, when we tested this method, we
+found no improvement on our accuracy. We no-
+ticed that the heuristic we used to remove per-
+cussion also removed important melody informa-
+tion. Future work could seek to reﬁne this pro-
+cess as a means of improving the generalization
+of the algorithm as a whole.
+
+Recurrent Neural Network
+
+The 2025 features from preprocessing are input
+into our RNN (implemented with PyBrain [11])
+with a 17-node hidden layer and an output layer
+of 60 classiﬁcation nodes (see Figure 1). The
+hidden layer is split into two sections based on
+connectivity. The 5-node “octave layer” only
+connects to the 2000 frequency inputs, and each
+“octave” node only outputs to 12 of the 60 out-
+put notes, corresponding to an octave. The 12-
+node “note” layer is fully connected to the in-
+put and output. When activated, the output
+node with the maximum value is taken as the
+predicted melody note.
+
+Hidden layer nodes are implemented as Long
+Short-Term Memory (LSTM) recurrent modules.
+These miniature networks can store input val-
+ues for near-arbitrary lengths of time. LSTM
+architectures vary, but all include “gate” nodes
+
+Figure 1: RNN Structure
+
+that control when an input will be remembered,
+when an input should be forgotten, and when
+the memorized value should be output. The
+frequency information in music can ﬂuctuate
+wildly, so these LSTM recurrent modules provide
+the potential to judge when a change in inputs
+should be ignored and when a change is signiﬁ-
+cant enough to warrant changing the note of the
+predicted melody.
+
+The 60 output nodes represent 60 possible out-
+
+put notes, and they use the softmax equation:
+
+softmax(x) =
+
+(cid:80)
+
+exp(−wT xj)
+exp(−wT xk)
+
+k
+
+This is a multi-class generalization of the sig-
+moid classiﬁer, and all nodes sum to 1, repre-
+senting the estimated probabilities of each class.
+The maximum value output node is taken as the
+output note.
+
+The neural network is trained with Resilient
+Backpropagation, which is variant of the stan-
+dard backpropagation algorithm. The weights
+are updated by multiplying by one of two con-
+stants decided by the relative signs of the gradi-
+ent in the current and previous iterations, while
+the magnitude of the gradient is ignored. Re-
+silient Backpropagation was chosen for its speed
+
+3
+
+and its ability to store individual learning rates
+that can adapt for each weight.
+
+on many of the chorales, but also fails to grasp
+certain anomalous patterns.
+
+Results
+
+We trained the neural network for 525 iterations,
+using a validation set to estimate convergence.
+The training curve, in Figure 2, shows that con-
+vergence was reached near 100 iterations.
+
+Note that the classiﬁcation error rate alone
+does not take into account similarities between
+certain notes. The note C is more diﬀerent from
+a D than it is from a C one octave above. Exam-
+ining a sample predicted melody, we note that
+the prediction is generally accurate,
+including
+the absence of melody at the start, but a closer
+look at some of the errors reveals a pattern to
+some of the missed predictions.
+
+Figure 2: Training Curve
+
+Figure 4: Predicted Chorale Melody
+
+Here, the note 64 in the melody is often (and in
+a regular repeating pattern) wrongly classiﬁed as
+note 76. This is in fact the same note, transposed
+one octave up. This provides further indication
+that our trained network is learning harmonic
+patterns. Examination of the wrongly classiﬁed
+notes often reveals a shift of 4, 5, or 8 half steps,
+which correspond to the minor and major third
+as well as the dominant ﬁfth, all of which play
+important roles in established harmonic rules.
+
+The results up to this point have been from
+testing on chorales. One of our motivations was
+to use the chorales and harmonic training as a
+base for later extension to other genres and styles
+of music. While we do not expect the classiﬁca-
+tion to perform as well on other styles of music,
+we are interested in testing how useful the har-
+monic patterns in chorales are for melody extrac-
+
+Figure 3: Error Rate Histogram
+
+The average classiﬁcation error on the test set
+was 33%. This relatively low error rate likely
+demonstrates that the neural network has found
+and taken advantage of patterns in the frequency
+and chord data to aid in predicting the melodic
+pitch. Looking beyond the average of the er-
+ror rate, we note that 40% of the test chorales
+are clustered below 20% classiﬁcation error, with
+four outliers accounting for much of the error.
+This indicates that the trained net is accurate
+
+4
+
+tion. Below is a predicted melody for a MIREX
+track, from an RNN trained on the dataset con-
+taining 12 MIREX clips:
+
+Figure 5: Predicted MIREX Melody
+
+From the results we see that the neural net-
+work is capable of generalizing some of its pre-
+dictive power to music other than chorales. The
+predictions are not only able to predict the pre-
+dominant tones in the melody, but also capture
+several nuances in the melody. This is an encour-
+aging result in terms of future work, and may be
+coupled with other methods such as a more de-
+veloped percussion processor in the future.
+
+Conclusions and Future Work
+
+From our results, we conclude that the use of
+harmonic data in addition to raw frequency data,
+fed through a recurrent neural network, can be
+eﬀective at predicting the melody of harmony-
+rich pieces. The Bach chorales represent a rela-
+tively clean audio track, without the added com-
+plication of atonal elements such as percussion.
+In addition, the Bach chorales adhere to estab-
+lished harmonic rules strongly, but this is also
+true of much of modern popular music.
+
+The harmonic patterns learned and recognized
+by our neural network, and the substantial pre-
+processing system used to extract valuable fea-
+tures, represent a foundation for future work in
+
+5
+
+generalizing the system to a wider range of mu-
+sic. As seen with the test on MIREX samples,
+the harmony-based system can be eﬀective be-
+yond the chorales. Improvements to the percus-
+sion processing system or more powerful chord
+classiﬁers that account for chord beyond simple
+majors and minors are possible future works that
+could extend the eﬀectiveness of this system to
+a more general body of music.
+
+References
+
+[1] St´efan van der Walt, S. Chris Colbert and
+Gal Varoquaux. “The NumPy Array: A
+Structure for Eﬃcient Numerical Computa-
+tion.” Computing in Science & Engineering
+13 (2011): 22-30
+
+[2] Jones E, Oliphant E, Peterson P, et al. SciPy:
+Open Source Scientiﬁc Tools for Python,
+2001-, http://www.scipy.org/ [Online; ac-
+cessed 2015-12-10].
+
+[3] Salamon, Justin, et al. “Melody extraction
+from polyphonic music signals: Approaches,
+applications, and challenges.” Signal Process-
+ing Magazine, IEEE 31.2 (2014): 118-134.
+
+[4] Bosch, J., and Emilia Gmez. “Melody ex-
+traction by means of a source-ﬁlter model
+and pitch contour characterization (mirex
+2015).” Music Inform. Retrieval Evaluation
+eXchange (MIREX) (2015).
+
+[5] Arora, Vipul, and Laxmidhar Behera. “On-
+line melody extraction: Mirex 2012.” Ex-
+tended abstract submission to the Music
+Information Retrieval Evaluation eXchange
+(MIREX) (2012).
+
+[6] Tachibana, Hideyuki, et al. ”Melody line
+estimation in homophonic music audio sig-
+nals based on temporal-variability of melodic
+source.” Acoustics speech and signal process-
+ing (icassp), 2010 ieee international confer-
+ence on. IEEE, 2010.
+
+Melody Extraction from Generic Audio Clips
+
+Thaminda Edirisooriya, Hansohl Kim, Connie Zeng
+
+Introduction
+
+In this project we were interested in extracting
+the melody from generic audio ﬁles. Due to the
+context-dependent nature of music, particularly
+the melodic voice, we decided to use a recurrent
+neural network (RNN), which keeps a memory of
+previous inputs. The input layer to the network
+captures a time step of a song, containing the dis-
+tribution of frequencies, the main chord, and the
+single loudest frequency in that time step, which
+are all preprocessed from raw audio. The output
+layer is a softmax classiﬁcation of the note pre-
+dicted to be the melody. We implemented this
+in Python, with several modules from NumPy [1]
+and SciPy [2].
+
+Related Work
+
+One of the most accurate methods to date, from
+Salamon, et al.
+[3], computes the harmonic
+sum of each pitch as a salience function to es-
+timate its likelihood in an audio signal. The
+most salient pitches are then grouped into con-
+tinuous contours, and the contours are ﬁltered
+based on characteristics such as average pitch
+and pitch deviation. This is well suited for vocal
+melodies, but performs poorly on instrumental
+music, which has more overlapping voices and
+sudden changes.
+
+Bosch and G´omez [4] created a variation of
+this method, designed to improve performance
+on an orchestral dataset. Instead of using har-
+monic summing, the audio signal is modeled as a
+lead plus accompaniment, with the lead further
+approximated as a source-ﬁlter model. The pitch
+salience is then calculated using maximum like-
+lihood. As expected, this method yielded better
+results on orchestral music, while still maintain-
+ing moderate accuracy on vocal music.
+
+Other approaches include that of Arora and
+Behera [5], which ﬁnds harmonic clusters and
+thresholds them based on their summed squared
+
+[6],
+amplitudes, and that of Tachibana et al.
+which separates out sustained harmonies by us-
+ing varying time windows, and then separates
+out aperiodic percussion by using varying fre-
+quency windows. These methods are more math-
+ematically straightforward but rely on simpliﬁed
+assumptions.
+
+Our work is similar to that of Salamon’s, but
+instead of manually specifying the salience func-
+tion, we want to see if an RNN can learn to
+identify the notes from an audio sample. There
+are many interactions between sound frequencies
+that may be hard to model mathematically, so a
+neural network might be able to perform better
+on this task. Johnson [7] has done related work,
+using a bidirectional RNN to compose music.
+
+Dataset
+
+Our primary dataset is a collection of Bach
+chorale harmonizations, from jsbchorales.net
+[8]. These chorales have harmonic patterns that
+are still widely used and can help make inferences
+about the melody. They are in MIDI form, with
+one track per piece containing the melody. We
+converted each raw MIDI ﬁle into a WAV ﬁle as a
+sum of sawtooth waves, and also created a WAV
+ﬁle containing the isolated melody as simple sine
+waves.
+
+We supplemented our dataset with clips used
+in the annual Music Information Retrieval Eval-
+uation eXchange (MIREX) melody extraction
+task [9]. They are drawn from a variety of genres,
+including pop, jazz, and classical. These already
+come as WAV audio ﬁles, along with a reference
+ﬁle containing the annotated melody.
+
+Since melody extraction is a complex task, we
+started by focusing on the chorale melodies. We
+used a training set of 80 chorales, from which
+10% was randomly selected for the validation set,
+and a test set of 20 chorales. Then to start learn-
+ing more general melodies, we added 12 MIREX
+
+1
+
+clips to the training set and 3 MIREX clips to
+the test set.
+
+Feature Extraction
+
+We took the fast Fourier transform (FFT) of the
+full audio WAV ﬁles to obtain a matrix of all con-
+stituent frequencies over 0.25-second time steps.
+For the chorales, we similarly took the transform
+of the melody WAV ﬁles to identify the main fre-
+quency of the melody at each time step. For the
+MIREX clips, we simply read the frequency val-
+ues of the melody from the reference ﬁle. As
+a simpliﬁcation, we only considered frequencies
+from 0-2000 Hz, based on the typical range of
+music.
+
+The full audio FFT was fed to a chord-
+recognition SVM to identify the main chord per
+time step. Each input vector to the neural net-
+work then consisted of the FFT (2000 features),
+the predicted chord from the SVM (24 features),
+and the frequency with the highest amplitude (1
+feature) for a given time step. All time steps of
+a song were combined into a single matrix and
+stored with the target melody frequencies in a
+CSV ﬁle.
+
+Chord-Recognition SVM
+
+As part of our feature extraction, we created an
+SVM to predict the most likely chord in an audio
+sample. The SVM we used operates by solving
+the optimization problem:
+
+To generate data for the SVM, we created
+chords by summing sawtooth waves and taking
+the FFT. For each base note and tonality, we
+considered the three notes that make up the cor-
+responding chord and, at each octave, included
+each note with a random chance. We used a
+span of 6 octaves, from 3 below middle C to 2
+above middle C, as a reasonable range for chords
+in actual music. This process essentially creates
+a random sampling of all the permutations and
+multiplicities of a chord.
+
+Kernel
+RBF
+Linear
+Polynomial
+
+Accuracy
+
+80%
+83%
+51%
+
+Table 1: Comparison of kernels for the chord-
+recognition SVM.
+
+We used a training set of 200 samples per
+chord and a validation set of 50 samples per
+chord to select the kernel for the SVM. As shown
+in Table 1, the linear kernel resulted in the best
+classiﬁcation. We further tested it on a set of
+more complete chords, containing at least one
+instance of the base note and the middle note.
+The SVM achieved 97% accuracy on a set of 50
+samples per chord. Finally, we tested a small
+sample of Bach chorales, with 86% accuracy.
+
+Which is can be expressed as the dual opti-
+
+mization problem:
+
+Implemented using the scikit-learn SVC class
+[10], the SVM takes an FFT as input, and out-
+puts an indicator vector with one of 24 chords
+chosen. The 24 possible chords come from 12
+half-step base notes and 2 tonalities, major or
+minor.
+
+Percussion Processing
+
+As part of the preprocessing on pop audio sam-
+ples in particular, we tried to remove the spikes
+in frequency that occur when loud percussion
+such as a kick or snare drum occurs. A kick
+or snare often has high power levels in the fre-
+quency ranges also shared by vocal and other
+instruments, and can thus obscure the melody
+
+2
+
+information that we want to extract. This is
+a problem because the chorales did not contain
+percussion, and thus our algorithm did not gen-
+eralize too well to percussion heavy music.
+
+In an attempt to correct this issue, we created
+a model of the FFT of a kick drum and a snare
+drum by taking the means of the FFTs of 500
+diﬀerent kick and snare samples respectively. We
+used this to detect percussion in audio samples
+by taking the FFT of 0.05-second time steps of
+the audio, and computing the dot product with
+the kick or snare model as a similarity measure.
+The higher the value, the more likely it was to
+contain a kick or snare sample. We then chose
+the median of every 5 time slices (in terms of
+similarity) as a representative of the entire 0.25-
+second time step, to avoid spikes due to loud
+percussion.
+
+However, when we tested this method, we
+found no improvement on our accuracy. We no-
+ticed that the heuristic we used to remove per-
+cussion also removed important melody informa-
+tion. Future work could seek to reﬁne this pro-
+cess as a means of improving the generalization
+of the algorithm as a whole.
+
+Recurrent Neural Network
+
+The 2025 features from preprocessing are input
+into our RNN (implemented with PyBrain [11])
+with a 17-node hidden layer and an output layer
+of 60 classiﬁcation nodes (see Figure 1). The
+hidden layer is split into two sections based on
+connectivity. The 5-node “octave layer” only
+connects to the 2000 frequency inputs, and each
+“octave” node only outputs to 12 of the 60 out-
+put notes, corresponding to an octave. The 12-
+node “note” layer is fully connected to the in-
+put and output. When activated, the output
+node with the maximum value is taken as the
+predicted melody note.
+
+Hidden layer nodes are implemented as Long
+Short-Term Memory (LSTM) recurrent modules.
+These miniature networks can store input val-
+ues for near-arbitrary lengths of time. LSTM
+architectures vary, but all include “gate” nodes
+
+Figure 1: RNN Structure
+
+that control when an input will be remembered,
+when an input should be forgotten, and when
+the memorized value should be output. The
+frequency information in music can ﬂuctuate
+wildly, so these LSTM recurrent modules provide
+the potential to judge when a change in inputs
+should be ignored and when a change is signiﬁ-
+cant enough to warrant changing the note of the
+predicted melody.
+
+The 60 output nodes represent 60 possible out-
+
+put notes, and they use the softmax equation:
+
+softmax(x) =
+
+(cid:80)
+
+exp(−wT xj)
+exp(−wT xk)
+
+k
+
+This is a multi-class generalization of the sig-
+moid classiﬁer, and all nodes sum to 1, repre-
+senting the estimated probabilities of each class.
+The maximum value output node is taken as the
+output note.
+
+The neural network is trained with Resilient
+Backpropagation, which is variant of the stan-
+dard backpropagation algorithm. The weights
+are updated by multiplying by one of two con-
+stants decided by the relative signs of the gradi-
+ent in the current and previous iterations, while
+the magnitude of the gradient is ignored. Re-
+silient Backpropagation was chosen for its speed
+
+3
+
+and its ability to store individual learning rates
+that can adapt for each weight.
+
+on many of the chorales, but also fails to grasp
+certain anomalous patterns.
+
+Results
+
+We trained the neural network for 525 iterations,
+using a validation set to estimate convergence.
+The training curve, in Figure 2, shows that con-
+vergence was reached near 100 iterations.
+
+Note that the classiﬁcation error rate alone
+does not take into account similarities between
+certain notes. The note C is more diﬀerent from
+a D than it is from a C one octave above. Exam-
+ining a sample predicted melody, we note that
+the prediction is generally accurate,
+including
+the absence of melody at the start, but a closer
+look at some of the errors reveals a pattern to
+some of the missed predictions.
+
+Figure 2: Training Curve
+
+Figure 4: Predicted Chorale Melody
+
+Here, the note 64 in the melody is often (and in
+a regular repeating pattern) wrongly classiﬁed as
+note 76. This is in fact the same note, transposed
+one octave up. This provides further indication
+that our trained network is learning harmonic
+patterns. Examination of the wrongly classiﬁed
+notes often reveals a shift of 4, 5, or 8 half steps,
+which correspond to the minor and major third
+as well as the dominant ﬁfth, all of which play
+important roles in established harmonic rules.
+
+The results up to this point have been from
+testing on chorales. One of our motivations was
+to use the chorales and harmonic training as a
+base for later extension to other genres and styles
+of music. While we do not expect the classiﬁca-
+tion to perform as well on other styles of music,
+we are interested in testing how useful the har-
+monic patterns in chorales are for melody extrac-
+
+Figure 3: Error Rate Histogram
+
+The average classiﬁcation error on the test set
+was 33%. This relatively low error rate likely
+demonstrates that the neural network has found
+and taken advantage of patterns in the frequency
+and chord data to aid in predicting the melodic
+pitch. Looking beyond the average of the er-
+ror rate, we note that 40% of the test chorales
+are clustered below 20% classiﬁcation error, with
+four outliers accounting for much of the error.
+This indicates that the trained net is accurate
+
+4
+
+tion. Below is a predicted melody for a MIREX
+track, from an RNN trained on the dataset con-
+taining 12 MIREX clips:
+
+Figure 5: Predicted MIREX Melody
+
+From the results we see that the neural net-
+work is capable of generalizing some of its pre-
+dictive power to music other than chorales. The
+predictions are not only able to predict the pre-
+dominant tones in the melody, but also capture
+several nuances in the melody. This is an encour-
+aging result in terms of future work, and may be
+coupled with other methods such as a more de-
+veloped percussion processor in the future.
+
+Conclusions and Future Work
+
+From our results, we conclude that the use of
+harmonic data in addition to raw frequency data,
+fed through a recurrent neural network, can be
+eﬀective at predicting the melody of harmony-
+rich pieces. The Bach chorales represent a rela-
+tively clean audio track, without the added com-
+plication of atonal elements such as percussion.
+In addition, the Bach chorales adhere to estab-
+lished harmonic rules strongly, but this is also
+true of much of modern popular music.
+
+The harmonic patterns learned and recognized
+by our neural network, and the substantial pre-
+processing system used to extract valuable fea-
+tures, represent a foundation for future work in
+
+5
+
+generalizing the system to a wider range of mu-
+sic. As seen with the test on MIREX samples,
+the harmony-based system can be eﬀective be-
+yond the chorales. Improvements to the percus-
+sion processing system or more powerful chord
+classiﬁers that account for chord beyond simple
+majors and minors are possible future works that
+could extend the eﬀectiveness of this system to
+a more general body of music.
+
+References
+
+[1] St´efan van der Walt, S. Chris Colbert and
+Gal Varoquaux. “The NumPy Array: A
+Structure for Eﬃcient Numerical Computa-
+tion.” Computing in Science & Engineering
+13 (2011): 22-30
+
+[2] Jones E, Oliphant E, Peterson P, et al. SciPy:
+Open Source Scientiﬁc Tools for Python,
+2001-, http://www.scipy.org/ [Online; ac-
+cessed 2015-12-10].
+
+[3] Salamon, Justin, et al. “Melody extraction
+from polyphonic music signals: Approaches,
+applications, and challenges.” Signal Process-
+ing Magazine, IEEE 31.2 (2014): 118-134.
+
+[4] Bosch, J., and Emilia Gmez. “Melody ex-
+traction by means of a source-ﬁlter model
+and pitch contour characterization (mirex
+2015).” Music Inform. Retrieval Evaluation
+eXchange (MIREX) (2015).
+
+[5] Arora, Vipul, and Laxmidhar Behera. “On-
+line melody extraction: Mirex 2012.” Ex-
+tended abstract submission to the Music
+Information Retrieval Evaluation eXchange
+(MIREX) (2012).
+
+[6] Tachibana, Hideyuki, et al. ”Melody line
+estimation in homophonic music audio sig-
+nals based on temporal-variability of melodic
+source.” Acoustics speech and signal process-
+ing (icassp), 2010 ieee international confer-
+ence on. IEEE, 2010.
+
+[7] ”Composing Music With Recurrent Neural
+Networks.” Hexahedria. 03 Aug. 2015. [On-
+line; accessed 2015-11-09]
+
+[8] https://web.archive.org/web/20110930/
+
+http://www.jsbchorales.net/sets.shtml
+[Online; accessed 2015-11-20]
+
+[9] http://labrosa.ee.columbia.edu/projects/melody/
+
+[Online; accessed 2015-11-20]
+
+[10] Pedregosa et al., “Scikit-learn: Machine
+Learning in Python.” JMLR 12 (2011): 2825-
+2830.
+
+[11] Schaul et al., “PyBrain.” JMLR 11 (2010):
+
+743-746.
+
+6
+
+

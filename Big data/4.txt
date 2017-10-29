@@ -1,0 +1,4345 @@
+Authorship Attribution in Multi-author Documents
+
+Tim Althoff, Denny Britz, Zifei Shan
+
+Department of Computer Science, Stanford University
+
+{althoff, dbritz, zifei}@cs.stanford.edu
+
+Abstract
+
+Authorship attribution, the task of iden-
+tifying the author of a document, has
+been applied to works of historical
+value such as Shakespeare’s plays or
+the political Federalist papers but is
+still highly signiﬁcant today. We in-
+troduce the novel problem of author-
+ship attribution in multi-authored doc-
+uments and focus on scientiﬁc pub-
+lications. Multi-authored documents
+present hard challenges for authorship
+attribution. We propose several ideas
+how these can be addressed and eval-
+uate when such models perform well.
+To this end we present a sentence-
+based prediction model that also allows
+to estimate which sentences were con-
+tributed by which author. We demon-
+strate using a stylometric approach that
+paper authors can be predicted with sig-
+niﬁcant accuracy by exploiting authors’
+stylistic idiosyncrasies. This challenges
+the assumption that simply removing
+names from a paper submission ensures
+anonymity in a double-blind process.
+Introduction
+
+1
+Authorship attribution, the science of identify-
+ing the rightful author of a document, is a prob-
+
+lem of long-standing history. The main idea be-
+hind statistically or computationally supported
+authorship attribution is that by measuring tex-
+tual features, we can distinguish between texts
+written by different authors.
+
+Identifying the author of a document also has
+modern applications such as identifying and
+linking users across online communities or de-
+tecting fraudulent transactions and imperson-
+ation attacks.
+
+Thus far, work has focused on predicting
+authors of single-authored documents such as
+plays (Mendenhall, 1887; Matthews and Mer-
+riam, 1993; Merriam and Matthews, 1994), po-
+litical essays (Mosteller and Wallace, 1964), or
+blog posts (Narayanan et al., 2012). In contrast,
+this paper introduces the problem of authorship
+attribution in multi-authored documents such as
+academic research papers. To the best of our
+knowledge, this problem has never been tack-
+led before.
+
+Many computer science conferences employ
+a double-blind submission process, relying on
+the assumption that identifying the authors of
+submitted papers is impossible at at least im-
+practical. We challenge this notion by present-
+ing an approach that is able to identify the au-
+thors of anonymous papers with signiﬁcant ac-
+curacy by exploiting authors’ stylistic idiosyn-
+crasies.
+
+Authorship Attribution in Multi-author Documents
+
+Tim Althoff, Denny Britz, Zifei Shan
+
+Department of Computer Science, Stanford University
+
+{althoff, dbritz, zifei}@cs.stanford.edu
+
+Abstract
+
+Authorship attribution, the task of iden-
+tifying the author of a document, has
+been applied to works of historical
+value such as Shakespeare’s plays or
+the political Federalist papers but is
+still highly signiﬁcant today. We in-
+troduce the novel problem of author-
+ship attribution in multi-authored doc-
+uments and focus on scientiﬁc pub-
+lications. Multi-authored documents
+present hard challenges for authorship
+attribution. We propose several ideas
+how these can be addressed and eval-
+uate when such models perform well.
+To this end we present a sentence-
+based prediction model that also allows
+to estimate which sentences were con-
+tributed by which author. We demon-
+strate using a stylometric approach that
+paper authors can be predicted with sig-
+niﬁcant accuracy by exploiting authors’
+stylistic idiosyncrasies. This challenges
+the assumption that simply removing
+names from a paper submission ensures
+anonymity in a double-blind process.
+Introduction
+
+1
+Authorship attribution, the science of identify-
+ing the rightful author of a document, is a prob-
+
+lem of long-standing history. The main idea be-
+hind statistically or computationally supported
+authorship attribution is that by measuring tex-
+tual features, we can distinguish between texts
+written by different authors.
+
+Identifying the author of a document also has
+modern applications such as identifying and
+linking users across online communities or de-
+tecting fraudulent transactions and imperson-
+ation attacks.
+
+Thus far, work has focused on predicting
+authors of single-authored documents such as
+plays (Mendenhall, 1887; Matthews and Mer-
+riam, 1993; Merriam and Matthews, 1994), po-
+litical essays (Mosteller and Wallace, 1964), or
+blog posts (Narayanan et al., 2012). In contrast,
+this paper introduces the problem of authorship
+attribution in multi-authored documents such as
+academic research papers. To the best of our
+knowledge, this problem has never been tack-
+led before.
+
+Many computer science conferences employ
+a double-blind submission process, relying on
+the assumption that identifying the authors of
+submitted papers is impossible at at least im-
+practical. We challenge this notion by present-
+ing an approach that is able to identify the au-
+thors of anonymous papers with signiﬁcant ac-
+curacy by exploiting authors’ stylistic idiosyn-
+crasies.
+
+Identifying the authors of multi-authored
+documents presents new challenges. Since it
+is unclear which author contributed which part
+of a document, we lack ground truth that could
+be used to build a model for each author. Em-
+ploying a document-level perspective as done
+in previous work may confuse idiosyncrasies
+of several authors (see Section 3.1). We pro-
+pose employing a sentence-level perspective in
+which we predict an author for each individ-
+ual sentence and then aggregate those to paper-
+level author predictions. We empirically eval-
+uate all approaches on both synthetic and real
+world data and discuss where such techniques
+might fail.
+
+2 Related Work
+
+A large body of research exists on attributing
+authorship on the document level. The pioneer-
+ing study of Mendenhall (Mendenhall, 1887)
+in the 19th century marks the ﬁrst attempt to
+quantify writing style on the plays of Shake-
+speare, which later was followed by statisti-
+cal studies by Yule (Yule, 1939; Yule, 1944)
+and Zipf (Zipf, 1932). Recent approaches
+can broadly be categorized into varying among
+the dimensions of feature selection, model se-
+lection, and candidate selection (Stamatatos,
+2009). Features can be divided into lexical
+(token- and word features), character (char-
+acter n-grams), syntactic (POS tags, phrase
+structure), semantic (synonymous and depen-
+dencies) and application-speciﬁc features (Sta-
+matatos, 2009). More sophisticated features
+such as local histograms (Escalante et al., 2011)
+and grammatical errors
+(Koppel and Schler,
+2003) have also been explored. Authorship at-
+tribution approaches taking into account only
+self-citations often perform well
+(Hill and
+Provost, 2003) compared to their supervised
+
+counterparts.
+
+A variety of supervised and unsupervised
+Machine Learning methods have been applied
+to the problem of authorship attribution (Sta-
+matatos, 2009). Simple similarity-based mod-
+els (nearest-neighbors) also perform surpris-
+ingly well (Koppel et al., 2012) and often out-
+perform more “sophisticated” supervised clas-
+siﬁers such as SVMs (Narayanan et al., 2012).
+The size of the candidate author set is another
+important dimension and only few researchers
+have applied attribution models to web-scale
+data (Narayanan et al., 2012).
+
+Predicting authors in multi-authored scien-
+tiﬁc publications has been out of focus of the
+scientiﬁc community thus far (to be best of our
+knowledge). However, some work has looked
+at using scientiﬁc publications to predict gen-
+der (Sarawgi et al., 2011; Bergsma et al., 2012)
+and whether or not the publication was written
+by a native speaker or submitted to a workshop
+instead of a conference (Bergsma et al., 2012).
+
+3 Approach
+
+3.1 Author mixing
+
+One key drawback of employing a paper-level
+perspective on authorship attribution is that it
+might fail to disentangle different stylistic in-
+ﬂuences and falsely attribute the paper to an in-
+correct author. Let A and B be the correct au-
+thors of a paper who have quite different styles
+of writing. Thus, A has a low probability of
+actually writing B’s sentences and vice versa.
+Then, an incorrect author C who stylistically re-
+sembles both A and B in some way might actu-
+ally have a higher probability of being a paper
+author than A or B. We coin this issue “author
+mixing”.
+
+Authorship Attribution in Multi-author Documents
+
+Tim Althoff, Denny Britz, Zifei Shan
+
+Department of Computer Science, Stanford University
+
+{althoff, dbritz, zifei}@cs.stanford.edu
+
+Abstract
+
+Authorship attribution, the task of iden-
+tifying the author of a document, has
+been applied to works of historical
+value such as Shakespeare’s plays or
+the political Federalist papers but is
+still highly signiﬁcant today. We in-
+troduce the novel problem of author-
+ship attribution in multi-authored doc-
+uments and focus on scientiﬁc pub-
+lications. Multi-authored documents
+present hard challenges for authorship
+attribution. We propose several ideas
+how these can be addressed and eval-
+uate when such models perform well.
+To this end we present a sentence-
+based prediction model that also allows
+to estimate which sentences were con-
+tributed by which author. We demon-
+strate using a stylometric approach that
+paper authors can be predicted with sig-
+niﬁcant accuracy by exploiting authors’
+stylistic idiosyncrasies. This challenges
+the assumption that simply removing
+names from a paper submission ensures
+anonymity in a double-blind process.
+Introduction
+
+1
+Authorship attribution, the science of identify-
+ing the rightful author of a document, is a prob-
+
+lem of long-standing history. The main idea be-
+hind statistically or computationally supported
+authorship attribution is that by measuring tex-
+tual features, we can distinguish between texts
+written by different authors.
+
+Identifying the author of a document also has
+modern applications such as identifying and
+linking users across online communities or de-
+tecting fraudulent transactions and imperson-
+ation attacks.
+
+Thus far, work has focused on predicting
+authors of single-authored documents such as
+plays (Mendenhall, 1887; Matthews and Mer-
+riam, 1993; Merriam and Matthews, 1994), po-
+litical essays (Mosteller and Wallace, 1964), or
+blog posts (Narayanan et al., 2012). In contrast,
+this paper introduces the problem of authorship
+attribution in multi-authored documents such as
+academic research papers. To the best of our
+knowledge, this problem has never been tack-
+led before.
+
+Many computer science conferences employ
+a double-blind submission process, relying on
+the assumption that identifying the authors of
+submitted papers is impossible at at least im-
+practical. We challenge this notion by present-
+ing an approach that is able to identify the au-
+thors of anonymous papers with signiﬁcant ac-
+curacy by exploiting authors’ stylistic idiosyn-
+crasies.
+
+Identifying the authors of multi-authored
+documents presents new challenges. Since it
+is unclear which author contributed which part
+of a document, we lack ground truth that could
+be used to build a model for each author. Em-
+ploying a document-level perspective as done
+in previous work may confuse idiosyncrasies
+of several authors (see Section 3.1). We pro-
+pose employing a sentence-level perspective in
+which we predict an author for each individ-
+ual sentence and then aggregate those to paper-
+level author predictions. We empirically eval-
+uate all approaches on both synthetic and real
+world data and discuss where such techniques
+might fail.
+
+2 Related Work
+
+A large body of research exists on attributing
+authorship on the document level. The pioneer-
+ing study of Mendenhall (Mendenhall, 1887)
+in the 19th century marks the ﬁrst attempt to
+quantify writing style on the plays of Shake-
+speare, which later was followed by statisti-
+cal studies by Yule (Yule, 1939; Yule, 1944)
+and Zipf (Zipf, 1932). Recent approaches
+can broadly be categorized into varying among
+the dimensions of feature selection, model se-
+lection, and candidate selection (Stamatatos,
+2009). Features can be divided into lexical
+(token- and word features), character (char-
+acter n-grams), syntactic (POS tags, phrase
+structure), semantic (synonymous and depen-
+dencies) and application-speciﬁc features (Sta-
+matatos, 2009). More sophisticated features
+such as local histograms (Escalante et al., 2011)
+and grammatical errors
+(Koppel and Schler,
+2003) have also been explored. Authorship at-
+tribution approaches taking into account only
+self-citations often perform well
+(Hill and
+Provost, 2003) compared to their supervised
+
+counterparts.
+
+A variety of supervised and unsupervised
+Machine Learning methods have been applied
+to the problem of authorship attribution (Sta-
+matatos, 2009). Simple similarity-based mod-
+els (nearest-neighbors) also perform surpris-
+ingly well (Koppel et al., 2012) and often out-
+perform more “sophisticated” supervised clas-
+siﬁers such as SVMs (Narayanan et al., 2012).
+The size of the candidate author set is another
+important dimension and only few researchers
+have applied attribution models to web-scale
+data (Narayanan et al., 2012).
+
+Predicting authors in multi-authored scien-
+tiﬁc publications has been out of focus of the
+scientiﬁc community thus far (to be best of our
+knowledge). However, some work has looked
+at using scientiﬁc publications to predict gen-
+der (Sarawgi et al., 2011; Bergsma et al., 2012)
+and whether or not the publication was written
+by a native speaker or submitted to a workshop
+instead of a conference (Bergsma et al., 2012).
+
+3 Approach
+
+3.1 Author mixing
+
+One key drawback of employing a paper-level
+perspective on authorship attribution is that it
+might fail to disentangle different stylistic in-
+ﬂuences and falsely attribute the paper to an in-
+correct author. Let A and B be the correct au-
+thors of a paper who have quite different styles
+of writing. Thus, A has a low probability of
+actually writing B’s sentences and vice versa.
+Then, an incorrect author C who stylistically re-
+sembles both A and B in some way might actu-
+ally have a higher probability of being a paper
+author than A or B. We coin this issue “author
+mixing”.
+
+3.2 Notation
+Our corpus (P, A) consists of a set of papers
+P = {p1, . . . , pN} and a set of authors A =
+{a1, . . . , aK}. Each paper pi is divided into
+j ∈ pi that we assume were written
+sentences si
+by a single author authors(si
+j) = ak. While
+we assume that a sentence is written by a single
+author we do not actually observe author labels
+on sentence level. We only observe paper level
+authors and assume that the sentence author
+is one of the paper authors. Mathematically,
+given paper level annotation authorp(pi) =
+{a1, a7, a9} we assume
+
+∀si
+
+j ∈ pi : authors(si
+
+j) ∈ authorp(pi)
+
+is to learn to differentiate author
+Our goal
+styles from the ambiguous ground truth labels
+authorp such that we can assign each sentence
+in a paper to a single author.
+
+We represent this mapping from sentence to
+author as a matrix M that, for all sentences,
+contains the single author that is believed to
+have written that sentence, e.g. M (si
+j) =
+ak. The authors’ individual styles are cap-
+tured through parameters θ = (θ1, . . . , θK) that
+includes an independent parameter vector for
+each author ak ∈ A.
+3.3 Sentence authorship model
+The core of our model describes how likely
+a given author a is to have generated a given
+sentence s, p(a|s). We represent a sentence
+through features F (s) ∈ Rn (for more details
+on our features please refer to section 4.3). We
+use the following logit model:
+
+p(a|s) =
+
+=
+
+logit−1((cid:104)θa, F (s)(cid:105))
+1 + exp(−(cid:104)θa, F (s)(cid:105) )
+
+1
+
+Figure 1: Training procedure considering co-
+author negative examples in addition to random
+negative examples
+
+Note that this model formulation is equivalent
+to a log-linear model:
+log p(authors(s) = a|s) = (cid:104)θa, F (s)(cid:105)−log Z
+where Z is a normalizing constant
+
+Z = 1 + exp((cid:104)θa, F (s)(cid:105)).
+
+Further note that we have K of these models,
+
+one for each author.
+
+3.4 Learning to differentiate author styles
+
+from ambiguous labels
+
+Let
+
+A core challenge in learning such logit models
+is that we lack sentence-level author labels. As
+described above, we only observe paper level
+j) ∈ authorp(pi)
+author labels, i.e. authors(si
+but we have no basis for assuming any concrete
+author yet.
+the
+be
+authorp(pi) = {a1, a2}. To train a model
+for author a1 we need both positive examples
+(sentences that a1 did write) and negative
+example (sentences that a1 did not write).
+j ∈ pi we do not know
+For any sentence si
+whether it was written by a1 or a2, i.e. we have
+ambigious sentence labels. Negative examples
+
+authors
+
+paper
+
+of
+
+a
+
+pi
+
+Visualizing	  training	  examples	  for	  author	  ak	  ak	  only	  ak	  or	  co-­‐author(ak)	  co-­‐author(ak)	  	  but	  not	  ak	  not	  ak	  and	  not	  co-­‐author(ak)	  Decision	  boundary	  	  accoun=ng	  for	  	  coauthors	  Standard	  decision	  boundary	  Authorship Attribution in Multi-author Documents
+
+Tim Althoff, Denny Britz, Zifei Shan
+
+Department of Computer Science, Stanford University
+
+{althoff, dbritz, zifei}@cs.stanford.edu
+
+Abstract
+
+Authorship attribution, the task of iden-
+tifying the author of a document, has
+been applied to works of historical
+value such as Shakespeare’s plays or
+the political Federalist papers but is
+still highly signiﬁcant today. We in-
+troduce the novel problem of author-
+ship attribution in multi-authored doc-
+uments and focus on scientiﬁc pub-
+lications. Multi-authored documents
+present hard challenges for authorship
+attribution. We propose several ideas
+how these can be addressed and eval-
+uate when such models perform well.
+To this end we present a sentence-
+based prediction model that also allows
+to estimate which sentences were con-
+tributed by which author. We demon-
+strate using a stylometric approach that
+paper authors can be predicted with sig-
+niﬁcant accuracy by exploiting authors’
+stylistic idiosyncrasies. This challenges
+the assumption that simply removing
+names from a paper submission ensures
+anonymity in a double-blind process.
+Introduction
+
+1
+Authorship attribution, the science of identify-
+ing the rightful author of a document, is a prob-
+
+lem of long-standing history. The main idea be-
+hind statistically or computationally supported
+authorship attribution is that by measuring tex-
+tual features, we can distinguish between texts
+written by different authors.
+
+Identifying the author of a document also has
+modern applications such as identifying and
+linking users across online communities or de-
+tecting fraudulent transactions and imperson-
+ation attacks.
+
+Thus far, work has focused on predicting
+authors of single-authored documents such as
+plays (Mendenhall, 1887; Matthews and Mer-
+riam, 1993; Merriam and Matthews, 1994), po-
+litical essays (Mosteller and Wallace, 1964), or
+blog posts (Narayanan et al., 2012). In contrast,
+this paper introduces the problem of authorship
+attribution in multi-authored documents such as
+academic research papers. To the best of our
+knowledge, this problem has never been tack-
+led before.
+
+Many computer science conferences employ
+a double-blind submission process, relying on
+the assumption that identifying the authors of
+submitted papers is impossible at at least im-
+practical. We challenge this notion by present-
+ing an approach that is able to identify the au-
+thors of anonymous papers with signiﬁcant ac-
+curacy by exploiting authors’ stylistic idiosyn-
+crasies.
+
+Identifying the authors of multi-authored
+documents presents new challenges. Since it
+is unclear which author contributed which part
+of a document, we lack ground truth that could
+be used to build a model for each author. Em-
+ploying a document-level perspective as done
+in previous work may confuse idiosyncrasies
+of several authors (see Section 3.1). We pro-
+pose employing a sentence-level perspective in
+which we predict an author for each individ-
+ual sentence and then aggregate those to paper-
+level author predictions. We empirically eval-
+uate all approaches on both synthetic and real
+world data and discuss where such techniques
+might fail.
+
+2 Related Work
+
+A large body of research exists on attributing
+authorship on the document level. The pioneer-
+ing study of Mendenhall (Mendenhall, 1887)
+in the 19th century marks the ﬁrst attempt to
+quantify writing style on the plays of Shake-
+speare, which later was followed by statisti-
+cal studies by Yule (Yule, 1939; Yule, 1944)
+and Zipf (Zipf, 1932). Recent approaches
+can broadly be categorized into varying among
+the dimensions of feature selection, model se-
+lection, and candidate selection (Stamatatos,
+2009). Features can be divided into lexical
+(token- and word features), character (char-
+acter n-grams), syntactic (POS tags, phrase
+structure), semantic (synonymous and depen-
+dencies) and application-speciﬁc features (Sta-
+matatos, 2009). More sophisticated features
+such as local histograms (Escalante et al., 2011)
+and grammatical errors
+(Koppel and Schler,
+2003) have also been explored. Authorship at-
+tribution approaches taking into account only
+self-citations often perform well
+(Hill and
+Provost, 2003) compared to their supervised
+
+counterparts.
+
+A variety of supervised and unsupervised
+Machine Learning methods have been applied
+to the problem of authorship attribution (Sta-
+matatos, 2009). Simple similarity-based mod-
+els (nearest-neighbors) also perform surpris-
+ingly well (Koppel et al., 2012) and often out-
+perform more “sophisticated” supervised clas-
+siﬁers such as SVMs (Narayanan et al., 2012).
+The size of the candidate author set is another
+important dimension and only few researchers
+have applied attribution models to web-scale
+data (Narayanan et al., 2012).
+
+Predicting authors in multi-authored scien-
+tiﬁc publications has been out of focus of the
+scientiﬁc community thus far (to be best of our
+knowledge). However, some work has looked
+at using scientiﬁc publications to predict gen-
+der (Sarawgi et al., 2011; Bergsma et al., 2012)
+and whether or not the publication was written
+by a native speaker or submitted to a workshop
+instead of a conference (Bergsma et al., 2012).
+
+3 Approach
+
+3.1 Author mixing
+
+One key drawback of employing a paper-level
+perspective on authorship attribution is that it
+might fail to disentangle different stylistic in-
+ﬂuences and falsely attribute the paper to an in-
+correct author. Let A and B be the correct au-
+thors of a paper who have quite different styles
+of writing. Thus, A has a low probability of
+actually writing B’s sentences and vice versa.
+Then, an incorrect author C who stylistically re-
+sembles both A and B in some way might actu-
+ally have a higher probability of being a paper
+author than A or B. We coin this issue “author
+mixing”.
+
+3.2 Notation
+Our corpus (P, A) consists of a set of papers
+P = {p1, . . . , pN} and a set of authors A =
+{a1, . . . , aK}. Each paper pi is divided into
+j ∈ pi that we assume were written
+sentences si
+by a single author authors(si
+j) = ak. While
+we assume that a sentence is written by a single
+author we do not actually observe author labels
+on sentence level. We only observe paper level
+authors and assume that the sentence author
+is one of the paper authors. Mathematically,
+given paper level annotation authorp(pi) =
+{a1, a7, a9} we assume
+
+∀si
+
+j ∈ pi : authors(si
+
+j) ∈ authorp(pi)
+
+is to learn to differentiate author
+Our goal
+styles from the ambiguous ground truth labels
+authorp such that we can assign each sentence
+in a paper to a single author.
+
+We represent this mapping from sentence to
+author as a matrix M that, for all sentences,
+contains the single author that is believed to
+have written that sentence, e.g. M (si
+j) =
+ak. The authors’ individual styles are cap-
+tured through parameters θ = (θ1, . . . , θK) that
+includes an independent parameter vector for
+each author ak ∈ A.
+3.3 Sentence authorship model
+The core of our model describes how likely
+a given author a is to have generated a given
+sentence s, p(a|s). We represent a sentence
+through features F (s) ∈ Rn (for more details
+on our features please refer to section 4.3). We
+use the following logit model:
+
+p(a|s) =
+
+=
+
+logit−1((cid:104)θa, F (s)(cid:105))
+1 + exp(−(cid:104)θa, F (s)(cid:105) )
+
+1
+
+Figure 1: Training procedure considering co-
+author negative examples in addition to random
+negative examples
+
+Note that this model formulation is equivalent
+to a log-linear model:
+log p(authors(s) = a|s) = (cid:104)θa, F (s)(cid:105)−log Z
+where Z is a normalizing constant
+
+Z = 1 + exp((cid:104)θa, F (s)(cid:105)).
+
+Further note that we have K of these models,
+
+one for each author.
+
+3.4 Learning to differentiate author styles
+
+from ambiguous labels
+
+Let
+
+A core challenge in learning such logit models
+is that we lack sentence-level author labels. As
+described above, we only observe paper level
+j) ∈ authorp(pi)
+author labels, i.e. authors(si
+but we have no basis for assuming any concrete
+author yet.
+the
+be
+authorp(pi) = {a1, a2}. To train a model
+for author a1 we need both positive examples
+(sentences that a1 did write) and negative
+example (sentences that a1 did not write).
+j ∈ pi we do not know
+For any sentence si
+whether it was written by a1 or a2, i.e. we have
+ambigious sentence labels. Negative examples
+
+authors
+
+paper
+
+of
+
+a
+
+pi
+
+Visualizing	  training	  examples	  for	  author	  ak	  ak	  only	  ak	  or	  co-­‐author(ak)	  co-­‐author(ak)	  	  but	  not	  ak	  not	  ak	  and	  not	  co-­‐author(ak)	  Decision	  boundary	  	  accoun=ng	  for	  	  coauthors	  Standard	  decision	  boundary	  are much easier to come by, sentences from
+any paper that a1 did not co-author would
+provide true negative examples.
+
+Since we have no basis for assuming, a pri-
+ori, that sentence si
+j was deﬁnitly written by ei-
+ther a1 or a2 we include all sentences that a1
+might have written as positive examples when
+training an author model for a1. Obviously, this
+will include false positive examples that a2 ac-
+tually wrote and we need to make sure that the
+model does not only capture the combined style
+of a1 and a2. To this end, we propose to care-
+fully select negative examples that differentiate
+a1’s style from that of a2. We can achieve this
+by including positive examples from a2 in as
+negative examples for a1.
+In fact, we do not
+only include but positive examples from all co-
+authors of a1. This idea is visualized in Figure
+1.
+
+In the following, we describe this idea more
+formally. We denote the set of all coauthors of
+a given author ak by
+
+coauthor(ak) = {al ∈ A | ∀p ∈ P :
+al ∈ authorp(p) ⇒ ak ∈ authorp(p)}
+
+Formally, we use the following set of positive
+examples for ak:
+POS(ak) = {si
+
+j ∈ pi | ak ∈ authorp(pi)}
+
+3.5 Reﬁning author models through
+
+Expectation Maximization
+
+Modeling authorship on sentence level gives
+us the opportunity to further reﬁne our author
+models (this is not possible on paper level). The
+approach described above uses all sentences
+that could possibly have been written by au-
+thor ak as positive examples (recall POS(ak)).
+However, this will include many sentences that
+were actually written by one of ak’s coauthors.
+Based on our conﬁdence about which sentences
+were likely written by ak we can ﬁlter the pos-
+itive examples to yield a cleaner set of positive
+examples for ak. We now formalize this intu-
+ition.
+
+For the likelihood of the full corpus (P, A)
+
+we treat each sentence independently:
+
+(cid:89)
+
+(cid:89)
+
+pi∈P
+
+j∈pi
+si
+
+P (M, θ|P, A) =
+
+p(M (si
+
+j)|si
+j).
+
+The parameter inference problem then be-
+
+comes
+ˆM , ˆθ = argmaxM,θ P (M, θ|P, A) − Ω(M, θ),
+where Ω(M, θ) is a regularizer on the parame-
+ters to avoid overﬁtting.
+
+Since this optimization depends on both M
+and θ we proceed by coordinate ascent on
+(M, θ), i.e. by alternately optimizing
+
+And the following set of negative examples for
+ak:
+NEG(ak) = {si
+
+j ∈ pi | ∃al ∈ coauthor(ak) :
+al ∈ authorp(pi) ∧ ak /∈ authorp(pi)}
+
+and
+
+M i = argmaxM P (M, θi|A, P )
+
+θi+1 = argmaxθ P (M i, θ|A, P )
+
+We further add random sentences to NEG(ak)
+since authors have a varying number of co-
+authors and those with few would end up with
+very few negative examples otherwise.
+
+until convergence, i.e. until M i differs from
+M i−1 on less than a prespeciﬁed number of
+sentences (alternatively, one can alternate for a
+constant number of iterations).
+
+Authorship Attribution in Multi-author Documents
+
+Tim Althoff, Denny Britz, Zifei Shan
+
+Department of Computer Science, Stanford University
+
+{althoff, dbritz, zifei}@cs.stanford.edu
+
+Abstract
+
+Authorship attribution, the task of iden-
+tifying the author of a document, has
+been applied to works of historical
+value such as Shakespeare’s plays or
+the political Federalist papers but is
+still highly signiﬁcant today. We in-
+troduce the novel problem of author-
+ship attribution in multi-authored doc-
+uments and focus on scientiﬁc pub-
+lications. Multi-authored documents
+present hard challenges for authorship
+attribution. We propose several ideas
+how these can be addressed and eval-
+uate when such models perform well.
+To this end we present a sentence-
+based prediction model that also allows
+to estimate which sentences were con-
+tributed by which author. We demon-
+strate using a stylometric approach that
+paper authors can be predicted with sig-
+niﬁcant accuracy by exploiting authors’
+stylistic idiosyncrasies. This challenges
+the assumption that simply removing
+names from a paper submission ensures
+anonymity in a double-blind process.
+Introduction
+
+1
+Authorship attribution, the science of identify-
+ing the rightful author of a document, is a prob-
+
+lem of long-standing history. The main idea be-
+hind statistically or computationally supported
+authorship attribution is that by measuring tex-
+tual features, we can distinguish between texts
+written by different authors.
+
+Identifying the author of a document also has
+modern applications such as identifying and
+linking users across online communities or de-
+tecting fraudulent transactions and imperson-
+ation attacks.
+
+Thus far, work has focused on predicting
+authors of single-authored documents such as
+plays (Mendenhall, 1887; Matthews and Mer-
+riam, 1993; Merriam and Matthews, 1994), po-
+litical essays (Mosteller and Wallace, 1964), or
+blog posts (Narayanan et al., 2012). In contrast,
+this paper introduces the problem of authorship
+attribution in multi-authored documents such as
+academic research papers. To the best of our
+knowledge, this problem has never been tack-
+led before.
+
+Many computer science conferences employ
+a double-blind submission process, relying on
+the assumption that identifying the authors of
+submitted papers is impossible at at least im-
+practical. We challenge this notion by present-
+ing an approach that is able to identify the au-
+thors of anonymous papers with signiﬁcant ac-
+curacy by exploiting authors’ stylistic idiosyn-
+crasies.
+
+Identifying the authors of multi-authored
+documents presents new challenges. Since it
+is unclear which author contributed which part
+of a document, we lack ground truth that could
+be used to build a model for each author. Em-
+ploying a document-level perspective as done
+in previous work may confuse idiosyncrasies
+of several authors (see Section 3.1). We pro-
+pose employing a sentence-level perspective in
+which we predict an author for each individ-
+ual sentence and then aggregate those to paper-
+level author predictions. We empirically eval-
+uate all approaches on both synthetic and real
+world data and discuss where such techniques
+might fail.
+
+2 Related Work
+
+A large body of research exists on attributing
+authorship on the document level. The pioneer-
+ing study of Mendenhall (Mendenhall, 1887)
+in the 19th century marks the ﬁrst attempt to
+quantify writing style on the plays of Shake-
+speare, which later was followed by statisti-
+cal studies by Yule (Yule, 1939; Yule, 1944)
+and Zipf (Zipf, 1932). Recent approaches
+can broadly be categorized into varying among
+the dimensions of feature selection, model se-
+lection, and candidate selection (Stamatatos,
+2009). Features can be divided into lexical
+(token- and word features), character (char-
+acter n-grams), syntactic (POS tags, phrase
+structure), semantic (synonymous and depen-
+dencies) and application-speciﬁc features (Sta-
+matatos, 2009). More sophisticated features
+such as local histograms (Escalante et al., 2011)
+and grammatical errors
+(Koppel and Schler,
+2003) have also been explored. Authorship at-
+tribution approaches taking into account only
+self-citations often perform well
+(Hill and
+Provost, 2003) compared to their supervised
+
+counterparts.
+
+A variety of supervised and unsupervised
+Machine Learning methods have been applied
+to the problem of authorship attribution (Sta-
+matatos, 2009). Simple similarity-based mod-
+els (nearest-neighbors) also perform surpris-
+ingly well (Koppel et al., 2012) and often out-
+perform more “sophisticated” supervised clas-
+siﬁers such as SVMs (Narayanan et al., 2012).
+The size of the candidate author set is another
+important dimension and only few researchers
+have applied attribution models to web-scale
+data (Narayanan et al., 2012).
+
+Predicting authors in multi-authored scien-
+tiﬁc publications has been out of focus of the
+scientiﬁc community thus far (to be best of our
+knowledge). However, some work has looked
+at using scientiﬁc publications to predict gen-
+der (Sarawgi et al., 2011; Bergsma et al., 2012)
+and whether or not the publication was written
+by a native speaker or submitted to a workshop
+instead of a conference (Bergsma et al., 2012).
+
+3 Approach
+
+3.1 Author mixing
+
+One key drawback of employing a paper-level
+perspective on authorship attribution is that it
+might fail to disentangle different stylistic in-
+ﬂuences and falsely attribute the paper to an in-
+correct author. Let A and B be the correct au-
+thors of a paper who have quite different styles
+of writing. Thus, A has a low probability of
+actually writing B’s sentences and vice versa.
+Then, an incorrect author C who stylistically re-
+sembles both A and B in some way might actu-
+ally have a higher probability of being a paper
+author than A or B. We coin this issue “author
+mixing”.
+
+3.2 Notation
+Our corpus (P, A) consists of a set of papers
+P = {p1, . . . , pN} and a set of authors A =
+{a1, . . . , aK}. Each paper pi is divided into
+j ∈ pi that we assume were written
+sentences si
+by a single author authors(si
+j) = ak. While
+we assume that a sentence is written by a single
+author we do not actually observe author labels
+on sentence level. We only observe paper level
+authors and assume that the sentence author
+is one of the paper authors. Mathematically,
+given paper level annotation authorp(pi) =
+{a1, a7, a9} we assume
+
+∀si
+
+j ∈ pi : authors(si
+
+j) ∈ authorp(pi)
+
+is to learn to differentiate author
+Our goal
+styles from the ambiguous ground truth labels
+authorp such that we can assign each sentence
+in a paper to a single author.
+
+We represent this mapping from sentence to
+author as a matrix M that, for all sentences,
+contains the single author that is believed to
+have written that sentence, e.g. M (si
+j) =
+ak. The authors’ individual styles are cap-
+tured through parameters θ = (θ1, . . . , θK) that
+includes an independent parameter vector for
+each author ak ∈ A.
+3.3 Sentence authorship model
+The core of our model describes how likely
+a given author a is to have generated a given
+sentence s, p(a|s). We represent a sentence
+through features F (s) ∈ Rn (for more details
+on our features please refer to section 4.3). We
+use the following logit model:
+
+p(a|s) =
+
+=
+
+logit−1((cid:104)θa, F (s)(cid:105))
+1 + exp(−(cid:104)θa, F (s)(cid:105) )
+
+1
+
+Figure 1: Training procedure considering co-
+author negative examples in addition to random
+negative examples
+
+Note that this model formulation is equivalent
+to a log-linear model:
+log p(authors(s) = a|s) = (cid:104)θa, F (s)(cid:105)−log Z
+where Z is a normalizing constant
+
+Z = 1 + exp((cid:104)θa, F (s)(cid:105)).
+
+Further note that we have K of these models,
+
+one for each author.
+
+3.4 Learning to differentiate author styles
+
+from ambiguous labels
+
+Let
+
+A core challenge in learning such logit models
+is that we lack sentence-level author labels. As
+described above, we only observe paper level
+j) ∈ authorp(pi)
+author labels, i.e. authors(si
+but we have no basis for assuming any concrete
+author yet.
+the
+be
+authorp(pi) = {a1, a2}. To train a model
+for author a1 we need both positive examples
+(sentences that a1 did write) and negative
+example (sentences that a1 did not write).
+j ∈ pi we do not know
+For any sentence si
+whether it was written by a1 or a2, i.e. we have
+ambigious sentence labels. Negative examples
+
+authors
+
+paper
+
+of
+
+a
+
+pi
+
+Visualizing	  training	  examples	  for	  author	  ak	  ak	  only	  ak	  or	  co-­‐author(ak)	  co-­‐author(ak)	  	  but	  not	  ak	  not	  ak	  and	  not	  co-­‐author(ak)	  Decision	  boundary	  	  accoun=ng	  for	  	  coauthors	  Standard	  decision	  boundary	  are much easier to come by, sentences from
+any paper that a1 did not co-author would
+provide true negative examples.
+
+Since we have no basis for assuming, a pri-
+ori, that sentence si
+j was deﬁnitly written by ei-
+ther a1 or a2 we include all sentences that a1
+might have written as positive examples when
+training an author model for a1. Obviously, this
+will include false positive examples that a2 ac-
+tually wrote and we need to make sure that the
+model does not only capture the combined style
+of a1 and a2. To this end, we propose to care-
+fully select negative examples that differentiate
+a1’s style from that of a2. We can achieve this
+by including positive examples from a2 in as
+negative examples for a1.
+In fact, we do not
+only include but positive examples from all co-
+authors of a1. This idea is visualized in Figure
+1.
+
+In the following, we describe this idea more
+formally. We denote the set of all coauthors of
+a given author ak by
+
+coauthor(ak) = {al ∈ A | ∀p ∈ P :
+al ∈ authorp(p) ⇒ ak ∈ authorp(p)}
+
+Formally, we use the following set of positive
+examples for ak:
+POS(ak) = {si
+
+j ∈ pi | ak ∈ authorp(pi)}
+
+3.5 Reﬁning author models through
+
+Expectation Maximization
+
+Modeling authorship on sentence level gives
+us the opportunity to further reﬁne our author
+models (this is not possible on paper level). The
+approach described above uses all sentences
+that could possibly have been written by au-
+thor ak as positive examples (recall POS(ak)).
+However, this will include many sentences that
+were actually written by one of ak’s coauthors.
+Based on our conﬁdence about which sentences
+were likely written by ak we can ﬁlter the pos-
+itive examples to yield a cleaner set of positive
+examples for ak. We now formalize this intu-
+ition.
+
+For the likelihood of the full corpus (P, A)
+
+we treat each sentence independently:
+
+(cid:89)
+
+(cid:89)
+
+pi∈P
+
+j∈pi
+si
+
+P (M, θ|P, A) =
+
+p(M (si
+
+j)|si
+j).
+
+The parameter inference problem then be-
+
+comes
+ˆM , ˆθ = argmaxM,θ P (M, θ|P, A) − Ω(M, θ),
+where Ω(M, θ) is a regularizer on the parame-
+ters to avoid overﬁtting.
+
+Since this optimization depends on both M
+and θ we proceed by coordinate ascent on
+(M, θ), i.e. by alternately optimizing
+
+And the following set of negative examples for
+ak:
+NEG(ak) = {si
+
+j ∈ pi | ∃al ∈ coauthor(ak) :
+al ∈ authorp(pi) ∧ ak /∈ authorp(pi)}
+
+and
+
+M i = argmaxM P (M, θi|A, P )
+
+θi+1 = argmaxθ P (M i, θ|A, P )
+
+We further add random sentences to NEG(ak)
+since authors have a varying number of co-
+authors and those with few would end up with
+very few negative examples otherwise.
+
+until convergence, i.e. until M i differs from
+M i−1 on less than a prespeciﬁed number of
+sentences (alternatively, one can alternate for a
+constant number of iterations).
+
+Being a local optimization procedure, co-
+ordinate ascent
+is sensitive to initialization.
+Therefore, we initialize the style parameters for
+each author θ0 by training independent logis-
+tic regression models using the procedure de-
+scribed in Section 3.4.
+
+Optimizing for M then is a simple inference
+step where we dependently assign each sen-
+tence to the most likely possible author:
+
+M (si
+
+j) = argmaxa p(a|si
+
+j, θ)
+
+Based on this assignment, optimizing for θ
+then becomes estimating K independent logis-
+tic regression models for all authors based on
+the assignment M.
+
+3.6 Predicting paper authors from
+
+sentence authors
+
+Our proposed model gives us predictions on
+sentence-level M (si
+j). While those sentence-
+level predictions are interesting in its own right
+(e.g.
+to estimate contribution of different au-
+thors) we ultimately want to predict authors
+on paper-level. To this end, we aggregate our
+sentence-level predictions to paper level predic-
+j vote for its
+tions by having each sentence si
+most likely author (namely, M (si
+j)).
+
+Compared to this hard voting scheme we also
+experimented with a soft voting scheme where
+each author gets a fractional vote depending on
+their conﬁdence to have written this particular
+sentence. However, empirically we found that
+soft-voting across all sentences of a paper suf-
+fers from the same problems that paper-level
+predictions do (see Section 3.1). Hard voting
+performed best in most cases.
+
+4 Experimental Setup
+
+Synthetic
+dataset
+108
+360
+78,577
+
+Real-world
+dataset
+100
+234
+206,300
+
+Authors
+
+Publications
+Sentences
+
+Table 1: Descriptive statistics of the datasets
+
+publications available through arXiv. The com-
+plete set of PDF documents includes about
+700,000 publications. We converted all PDF
+documents into raw text ﬁles using Apache
+Tika1. For documents in either one of the two
+datasets we produced sentence tokenizations
+and annotations using Stanford CoreNLP2 on
+the converted text ﬁles. The datasets are sum-
+marized in Table 1.
+
+4.1 Synthetic data
+
+In order to evaluate our sentence-level predic-
+tions we generated an synthetic dataset with
+sentence-level labels as follows. Let A be the
+set of authors such that every author a ∈ A
+has more than 10 single-authored papers and
+more than 120 paragraphs with at least 500
+words. Let Pa be the set of paragraphs of more
+than 500 words written by a ∈ A. We gener-
+ate a document by randomly picking 3 authors
+a1, a2, a3 ∈ A and sampling 40 paragraphs
+from Pa1, Pa2, Pa3 without replacement. We
+repeat this procedure until not enough para-
+graphs are left to generate a full document. This
+procedure yields a corpus of 108 authors, 360
+publications, 14,027 paragraphs and 78,577
+sentences. Each author gets approximately the
+same number of publications and paragraphs.
+
+We evaluate our hypothesis on both synthetic
+and real-world data. We obtained scientiﬁc
+
+1http://tika.apache.org/
+2http://nlp.stanford.edu/software/corenlp.shtml
+
+Authorship Attribution in Multi-author Documents
+
+Tim Althoff, Denny Britz, Zifei Shan
+
+Department of Computer Science, Stanford University
+
+{althoff, dbritz, zifei}@cs.stanford.edu
+
+Abstract
+
+Authorship attribution, the task of iden-
+tifying the author of a document, has
+been applied to works of historical
+value such as Shakespeare’s plays or
+the political Federalist papers but is
+still highly signiﬁcant today. We in-
+troduce the novel problem of author-
+ship attribution in multi-authored doc-
+uments and focus on scientiﬁc pub-
+lications. Multi-authored documents
+present hard challenges for authorship
+attribution. We propose several ideas
+how these can be addressed and eval-
+uate when such models perform well.
+To this end we present a sentence-
+based prediction model that also allows
+to estimate which sentences were con-
+tributed by which author. We demon-
+strate using a stylometric approach that
+paper authors can be predicted with sig-
+niﬁcant accuracy by exploiting authors’
+stylistic idiosyncrasies. This challenges
+the assumption that simply removing
+names from a paper submission ensures
+anonymity in a double-blind process.
+Introduction
+
+1
+Authorship attribution, the science of identify-
+ing the rightful author of a document, is a prob-
+
+lem of long-standing history. The main idea be-
+hind statistically or computationally supported
+authorship attribution is that by measuring tex-
+tual features, we can distinguish between texts
+written by different authors.
+
+Identifying the author of a document also has
+modern applications such as identifying and
+linking users across online communities or de-
+tecting fraudulent transactions and imperson-
+ation attacks.
+
+Thus far, work has focused on predicting
+authors of single-authored documents such as
+plays (Mendenhall, 1887; Matthews and Mer-
+riam, 1993; Merriam and Matthews, 1994), po-
+litical essays (Mosteller and Wallace, 1964), or
+blog posts (Narayanan et al., 2012). In contrast,
+this paper introduces the problem of authorship
+attribution in multi-authored documents such as
+academic research papers. To the best of our
+knowledge, this problem has never been tack-
+led before.
+
+Many computer science conferences employ
+a double-blind submission process, relying on
+the assumption that identifying the authors of
+submitted papers is impossible at at least im-
+practical. We challenge this notion by present-
+ing an approach that is able to identify the au-
+thors of anonymous papers with signiﬁcant ac-
+curacy by exploiting authors’ stylistic idiosyn-
+crasies.
+
+Identifying the authors of multi-authored
+documents presents new challenges. Since it
+is unclear which author contributed which part
+of a document, we lack ground truth that could
+be used to build a model for each author. Em-
+ploying a document-level perspective as done
+in previous work may confuse idiosyncrasies
+of several authors (see Section 3.1). We pro-
+pose employing a sentence-level perspective in
+which we predict an author for each individ-
+ual sentence and then aggregate those to paper-
+level author predictions. We empirically eval-
+uate all approaches on both synthetic and real
+world data and discuss where such techniques
+might fail.
+
+2 Related Work
+
+A large body of research exists on attributing
+authorship on the document level. The pioneer-
+ing study of Mendenhall (Mendenhall, 1887)
+in the 19th century marks the ﬁrst attempt to
+quantify writing style on the plays of Shake-
+speare, which later was followed by statisti-
+cal studies by Yule (Yule, 1939; Yule, 1944)
+and Zipf (Zipf, 1932). Recent approaches
+can broadly be categorized into varying among
+the dimensions of feature selection, model se-
+lection, and candidate selection (Stamatatos,
+2009). Features can be divided into lexical
+(token- and word features), character (char-
+acter n-grams), syntactic (POS tags, phrase
+structure), semantic (synonymous and depen-
+dencies) and application-speciﬁc features (Sta-
+matatos, 2009). More sophisticated features
+such as local histograms (Escalante et al., 2011)
+and grammatical errors
+(Koppel and Schler,
+2003) have also been explored. Authorship at-
+tribution approaches taking into account only
+self-citations often perform well
+(Hill and
+Provost, 2003) compared to their supervised
+
+counterparts.
+
+A variety of supervised and unsupervised
+Machine Learning methods have been applied
+to the problem of authorship attribution (Sta-
+matatos, 2009). Simple similarity-based mod-
+els (nearest-neighbors) also perform surpris-
+ingly well (Koppel et al., 2012) and often out-
+perform more “sophisticated” supervised clas-
+siﬁers such as SVMs (Narayanan et al., 2012).
+The size of the candidate author set is another
+important dimension and only few researchers
+have applied attribution models to web-scale
+data (Narayanan et al., 2012).
+
+Predicting authors in multi-authored scien-
+tiﬁc publications has been out of focus of the
+scientiﬁc community thus far (to be best of our
+knowledge). However, some work has looked
+at using scientiﬁc publications to predict gen-
+der (Sarawgi et al., 2011; Bergsma et al., 2012)
+and whether or not the publication was written
+by a native speaker or submitted to a workshop
+instead of a conference (Bergsma et al., 2012).
+
+3 Approach
+
+3.1 Author mixing
+
+One key drawback of employing a paper-level
+perspective on authorship attribution is that it
+might fail to disentangle different stylistic in-
+ﬂuences and falsely attribute the paper to an in-
+correct author. Let A and B be the correct au-
+thors of a paper who have quite different styles
+of writing. Thus, A has a low probability of
+actually writing B’s sentences and vice versa.
+Then, an incorrect author C who stylistically re-
+sembles both A and B in some way might actu-
+ally have a higher probability of being a paper
+author than A or B. We coin this issue “author
+mixing”.
+
+3.2 Notation
+Our corpus (P, A) consists of a set of papers
+P = {p1, . . . , pN} and a set of authors A =
+{a1, . . . , aK}. Each paper pi is divided into
+j ∈ pi that we assume were written
+sentences si
+by a single author authors(si
+j) = ak. While
+we assume that a sentence is written by a single
+author we do not actually observe author labels
+on sentence level. We only observe paper level
+authors and assume that the sentence author
+is one of the paper authors. Mathematically,
+given paper level annotation authorp(pi) =
+{a1, a7, a9} we assume
+
+∀si
+
+j ∈ pi : authors(si
+
+j) ∈ authorp(pi)
+
+is to learn to differentiate author
+Our goal
+styles from the ambiguous ground truth labels
+authorp such that we can assign each sentence
+in a paper to a single author.
+
+We represent this mapping from sentence to
+author as a matrix M that, for all sentences,
+contains the single author that is believed to
+have written that sentence, e.g. M (si
+j) =
+ak. The authors’ individual styles are cap-
+tured through parameters θ = (θ1, . . . , θK) that
+includes an independent parameter vector for
+each author ak ∈ A.
+3.3 Sentence authorship model
+The core of our model describes how likely
+a given author a is to have generated a given
+sentence s, p(a|s). We represent a sentence
+through features F (s) ∈ Rn (for more details
+on our features please refer to section 4.3). We
+use the following logit model:
+
+p(a|s) =
+
+=
+
+logit−1((cid:104)θa, F (s)(cid:105))
+1 + exp(−(cid:104)θa, F (s)(cid:105) )
+
+1
+
+Figure 1: Training procedure considering co-
+author negative examples in addition to random
+negative examples
+
+Note that this model formulation is equivalent
+to a log-linear model:
+log p(authors(s) = a|s) = (cid:104)θa, F (s)(cid:105)−log Z
+where Z is a normalizing constant
+
+Z = 1 + exp((cid:104)θa, F (s)(cid:105)).
+
+Further note that we have K of these models,
+
+one for each author.
+
+3.4 Learning to differentiate author styles
+
+from ambiguous labels
+
+Let
+
+A core challenge in learning such logit models
+is that we lack sentence-level author labels. As
+described above, we only observe paper level
+j) ∈ authorp(pi)
+author labels, i.e. authors(si
+but we have no basis for assuming any concrete
+author yet.
+the
+be
+authorp(pi) = {a1, a2}. To train a model
+for author a1 we need both positive examples
+(sentences that a1 did write) and negative
+example (sentences that a1 did not write).
+j ∈ pi we do not know
+For any sentence si
+whether it was written by a1 or a2, i.e. we have
+ambigious sentence labels. Negative examples
+
+authors
+
+paper
+
+of
+
+a
+
+pi
+
+Visualizing	  training	  examples	  for	  author	  ak	  ak	  only	  ak	  or	  co-­‐author(ak)	  co-­‐author(ak)	  	  but	  not	  ak	  not	  ak	  and	  not	  co-­‐author(ak)	  Decision	  boundary	  	  accoun=ng	  for	  	  coauthors	  Standard	  decision	  boundary	  are much easier to come by, sentences from
+any paper that a1 did not co-author would
+provide true negative examples.
+
+Since we have no basis for assuming, a pri-
+ori, that sentence si
+j was deﬁnitly written by ei-
+ther a1 or a2 we include all sentences that a1
+might have written as positive examples when
+training an author model for a1. Obviously, this
+will include false positive examples that a2 ac-
+tually wrote and we need to make sure that the
+model does not only capture the combined style
+of a1 and a2. To this end, we propose to care-
+fully select negative examples that differentiate
+a1’s style from that of a2. We can achieve this
+by including positive examples from a2 in as
+negative examples for a1.
+In fact, we do not
+only include but positive examples from all co-
+authors of a1. This idea is visualized in Figure
+1.
+
+In the following, we describe this idea more
+formally. We denote the set of all coauthors of
+a given author ak by
+
+coauthor(ak) = {al ∈ A | ∀p ∈ P :
+al ∈ authorp(p) ⇒ ak ∈ authorp(p)}
+
+Formally, we use the following set of positive
+examples for ak:
+POS(ak) = {si
+
+j ∈ pi | ak ∈ authorp(pi)}
+
+3.5 Reﬁning author models through
+
+Expectation Maximization
+
+Modeling authorship on sentence level gives
+us the opportunity to further reﬁne our author
+models (this is not possible on paper level). The
+approach described above uses all sentences
+that could possibly have been written by au-
+thor ak as positive examples (recall POS(ak)).
+However, this will include many sentences that
+were actually written by one of ak’s coauthors.
+Based on our conﬁdence about which sentences
+were likely written by ak we can ﬁlter the pos-
+itive examples to yield a cleaner set of positive
+examples for ak. We now formalize this intu-
+ition.
+
+For the likelihood of the full corpus (P, A)
+
+we treat each sentence independently:
+
+(cid:89)
+
+(cid:89)
+
+pi∈P
+
+j∈pi
+si
+
+P (M, θ|P, A) =
+
+p(M (si
+
+j)|si
+j).
+
+The parameter inference problem then be-
+
+comes
+ˆM , ˆθ = argmaxM,θ P (M, θ|P, A) − Ω(M, θ),
+where Ω(M, θ) is a regularizer on the parame-
+ters to avoid overﬁtting.
+
+Since this optimization depends on both M
+and θ we proceed by coordinate ascent on
+(M, θ), i.e. by alternately optimizing
+
+And the following set of negative examples for
+ak:
+NEG(ak) = {si
+
+j ∈ pi | ∃al ∈ coauthor(ak) :
+al ∈ authorp(pi) ∧ ak /∈ authorp(pi)}
+
+and
+
+M i = argmaxM P (M, θi|A, P )
+
+θi+1 = argmaxθ P (M i, θ|A, P )
+
+We further add random sentences to NEG(ak)
+since authors have a varying number of co-
+authors and those with few would end up with
+very few negative examples otherwise.
+
+until convergence, i.e. until M i differs from
+M i−1 on less than a prespeciﬁed number of
+sentences (alternatively, one can alternate for a
+constant number of iterations).
+
+Being a local optimization procedure, co-
+ordinate ascent
+is sensitive to initialization.
+Therefore, we initialize the style parameters for
+each author θ0 by training independent logis-
+tic regression models using the procedure de-
+scribed in Section 3.4.
+
+Optimizing for M then is a simple inference
+step where we dependently assign each sen-
+tence to the most likely possible author:
+
+M (si
+
+j) = argmaxa p(a|si
+
+j, θ)
+
+Based on this assignment, optimizing for θ
+then becomes estimating K independent logis-
+tic regression models for all authors based on
+the assignment M.
+
+3.6 Predicting paper authors from
+
+sentence authors
+
+Our proposed model gives us predictions on
+sentence-level M (si
+j). While those sentence-
+level predictions are interesting in its own right
+(e.g.
+to estimate contribution of different au-
+thors) we ultimately want to predict authors
+on paper-level. To this end, we aggregate our
+sentence-level predictions to paper level predic-
+j vote for its
+tions by having each sentence si
+most likely author (namely, M (si
+j)).
+
+Compared to this hard voting scheme we also
+experimented with a soft voting scheme where
+each author gets a fractional vote depending on
+their conﬁdence to have written this particular
+sentence. However, empirically we found that
+soft-voting across all sentences of a paper suf-
+fers from the same problems that paper-level
+predictions do (see Section 3.1). Hard voting
+performed best in most cases.
+
+4 Experimental Setup
+
+Synthetic
+dataset
+108
+360
+78,577
+
+Real-world
+dataset
+100
+234
+206,300
+
+Authors
+
+Publications
+Sentences
+
+Table 1: Descriptive statistics of the datasets
+
+publications available through arXiv. The com-
+plete set of PDF documents includes about
+700,000 publications. We converted all PDF
+documents into raw text ﬁles using Apache
+Tika1. For documents in either one of the two
+datasets we produced sentence tokenizations
+and annotations using Stanford CoreNLP2 on
+the converted text ﬁles. The datasets are sum-
+marized in Table 1.
+
+4.1 Synthetic data
+
+In order to evaluate our sentence-level predic-
+tions we generated an synthetic dataset with
+sentence-level labels as follows. Let A be the
+set of authors such that every author a ∈ A
+has more than 10 single-authored papers and
+more than 120 paragraphs with at least 500
+words. Let Pa be the set of paragraphs of more
+than 500 words written by a ∈ A. We gener-
+ate a document by randomly picking 3 authors
+a1, a2, a3 ∈ A and sampling 40 paragraphs
+from Pa1, Pa2, Pa3 without replacement. We
+repeat this procedure until not enough para-
+graphs are left to generate a full document. This
+procedure yields a corpus of 108 authors, 360
+publications, 14,027 paragraphs and 78,577
+sentences. Each author gets approximately the
+same number of publications and paragraphs.
+
+We evaluate our hypothesis on both synthetic
+and real-world data. We obtained scientiﬁc
+
+1http://tika.apache.org/
+2http://nlp.stanford.edu/software/corenlp.shtml
+
+4.2 Real-world data
+To test our model in the real world, we sub-
+sample the arXiv dataset. We are interested in
+distinguishing authors in similar ﬁelds, there-
+fore we start from a list of authors (“bootstrap
+list”) working in the ﬁeld of social and infor-
+mation networks.3 We sample a set of papers
+written by any of these authors and their coau-
+thors, controlling each author to have at most
+10 papers. We get a corpus of 234 papers, 100
+authors (the 8 authors in the “bootstrap list” and
+their 92 coauthors) and 206,300 sentences.
+
+4.3 Features
+The parameters of our models correspond to
+features categorized into content and style. Ta-
+ble 2 contains a detailed description of the fea-
+ture space we are considering. We tried to make
+a clear distinction between content and style
+features, but we acknowledge that some fea-
+tures can be regarded as capturing both content
+and style (e.g. character n-grams).
+
+5 Results
+
+In addition to the two models presented in sec-
+tion 3 we evaluate a paper-level logistic re-
+gression classiﬁer using the same feature set as
+described above. We also present results for
+majority-class baselines.
+
+5.1 Evaluation metrics
+We evaluate paper-level predictions using pre-
+cision@1 and average precision (Manning et
+al., 2008) . Precision@1 is deﬁned as the frac-
+tion of papers where the most likely author
+(ranked highest according to our classiﬁer) is
+
+3These authors include: Alex Pentland, Bernardo Hu-
+berman, Brian Karrer, Johan Ugander, Jon Kleinberg, Jure
+Leskovec, Lada Adamic, and Lars Backstrom (sorted by
+ﬁrst name).
+
+one of the correct co-authors of the paper. Av-
+erage Precision (Manning et al., 2008) comple-
+ments precision@1 in that it captures correct
+predictions beyond the highest-ranked author.
+We also provide numbers for sentence-level
+precision evaluated on the synthetic dataset
+(sentence-level ground truth for real-world data
+is not available).
+
+5.2 Results
+Tables 3 and 4 show our results. We can see
+that aggregated predictions outperform paper-
+level predictions in some cases. This is mainly
+due to the mixing issue discussed in section
+3.1. All our models use L2 regularization with
+the regularization parameter optimized using 5-
+fold cross validation.
+It is interesting to note
+that even though sentence-level precision is rel-
+atively low, aggregating the sentence predic-
+tions leads to good paper-level predictions.
+
+5.3 Discussion
+This section discusses our ﬁnding and speciﬁ-
+cally investigates why sentence-level models do
+not outperform paper-level models in all cases.
+First, we recognize basic assumptions of our
+models: We assume everyone writes something
+(). Obviously this might not hold in the real-
+world since all authors might do something but
+not all might contribute writing. Given that
+we assign all sentences in a paper as positive
+examples to each paper author, in a way, we
+assume uniform distribution of author contri-
+butions. When lacking good negative exam-
+ples we might fail to reject many sentences for
+an author thereby overestimating their contri-
+bution. Future work should make use of scien-
+tiﬁc publications with annotation on sentence-
+or paragraph-level to investigate this.
+
+Second, we assume that each sentence is
+written by a single author but recognize that
+
+Authorship Attribution in Multi-author Documents
+
+Tim Althoff, Denny Britz, Zifei Shan
+
+Department of Computer Science, Stanford University
+
+{althoff, dbritz, zifei}@cs.stanford.edu
+
+Abstract
+
+Authorship attribution, the task of iden-
+tifying the author of a document, has
+been applied to works of historical
+value such as Shakespeare’s plays or
+the political Federalist papers but is
+still highly signiﬁcant today. We in-
+troduce the novel problem of author-
+ship attribution in multi-authored doc-
+uments and focus on scientiﬁc pub-
+lications. Multi-authored documents
+present hard challenges for authorship
+attribution. We propose several ideas
+how these can be addressed and eval-
+uate when such models perform well.
+To this end we present a sentence-
+based prediction model that also allows
+to estimate which sentences were con-
+tributed by which author. We demon-
+strate using a stylometric approach that
+paper authors can be predicted with sig-
+niﬁcant accuracy by exploiting authors’
+stylistic idiosyncrasies. This challenges
+the assumption that simply removing
+names from a paper submission ensures
+anonymity in a double-blind process.
+Introduction
+
+1
+Authorship attribution, the science of identify-
+ing the rightful author of a document, is a prob-
+
+lem of long-standing history. The main idea be-
+hind statistically or computationally supported
+authorship attribution is that by measuring tex-
+tual features, we can distinguish between texts
+written by different authors.
+
+Identifying the author of a document also has
+modern applications such as identifying and
+linking users across online communities or de-
+tecting fraudulent transactions and imperson-
+ation attacks.
+
+Thus far, work has focused on predicting
+authors of single-authored documents such as
+plays (Mendenhall, 1887; Matthews and Mer-
+riam, 1993; Merriam and Matthews, 1994), po-
+litical essays (Mosteller and Wallace, 1964), or
+blog posts (Narayanan et al., 2012). In contrast,
+this paper introduces the problem of authorship
+attribution in multi-authored documents such as
+academic research papers. To the best of our
+knowledge, this problem has never been tack-
+led before.
+
+Many computer science conferences employ
+a double-blind submission process, relying on
+the assumption that identifying the authors of
+submitted papers is impossible at at least im-
+practical. We challenge this notion by present-
+ing an approach that is able to identify the au-
+thors of anonymous papers with signiﬁcant ac-
+curacy by exploiting authors’ stylistic idiosyn-
+crasies.
+
+Identifying the authors of multi-authored
+documents presents new challenges. Since it
+is unclear which author contributed which part
+of a document, we lack ground truth that could
+be used to build a model for each author. Em-
+ploying a document-level perspective as done
+in previous work may confuse idiosyncrasies
+of several authors (see Section 3.1). We pro-
+pose employing a sentence-level perspective in
+which we predict an author for each individ-
+ual sentence and then aggregate those to paper-
+level author predictions. We empirically eval-
+uate all approaches on both synthetic and real
+world data and discuss where such techniques
+might fail.
+
+2 Related Work
+
+A large body of research exists on attributing
+authorship on the document level. The pioneer-
+ing study of Mendenhall (Mendenhall, 1887)
+in the 19th century marks the ﬁrst attempt to
+quantify writing style on the plays of Shake-
+speare, which later was followed by statisti-
+cal studies by Yule (Yule, 1939; Yule, 1944)
+and Zipf (Zipf, 1932). Recent approaches
+can broadly be categorized into varying among
+the dimensions of feature selection, model se-
+lection, and candidate selection (Stamatatos,
+2009). Features can be divided into lexical
+(token- and word features), character (char-
+acter n-grams), syntactic (POS tags, phrase
+structure), semantic (synonymous and depen-
+dencies) and application-speciﬁc features (Sta-
+matatos, 2009). More sophisticated features
+such as local histograms (Escalante et al., 2011)
+and grammatical errors
+(Koppel and Schler,
+2003) have also been explored. Authorship at-
+tribution approaches taking into account only
+self-citations often perform well
+(Hill and
+Provost, 2003) compared to their supervised
+
+counterparts.
+
+A variety of supervised and unsupervised
+Machine Learning methods have been applied
+to the problem of authorship attribution (Sta-
+matatos, 2009). Simple similarity-based mod-
+els (nearest-neighbors) also perform surpris-
+ingly well (Koppel et al., 2012) and often out-
+perform more “sophisticated” supervised clas-
+siﬁers such as SVMs (Narayanan et al., 2012).
+The size of the candidate author set is another
+important dimension and only few researchers
+have applied attribution models to web-scale
+data (Narayanan et al., 2012).
+
+Predicting authors in multi-authored scien-
+tiﬁc publications has been out of focus of the
+scientiﬁc community thus far (to be best of our
+knowledge). However, some work has looked
+at using scientiﬁc publications to predict gen-
+der (Sarawgi et al., 2011; Bergsma et al., 2012)
+and whether or not the publication was written
+by a native speaker or submitted to a workshop
+instead of a conference (Bergsma et al., 2012).
+
+3 Approach
+
+3.1 Author mixing
+
+One key drawback of employing a paper-level
+perspective on authorship attribution is that it
+might fail to disentangle different stylistic in-
+ﬂuences and falsely attribute the paper to an in-
+correct author. Let A and B be the correct au-
+thors of a paper who have quite different styles
+of writing. Thus, A has a low probability of
+actually writing B’s sentences and vice versa.
+Then, an incorrect author C who stylistically re-
+sembles both A and B in some way might actu-
+ally have a higher probability of being a paper
+author than A or B. We coin this issue “author
+mixing”.
+
+3.2 Notation
+Our corpus (P, A) consists of a set of papers
+P = {p1, . . . , pN} and a set of authors A =
+{a1, . . . , aK}. Each paper pi is divided into
+j ∈ pi that we assume were written
+sentences si
+by a single author authors(si
+j) = ak. While
+we assume that a sentence is written by a single
+author we do not actually observe author labels
+on sentence level. We only observe paper level
+authors and assume that the sentence author
+is one of the paper authors. Mathematically,
+given paper level annotation authorp(pi) =
+{a1, a7, a9} we assume
+
+∀si
+
+j ∈ pi : authors(si
+
+j) ∈ authorp(pi)
+
+is to learn to differentiate author
+Our goal
+styles from the ambiguous ground truth labels
+authorp such that we can assign each sentence
+in a paper to a single author.
+
+We represent this mapping from sentence to
+author as a matrix M that, for all sentences,
+contains the single author that is believed to
+have written that sentence, e.g. M (si
+j) =
+ak. The authors’ individual styles are cap-
+tured through parameters θ = (θ1, . . . , θK) that
+includes an independent parameter vector for
+each author ak ∈ A.
+3.3 Sentence authorship model
+The core of our model describes how likely
+a given author a is to have generated a given
+sentence s, p(a|s). We represent a sentence
+through features F (s) ∈ Rn (for more details
+on our features please refer to section 4.3). We
+use the following logit model:
+
+p(a|s) =
+
+=
+
+logit−1((cid:104)θa, F (s)(cid:105))
+1 + exp(−(cid:104)θa, F (s)(cid:105) )
+
+1
+
+Figure 1: Training procedure considering co-
+author negative examples in addition to random
+negative examples
+
+Note that this model formulation is equivalent
+to a log-linear model:
+log p(authors(s) = a|s) = (cid:104)θa, F (s)(cid:105)−log Z
+where Z is a normalizing constant
+
+Z = 1 + exp((cid:104)θa, F (s)(cid:105)).
+
+Further note that we have K of these models,
+
+one for each author.
+
+3.4 Learning to differentiate author styles
+
+from ambiguous labels
+
+Let
+
+A core challenge in learning such logit models
+is that we lack sentence-level author labels. As
+described above, we only observe paper level
+j) ∈ authorp(pi)
+author labels, i.e. authors(si
+but we have no basis for assuming any concrete
+author yet.
+the
+be
+authorp(pi) = {a1, a2}. To train a model
+for author a1 we need both positive examples
+(sentences that a1 did write) and negative
+example (sentences that a1 did not write).
+j ∈ pi we do not know
+For any sentence si
+whether it was written by a1 or a2, i.e. we have
+ambigious sentence labels. Negative examples
+
+authors
+
+paper
+
+of
+
+a
+
+pi
+
+Visualizing	  training	  examples	  for	  author	  ak	  ak	  only	  ak	  or	  co-­‐author(ak)	  co-­‐author(ak)	  	  but	  not	  ak	  not	  ak	  and	  not	  co-­‐author(ak)	  Decision	  boundary	  	  accoun=ng	  for	  	  coauthors	  Standard	  decision	  boundary	  are much easier to come by, sentences from
+any paper that a1 did not co-author would
+provide true negative examples.
+
+Since we have no basis for assuming, a pri-
+ori, that sentence si
+j was deﬁnitly written by ei-
+ther a1 or a2 we include all sentences that a1
+might have written as positive examples when
+training an author model for a1. Obviously, this
+will include false positive examples that a2 ac-
+tually wrote and we need to make sure that the
+model does not only capture the combined style
+of a1 and a2. To this end, we propose to care-
+fully select negative examples that differentiate
+a1’s style from that of a2. We can achieve this
+by including positive examples from a2 in as
+negative examples for a1.
+In fact, we do not
+only include but positive examples from all co-
+authors of a1. This idea is visualized in Figure
+1.
+
+In the following, we describe this idea more
+formally. We denote the set of all coauthors of
+a given author ak by
+
+coauthor(ak) = {al ∈ A | ∀p ∈ P :
+al ∈ authorp(p) ⇒ ak ∈ authorp(p)}
+
+Formally, we use the following set of positive
+examples for ak:
+POS(ak) = {si
+
+j ∈ pi | ak ∈ authorp(pi)}
+
+3.5 Reﬁning author models through
+
+Expectation Maximization
+
+Modeling authorship on sentence level gives
+us the opportunity to further reﬁne our author
+models (this is not possible on paper level). The
+approach described above uses all sentences
+that could possibly have been written by au-
+thor ak as positive examples (recall POS(ak)).
+However, this will include many sentences that
+were actually written by one of ak’s coauthors.
+Based on our conﬁdence about which sentences
+were likely written by ak we can ﬁlter the pos-
+itive examples to yield a cleaner set of positive
+examples for ak. We now formalize this intu-
+ition.
+
+For the likelihood of the full corpus (P, A)
+
+we treat each sentence independently:
+
+(cid:89)
+
+(cid:89)
+
+pi∈P
+
+j∈pi
+si
+
+P (M, θ|P, A) =
+
+p(M (si
+
+j)|si
+j).
+
+The parameter inference problem then be-
+
+comes
+ˆM , ˆθ = argmaxM,θ P (M, θ|P, A) − Ω(M, θ),
+where Ω(M, θ) is a regularizer on the parame-
+ters to avoid overﬁtting.
+
+Since this optimization depends on both M
+and θ we proceed by coordinate ascent on
+(M, θ), i.e. by alternately optimizing
+
+And the following set of negative examples for
+ak:
+NEG(ak) = {si
+
+j ∈ pi | ∃al ∈ coauthor(ak) :
+al ∈ authorp(pi) ∧ ak /∈ authorp(pi)}
+
+and
+
+M i = argmaxM P (M, θi|A, P )
+
+θi+1 = argmaxθ P (M i, θ|A, P )
+
+We further add random sentences to NEG(ak)
+since authors have a varying number of co-
+authors and those with few would end up with
+very few negative examples otherwise.
+
+until convergence, i.e. until M i differs from
+M i−1 on less than a prespeciﬁed number of
+sentences (alternatively, one can alternate for a
+constant number of iterations).
+
+Being a local optimization procedure, co-
+ordinate ascent
+is sensitive to initialization.
+Therefore, we initialize the style parameters for
+each author θ0 by training independent logis-
+tic regression models using the procedure de-
+scribed in Section 3.4.
+
+Optimizing for M then is a simple inference
+step where we dependently assign each sen-
+tence to the most likely possible author:
+
+M (si
+
+j) = argmaxa p(a|si
+
+j, θ)
+
+Based on this assignment, optimizing for θ
+then becomes estimating K independent logis-
+tic regression models for all authors based on
+the assignment M.
+
+3.6 Predicting paper authors from
+
+sentence authors
+
+Our proposed model gives us predictions on
+sentence-level M (si
+j). While those sentence-
+level predictions are interesting in its own right
+(e.g.
+to estimate contribution of different au-
+thors) we ultimately want to predict authors
+on paper-level. To this end, we aggregate our
+sentence-level predictions to paper level predic-
+j vote for its
+tions by having each sentence si
+most likely author (namely, M (si
+j)).
+
+Compared to this hard voting scheme we also
+experimented with a soft voting scheme where
+each author gets a fractional vote depending on
+their conﬁdence to have written this particular
+sentence. However, empirically we found that
+soft-voting across all sentences of a paper suf-
+fers from the same problems that paper-level
+predictions do (see Section 3.1). Hard voting
+performed best in most cases.
+
+4 Experimental Setup
+
+Synthetic
+dataset
+108
+360
+78,577
+
+Real-world
+dataset
+100
+234
+206,300
+
+Authors
+
+Publications
+Sentences
+
+Table 1: Descriptive statistics of the datasets
+
+publications available through arXiv. The com-
+plete set of PDF documents includes about
+700,000 publications. We converted all PDF
+documents into raw text ﬁles using Apache
+Tika1. For documents in either one of the two
+datasets we produced sentence tokenizations
+and annotations using Stanford CoreNLP2 on
+the converted text ﬁles. The datasets are sum-
+marized in Table 1.
+
+4.1 Synthetic data
+
+In order to evaluate our sentence-level predic-
+tions we generated an synthetic dataset with
+sentence-level labels as follows. Let A be the
+set of authors such that every author a ∈ A
+has more than 10 single-authored papers and
+more than 120 paragraphs with at least 500
+words. Let Pa be the set of paragraphs of more
+than 500 words written by a ∈ A. We gener-
+ate a document by randomly picking 3 authors
+a1, a2, a3 ∈ A and sampling 40 paragraphs
+from Pa1, Pa2, Pa3 without replacement. We
+repeat this procedure until not enough para-
+graphs are left to generate a full document. This
+procedure yields a corpus of 108 authors, 360
+publications, 14,027 paragraphs and 78,577
+sentences. Each author gets approximately the
+same number of publications and paragraphs.
+
+We evaluate our hypothesis on both synthetic
+and real-world data. We obtained scientiﬁc
+
+1http://tika.apache.org/
+2http://nlp.stanford.edu/software/corenlp.shtml
+
+4.2 Real-world data
+To test our model in the real world, we sub-
+sample the arXiv dataset. We are interested in
+distinguishing authors in similar ﬁelds, there-
+fore we start from a list of authors (“bootstrap
+list”) working in the ﬁeld of social and infor-
+mation networks.3 We sample a set of papers
+written by any of these authors and their coau-
+thors, controlling each author to have at most
+10 papers. We get a corpus of 234 papers, 100
+authors (the 8 authors in the “bootstrap list” and
+their 92 coauthors) and 206,300 sentences.
+
+4.3 Features
+The parameters of our models correspond to
+features categorized into content and style. Ta-
+ble 2 contains a detailed description of the fea-
+ture space we are considering. We tried to make
+a clear distinction between content and style
+features, but we acknowledge that some fea-
+tures can be regarded as capturing both content
+and style (e.g. character n-grams).
+
+5 Results
+
+In addition to the two models presented in sec-
+tion 3 we evaluate a paper-level logistic re-
+gression classiﬁer using the same feature set as
+described above. We also present results for
+majority-class baselines.
+
+5.1 Evaluation metrics
+We evaluate paper-level predictions using pre-
+cision@1 and average precision (Manning et
+al., 2008) . Precision@1 is deﬁned as the frac-
+tion of papers where the most likely author
+(ranked highest according to our classiﬁer) is
+
+3These authors include: Alex Pentland, Bernardo Hu-
+berman, Brian Karrer, Johan Ugander, Jon Kleinberg, Jure
+Leskovec, Lada Adamic, and Lars Backstrom (sorted by
+ﬁrst name).
+
+one of the correct co-authors of the paper. Av-
+erage Precision (Manning et al., 2008) comple-
+ments precision@1 in that it captures correct
+predictions beyond the highest-ranked author.
+We also provide numbers for sentence-level
+precision evaluated on the synthetic dataset
+(sentence-level ground truth for real-world data
+is not available).
+
+5.2 Results
+Tables 3 and 4 show our results. We can see
+that aggregated predictions outperform paper-
+level predictions in some cases. This is mainly
+due to the mixing issue discussed in section
+3.1. All our models use L2 regularization with
+the regularization parameter optimized using 5-
+fold cross validation.
+It is interesting to note
+that even though sentence-level precision is rel-
+atively low, aggregating the sentence predic-
+tions leads to good paper-level predictions.
+
+5.3 Discussion
+This section discusses our ﬁnding and speciﬁ-
+cally investigates why sentence-level models do
+not outperform paper-level models in all cases.
+First, we recognize basic assumptions of our
+models: We assume everyone writes something
+(). Obviously this might not hold in the real-
+world since all authors might do something but
+not all might contribute writing. Given that
+we assign all sentences in a paper as positive
+examples to each paper author, in a way, we
+assume uniform distribution of author contri-
+butions. When lacking good negative exam-
+ples we might fail to reject many sentences for
+an author thereby overestimating their contri-
+bution. Future work should make use of scien-
+tiﬁc publications with annotation on sentence-
+or paragraph-level to investigate this.
+
+Second, we assume that each sentence is
+written by a single author but recognize that
+
+Type
+Feature Name
+Content Word N-grams
+
+Character N-grams
+Stylistic Character unigrams
+
+POS tag N-grams
+
+Function word N-grams
+
+Lengths
+
+Sentence start
+
+Transition words
+
+Punctuation sequence
+
+Sentence shape
+
+Description
+Unigrams, bigrams, and trigrams of all
+words.
+Bigrams and trigrams of characters.
+Unigrams of characters.
+Unigrams and bigrams of POS tags
+(tagged by NLTK default Penn Tree-
+bank POS tagger).
+unigrams, bigrams, and trigrams of
+function words.
+Sentence length and average word
+length of each sentence.
+First word in sentence if it is a function
+word.
+First word after a punctuation if it is a
+function word.
+Concatenation of all the punctuations in
+a sentence.
+Punctuation sequence and number of
+words (“M” if more than 3) between
+each two punctuations.
+
+Table 2: Features
+
+Examples
+“a distance matrix”, “quartet
+topologies embedded”
+“NWD”, “Ref”
+‘%’, ‘{’, ‘?’, ‘α’
+DT NN, PRP VBP, -LRB- NN
+
+“under our”, “but all the”
+
+81 chars, 17 words, average
+word length=4.7
+“We”, “It”, “However”
+
+“However, we observe” would
+give the feature “we”.
+“.”, “,.”, “,;,.”, “,().”
+
+“3,M;2,M.”
+
+Precision@1
+
+Average Precision
+
+Sentence-level precision
+
+Majority class
+
+0.04
+0.04
+0.04
+
+Paper-level
+
+0.93
+0.69
+
+-
+
+LR sentence
+
+0.97
+0.85
+0.17
+
+EM sentence
+
+0.99
+0.86
+0.20
+
+Table 3: Experimental results on the synthetic dataset
+
+multiple authors could have contributed to its
+writing. Our toy dataset was generated from
+single-author papers that presumably were
+written by its single author but this assumption
+might not hold on real-world papers.
+
+only contribute a single vote among many. In
+contrast, such features could very strongly in-
+ﬂuence paper-level predictions. Future work
+could investigate hybrid approaches that aim at
+the best of both worlds.
+
+Third, while the sentence-level perspective
+has clear advantages (see Section 3.1) we must
+acknowledge some limitations of the proposed
+approach. Since we aggregate sentence-level
+predictions by voting to paper-level predictions,
+even when a sentence gives away authorship
+(e.g. by an obvious self-citation) this would
+
+Fourth, assigning single authors to sentences
+and aggregating these hard votes to paper-level
+predictions could be improved. For instance,
+one might one want to use high-conﬁdence
+votes. In our empirical evaluations we ﬁnd that
+this does not lead to signiﬁcant performance
+improvements. For most sentences many au-
+
+Authorship Attribution in Multi-author Documents
+
+Tim Althoff, Denny Britz, Zifei Shan
+
+Department of Computer Science, Stanford University
+
+{althoff, dbritz, zifei}@cs.stanford.edu
+
+Abstract
+
+Authorship attribution, the task of iden-
+tifying the author of a document, has
+been applied to works of historical
+value such as Shakespeare’s plays or
+the political Federalist papers but is
+still highly signiﬁcant today. We in-
+troduce the novel problem of author-
+ship attribution in multi-authored doc-
+uments and focus on scientiﬁc pub-
+lications. Multi-authored documents
+present hard challenges for authorship
+attribution. We propose several ideas
+how these can be addressed and eval-
+uate when such models perform well.
+To this end we present a sentence-
+based prediction model that also allows
+to estimate which sentences were con-
+tributed by which author. We demon-
+strate using a stylometric approach that
+paper authors can be predicted with sig-
+niﬁcant accuracy by exploiting authors’
+stylistic idiosyncrasies. This challenges
+the assumption that simply removing
+names from a paper submission ensures
+anonymity in a double-blind process.
+Introduction
+
+1
+Authorship attribution, the science of identify-
+ing the rightful author of a document, is a prob-
+
+lem of long-standing history. The main idea be-
+hind statistically or computationally supported
+authorship attribution is that by measuring tex-
+tual features, we can distinguish between texts
+written by different authors.
+
+Identifying the author of a document also has
+modern applications such as identifying and
+linking users across online communities or de-
+tecting fraudulent transactions and imperson-
+ation attacks.
+
+Thus far, work has focused on predicting
+authors of single-authored documents such as
+plays (Mendenhall, 1887; Matthews and Mer-
+riam, 1993; Merriam and Matthews, 1994), po-
+litical essays (Mosteller and Wallace, 1964), or
+blog posts (Narayanan et al., 2012). In contrast,
+this paper introduces the problem of authorship
+attribution in multi-authored documents such as
+academic research papers. To the best of our
+knowledge, this problem has never been tack-
+led before.
+
+Many computer science conferences employ
+a double-blind submission process, relying on
+the assumption that identifying the authors of
+submitted papers is impossible at at least im-
+practical. We challenge this notion by present-
+ing an approach that is able to identify the au-
+thors of anonymous papers with signiﬁcant ac-
+curacy by exploiting authors’ stylistic idiosyn-
+crasies.
+
+Identifying the authors of multi-authored
+documents presents new challenges. Since it
+is unclear which author contributed which part
+of a document, we lack ground truth that could
+be used to build a model for each author. Em-
+ploying a document-level perspective as done
+in previous work may confuse idiosyncrasies
+of several authors (see Section 3.1). We pro-
+pose employing a sentence-level perspective in
+which we predict an author for each individ-
+ual sentence and then aggregate those to paper-
+level author predictions. We empirically eval-
+uate all approaches on both synthetic and real
+world data and discuss where such techniques
+might fail.
+
+2 Related Work
+
+A large body of research exists on attributing
+authorship on the document level. The pioneer-
+ing study of Mendenhall (Mendenhall, 1887)
+in the 19th century marks the ﬁrst attempt to
+quantify writing style on the plays of Shake-
+speare, which later was followed by statisti-
+cal studies by Yule (Yule, 1939; Yule, 1944)
+and Zipf (Zipf, 1932). Recent approaches
+can broadly be categorized into varying among
+the dimensions of feature selection, model se-
+lection, and candidate selection (Stamatatos,
+2009). Features can be divided into lexical
+(token- and word features), character (char-
+acter n-grams), syntactic (POS tags, phrase
+structure), semantic (synonymous and depen-
+dencies) and application-speciﬁc features (Sta-
+matatos, 2009). More sophisticated features
+such as local histograms (Escalante et al., 2011)
+and grammatical errors
+(Koppel and Schler,
+2003) have also been explored. Authorship at-
+tribution approaches taking into account only
+self-citations often perform well
+(Hill and
+Provost, 2003) compared to their supervised
+
+counterparts.
+
+A variety of supervised and unsupervised
+Machine Learning methods have been applied
+to the problem of authorship attribution (Sta-
+matatos, 2009). Simple similarity-based mod-
+els (nearest-neighbors) also perform surpris-
+ingly well (Koppel et al., 2012) and often out-
+perform more “sophisticated” supervised clas-
+siﬁers such as SVMs (Narayanan et al., 2012).
+The size of the candidate author set is another
+important dimension and only few researchers
+have applied attribution models to web-scale
+data (Narayanan et al., 2012).
+
+Predicting authors in multi-authored scien-
+tiﬁc publications has been out of focus of the
+scientiﬁc community thus far (to be best of our
+knowledge). However, some work has looked
+at using scientiﬁc publications to predict gen-
+der (Sarawgi et al., 2011; Bergsma et al., 2012)
+and whether or not the publication was written
+by a native speaker or submitted to a workshop
+instead of a conference (Bergsma et al., 2012).
+
+3 Approach
+
+3.1 Author mixing
+
+One key drawback of employing a paper-level
+perspective on authorship attribution is that it
+might fail to disentangle different stylistic in-
+ﬂuences and falsely attribute the paper to an in-
+correct author. Let A and B be the correct au-
+thors of a paper who have quite different styles
+of writing. Thus, A has a low probability of
+actually writing B’s sentences and vice versa.
+Then, an incorrect author C who stylistically re-
+sembles both A and B in some way might actu-
+ally have a higher probability of being a paper
+author than A or B. We coin this issue “author
+mixing”.
+
+3.2 Notation
+Our corpus (P, A) consists of a set of papers
+P = {p1, . . . , pN} and a set of authors A =
+{a1, . . . , aK}. Each paper pi is divided into
+j ∈ pi that we assume were written
+sentences si
+by a single author authors(si
+j) = ak. While
+we assume that a sentence is written by a single
+author we do not actually observe author labels
+on sentence level. We only observe paper level
+authors and assume that the sentence author
+is one of the paper authors. Mathematically,
+given paper level annotation authorp(pi) =
+{a1, a7, a9} we assume
+
+∀si
+
+j ∈ pi : authors(si
+
+j) ∈ authorp(pi)
+
+is to learn to differentiate author
+Our goal
+styles from the ambiguous ground truth labels
+authorp such that we can assign each sentence
+in a paper to a single author.
+
+We represent this mapping from sentence to
+author as a matrix M that, for all sentences,
+contains the single author that is believed to
+have written that sentence, e.g. M (si
+j) =
+ak. The authors’ individual styles are cap-
+tured through parameters θ = (θ1, . . . , θK) that
+includes an independent parameter vector for
+each author ak ∈ A.
+3.3 Sentence authorship model
+The core of our model describes how likely
+a given author a is to have generated a given
+sentence s, p(a|s). We represent a sentence
+through features F (s) ∈ Rn (for more details
+on our features please refer to section 4.3). We
+use the following logit model:
+
+p(a|s) =
+
+=
+
+logit−1((cid:104)θa, F (s)(cid:105))
+1 + exp(−(cid:104)θa, F (s)(cid:105) )
+
+1
+
+Figure 1: Training procedure considering co-
+author negative examples in addition to random
+negative examples
+
+Note that this model formulation is equivalent
+to a log-linear model:
+log p(authors(s) = a|s) = (cid:104)θa, F (s)(cid:105)−log Z
+where Z is a normalizing constant
+
+Z = 1 + exp((cid:104)θa, F (s)(cid:105)).
+
+Further note that we have K of these models,
+
+one for each author.
+
+3.4 Learning to differentiate author styles
+
+from ambiguous labels
+
+Let
+
+A core challenge in learning such logit models
+is that we lack sentence-level author labels. As
+described above, we only observe paper level
+j) ∈ authorp(pi)
+author labels, i.e. authors(si
+but we have no basis for assuming any concrete
+author yet.
+the
+be
+authorp(pi) = {a1, a2}. To train a model
+for author a1 we need both positive examples
+(sentences that a1 did write) and negative
+example (sentences that a1 did not write).
+j ∈ pi we do not know
+For any sentence si
+whether it was written by a1 or a2, i.e. we have
+ambigious sentence labels. Negative examples
+
+authors
+
+paper
+
+of
+
+a
+
+pi
+
+Visualizing	  training	  examples	  for	  author	  ak	  ak	  only	  ak	  or	  co-­‐author(ak)	  co-­‐author(ak)	  	  but	  not	  ak	  not	  ak	  and	  not	  co-­‐author(ak)	  Decision	  boundary	  	  accoun=ng	  for	  	  coauthors	  Standard	  decision	  boundary	  are much easier to come by, sentences from
+any paper that a1 did not co-author would
+provide true negative examples.
+
+Since we have no basis for assuming, a pri-
+ori, that sentence si
+j was deﬁnitly written by ei-
+ther a1 or a2 we include all sentences that a1
+might have written as positive examples when
+training an author model for a1. Obviously, this
+will include false positive examples that a2 ac-
+tually wrote and we need to make sure that the
+model does not only capture the combined style
+of a1 and a2. To this end, we propose to care-
+fully select negative examples that differentiate
+a1’s style from that of a2. We can achieve this
+by including positive examples from a2 in as
+negative examples for a1.
+In fact, we do not
+only include but positive examples from all co-
+authors of a1. This idea is visualized in Figure
+1.
+
+In the following, we describe this idea more
+formally. We denote the set of all coauthors of
+a given author ak by
+
+coauthor(ak) = {al ∈ A | ∀p ∈ P :
+al ∈ authorp(p) ⇒ ak ∈ authorp(p)}
+
+Formally, we use the following set of positive
+examples for ak:
+POS(ak) = {si
+
+j ∈ pi | ak ∈ authorp(pi)}
+
+3.5 Reﬁning author models through
+
+Expectation Maximization
+
+Modeling authorship on sentence level gives
+us the opportunity to further reﬁne our author
+models (this is not possible on paper level). The
+approach described above uses all sentences
+that could possibly have been written by au-
+thor ak as positive examples (recall POS(ak)).
+However, this will include many sentences that
+were actually written by one of ak’s coauthors.
+Based on our conﬁdence about which sentences
+were likely written by ak we can ﬁlter the pos-
+itive examples to yield a cleaner set of positive
+examples for ak. We now formalize this intu-
+ition.
+
+For the likelihood of the full corpus (P, A)
+
+we treat each sentence independently:
+
+(cid:89)
+
+(cid:89)
+
+pi∈P
+
+j∈pi
+si
+
+P (M, θ|P, A) =
+
+p(M (si
+
+j)|si
+j).
+
+The parameter inference problem then be-
+
+comes
+ˆM , ˆθ = argmaxM,θ P (M, θ|P, A) − Ω(M, θ),
+where Ω(M, θ) is a regularizer on the parame-
+ters to avoid overﬁtting.
+
+Since this optimization depends on both M
+and θ we proceed by coordinate ascent on
+(M, θ), i.e. by alternately optimizing
+
+And the following set of negative examples for
+ak:
+NEG(ak) = {si
+
+j ∈ pi | ∃al ∈ coauthor(ak) :
+al ∈ authorp(pi) ∧ ak /∈ authorp(pi)}
+
+and
+
+M i = argmaxM P (M, θi|A, P )
+
+θi+1 = argmaxθ P (M i, θ|A, P )
+
+We further add random sentences to NEG(ak)
+since authors have a varying number of co-
+authors and those with few would end up with
+very few negative examples otherwise.
+
+until convergence, i.e. until M i differs from
+M i−1 on less than a prespeciﬁed number of
+sentences (alternatively, one can alternate for a
+constant number of iterations).
+
+Being a local optimization procedure, co-
+ordinate ascent
+is sensitive to initialization.
+Therefore, we initialize the style parameters for
+each author θ0 by training independent logis-
+tic regression models using the procedure de-
+scribed in Section 3.4.
+
+Optimizing for M then is a simple inference
+step where we dependently assign each sen-
+tence to the most likely possible author:
+
+M (si
+
+j) = argmaxa p(a|si
+
+j, θ)
+
+Based on this assignment, optimizing for θ
+then becomes estimating K independent logis-
+tic regression models for all authors based on
+the assignment M.
+
+3.6 Predicting paper authors from
+
+sentence authors
+
+Our proposed model gives us predictions on
+sentence-level M (si
+j). While those sentence-
+level predictions are interesting in its own right
+(e.g.
+to estimate contribution of different au-
+thors) we ultimately want to predict authors
+on paper-level. To this end, we aggregate our
+sentence-level predictions to paper level predic-
+j vote for its
+tions by having each sentence si
+most likely author (namely, M (si
+j)).
+
+Compared to this hard voting scheme we also
+experimented with a soft voting scheme where
+each author gets a fractional vote depending on
+their conﬁdence to have written this particular
+sentence. However, empirically we found that
+soft-voting across all sentences of a paper suf-
+fers from the same problems that paper-level
+predictions do (see Section 3.1). Hard voting
+performed best in most cases.
+
+4 Experimental Setup
+
+Synthetic
+dataset
+108
+360
+78,577
+
+Real-world
+dataset
+100
+234
+206,300
+
+Authors
+
+Publications
+Sentences
+
+Table 1: Descriptive statistics of the datasets
+
+publications available through arXiv. The com-
+plete set of PDF documents includes about
+700,000 publications. We converted all PDF
+documents into raw text ﬁles using Apache
+Tika1. For documents in either one of the two
+datasets we produced sentence tokenizations
+and annotations using Stanford CoreNLP2 on
+the converted text ﬁles. The datasets are sum-
+marized in Table 1.
+
+4.1 Synthetic data
+
+In order to evaluate our sentence-level predic-
+tions we generated an synthetic dataset with
+sentence-level labels as follows. Let A be the
+set of authors such that every author a ∈ A
+has more than 10 single-authored papers and
+more than 120 paragraphs with at least 500
+words. Let Pa be the set of paragraphs of more
+than 500 words written by a ∈ A. We gener-
+ate a document by randomly picking 3 authors
+a1, a2, a3 ∈ A and sampling 40 paragraphs
+from Pa1, Pa2, Pa3 without replacement. We
+repeat this procedure until not enough para-
+graphs are left to generate a full document. This
+procedure yields a corpus of 108 authors, 360
+publications, 14,027 paragraphs and 78,577
+sentences. Each author gets approximately the
+same number of publications and paragraphs.
+
+We evaluate our hypothesis on both synthetic
+and real-world data. We obtained scientiﬁc
+
+1http://tika.apache.org/
+2http://nlp.stanford.edu/software/corenlp.shtml
+
+4.2 Real-world data
+To test our model in the real world, we sub-
+sample the arXiv dataset. We are interested in
+distinguishing authors in similar ﬁelds, there-
+fore we start from a list of authors (“bootstrap
+list”) working in the ﬁeld of social and infor-
+mation networks.3 We sample a set of papers
+written by any of these authors and their coau-
+thors, controlling each author to have at most
+10 papers. We get a corpus of 234 papers, 100
+authors (the 8 authors in the “bootstrap list” and
+their 92 coauthors) and 206,300 sentences.
+
+4.3 Features
+The parameters of our models correspond to
+features categorized into content and style. Ta-
+ble 2 contains a detailed description of the fea-
+ture space we are considering. We tried to make
+a clear distinction between content and style
+features, but we acknowledge that some fea-
+tures can be regarded as capturing both content
+and style (e.g. character n-grams).
+
+5 Results
+
+In addition to the two models presented in sec-
+tion 3 we evaluate a paper-level logistic re-
+gression classiﬁer using the same feature set as
+described above. We also present results for
+majority-class baselines.
+
+5.1 Evaluation metrics
+We evaluate paper-level predictions using pre-
+cision@1 and average precision (Manning et
+al., 2008) . Precision@1 is deﬁned as the frac-
+tion of papers where the most likely author
+(ranked highest according to our classiﬁer) is
+
+3These authors include: Alex Pentland, Bernardo Hu-
+berman, Brian Karrer, Johan Ugander, Jon Kleinberg, Jure
+Leskovec, Lada Adamic, and Lars Backstrom (sorted by
+ﬁrst name).
+
+one of the correct co-authors of the paper. Av-
+erage Precision (Manning et al., 2008) comple-
+ments precision@1 in that it captures correct
+predictions beyond the highest-ranked author.
+We also provide numbers for sentence-level
+precision evaluated on the synthetic dataset
+(sentence-level ground truth for real-world data
+is not available).
+
+5.2 Results
+Tables 3 and 4 show our results. We can see
+that aggregated predictions outperform paper-
+level predictions in some cases. This is mainly
+due to the mixing issue discussed in section
+3.1. All our models use L2 regularization with
+the regularization parameter optimized using 5-
+fold cross validation.
+It is interesting to note
+that even though sentence-level precision is rel-
+atively low, aggregating the sentence predic-
+tions leads to good paper-level predictions.
+
+5.3 Discussion
+This section discusses our ﬁnding and speciﬁ-
+cally investigates why sentence-level models do
+not outperform paper-level models in all cases.
+First, we recognize basic assumptions of our
+models: We assume everyone writes something
+(). Obviously this might not hold in the real-
+world since all authors might do something but
+not all might contribute writing. Given that
+we assign all sentences in a paper as positive
+examples to each paper author, in a way, we
+assume uniform distribution of author contri-
+butions. When lacking good negative exam-
+ples we might fail to reject many sentences for
+an author thereby overestimating their contri-
+bution. Future work should make use of scien-
+tiﬁc publications with annotation on sentence-
+or paragraph-level to investigate this.
+
+Second, we assume that each sentence is
+written by a single author but recognize that
+
+Type
+Feature Name
+Content Word N-grams
+
+Character N-grams
+Stylistic Character unigrams
+
+POS tag N-grams
+
+Function word N-grams
+
+Lengths
+
+Sentence start
+
+Transition words
+
+Punctuation sequence
+
+Sentence shape
+
+Description
+Unigrams, bigrams, and trigrams of all
+words.
+Bigrams and trigrams of characters.
+Unigrams of characters.
+Unigrams and bigrams of POS tags
+(tagged by NLTK default Penn Tree-
+bank POS tagger).
+unigrams, bigrams, and trigrams of
+function words.
+Sentence length and average word
+length of each sentence.
+First word in sentence if it is a function
+word.
+First word after a punctuation if it is a
+function word.
+Concatenation of all the punctuations in
+a sentence.
+Punctuation sequence and number of
+words (“M” if more than 3) between
+each two punctuations.
+
+Table 2: Features
+
+Examples
+“a distance matrix”, “quartet
+topologies embedded”
+“NWD”, “Ref”
+‘%’, ‘{’, ‘?’, ‘α’
+DT NN, PRP VBP, -LRB- NN
+
+“under our”, “but all the”
+
+81 chars, 17 words, average
+word length=4.7
+“We”, “It”, “However”
+
+“However, we observe” would
+give the feature “we”.
+“.”, “,.”, “,;,.”, “,().”
+
+“3,M;2,M.”
+
+Precision@1
+
+Average Precision
+
+Sentence-level precision
+
+Majority class
+
+0.04
+0.04
+0.04
+
+Paper-level
+
+0.93
+0.69
+
+-
+
+LR sentence
+
+0.97
+0.85
+0.17
+
+EM sentence
+
+0.99
+0.86
+0.20
+
+Table 3: Experimental results on the synthetic dataset
+
+multiple authors could have contributed to its
+writing. Our toy dataset was generated from
+single-author papers that presumably were
+written by its single author but this assumption
+might not hold on real-world papers.
+
+only contribute a single vote among many. In
+contrast, such features could very strongly in-
+ﬂuence paper-level predictions. Future work
+could investigate hybrid approaches that aim at
+the best of both worlds.
+
+Third, while the sentence-level perspective
+has clear advantages (see Section 3.1) we must
+acknowledge some limitations of the proposed
+approach. Since we aggregate sentence-level
+predictions by voting to paper-level predictions,
+even when a sentence gives away authorship
+(e.g. by an obvious self-citation) this would
+
+Fourth, assigning single authors to sentences
+and aggregating these hard votes to paper-level
+predictions could be improved. For instance,
+one might one want to use high-conﬁdence
+votes. In our empirical evaluations we ﬁnd that
+this does not lead to signiﬁcant performance
+improvements. For most sentences many au-
+
+Precision@1
+
+Average Precision
+
+Sentence-level precision
+
+Majority class
+
+0.02
+0.04
+
+-
+
+Paper-level
+
+0.35
+0.41
+
+-
+
+LR sentence
+
+0.30
+0.34
+
+-
+
+EM sentence
+
+0.27
+0.31
+
+-
+
+Table 4: Experimental results on the real-world dataset
+
+thors will have a high likelihood since most
+sentences do not contain very unique and dis-
+criminative features. Based on more common
+features, e.g.
+character n-grams, many au-
+thors will be assigned a high-likelihood. One
+could address this by casting a vote if and only
+if the ﬁrst ranked author is signiﬁcantly more
+likely than the second ranked author. We also
+ran experiments in which we assigned a sen-
+tence to multiple authors. While this leads to
+more stability across EM iterations we do not
+always ﬁnd signiﬁcant performance improve-
+ments over the paper-level model (on the real-
+world dataset).
+
+6 Future Work
+
+Future work should investigate the impact of in-
+dividual features on the predictive performane
+of our author models. We also hypothesize
+that higher-level knowledge such as citations,
+co-authorship correlation, author order, sen-
+tence sequence order, and domain knowledge
+in scientiﬁc writing is likely to improve perfor-
+mance signiﬁcantly. We performed initial ex-
+periments using a Conditional Random Field
+(CRF) model with promising results.
+
+To better understand the performance gap be-
+tween paper-level and sentence-level models on
+the real-world dataset, error analysis using a
+real-world dataset with ground truth annotation
+on sentence level should be performed.
+
+Another line for future work is to investigate
+the impact of author pool size to the task: how
+many papers for each author do we need to train
+
+a good model for an author? How does increas-
+ing the number of authors affect the difﬁculty
+for prediction?
+
+7 Conclusion
+
+In this paper, we introduce the novel problem
+of authorship attribution in multi-authored doc-
+uments, and focus on scientiﬁc publications.
+
+A core challenge in this setting is the lack of
+ground truth of which authors write which parts
+of the publication. To address this challenge,
+we propose and evaluate different models in-
+cluding (1) paper-level logistic regression, (2)
+sentence-level logistic regression models along
+with different aggregation frameworks, and (3)
+an Expectation-Maximization technique to fur-
+ther reﬁne author models. We also propose a
+novel supervision method to obtain training ex-
+amples in the presence of ambiguous author-
+ship labels.
+
+We devise a set of stylistic features as well as
+content-based features, and ﬁnd that paper au-
+thors can be predicted with signiﬁcant accuracy
+by exploiting authors’ stylistic idiosyncrasies.
+Based on our evaluation on a synthetic
+dataset as well as a real-world dataset, we
+conclude several results:
+(1) in some cases
+sentence-level models can lead to signiﬁcant
+performance improvements.
+(2) We are able
+to identify authors with high accuracy demon-
+strating a tenfold improvement over the major-
+ity class baseline.
+
+Our results challenge the notion that simply
+removing names from a paper submission en-
+
+Authorship Attribution in Multi-author Documents
+
+Tim Althoff, Denny Britz, Zifei Shan
+
+Department of Computer Science, Stanford University
+
+{althoff, dbritz, zifei}@cs.stanford.edu
+
+Abstract
+
+Authorship attribution, the task of iden-
+tifying the author of a document, has
+been applied to works of historical
+value such as Shakespeare’s plays or
+the political Federalist papers but is
+still highly signiﬁcant today. We in-
+troduce the novel problem of author-
+ship attribution in multi-authored doc-
+uments and focus on scientiﬁc pub-
+lications. Multi-authored documents
+present hard challenges for authorship
+attribution. We propose several ideas
+how these can be addressed and eval-
+uate when such models perform well.
+To this end we present a sentence-
+based prediction model that also allows
+to estimate which sentences were con-
+tributed by which author. We demon-
+strate using a stylometric approach that
+paper authors can be predicted with sig-
+niﬁcant accuracy by exploiting authors’
+stylistic idiosyncrasies. This challenges
+the assumption that simply removing
+names from a paper submission ensures
+anonymity in a double-blind process.
+Introduction
+
+1
+Authorship attribution, the science of identify-
+ing the rightful author of a document, is a prob-
+
+lem of long-standing history. The main idea be-
+hind statistically or computationally supported
+authorship attribution is that by measuring tex-
+tual features, we can distinguish between texts
+written by different authors.
+
+Identifying the author of a document also has
+modern applications such as identifying and
+linking users across online communities or de-
+tecting fraudulent transactions and imperson-
+ation attacks.
+
+Thus far, work has focused on predicting
+authors of single-authored documents such as
+plays (Mendenhall, 1887; Matthews and Mer-
+riam, 1993; Merriam and Matthews, 1994), po-
+litical essays (Mosteller and Wallace, 1964), or
+blog posts (Narayanan et al., 2012). In contrast,
+this paper introduces the problem of authorship
+attribution in multi-authored documents such as
+academic research papers. To the best of our
+knowledge, this problem has never been tack-
+led before.
+
+Many computer science conferences employ
+a double-blind submission process, relying on
+the assumption that identifying the authors of
+submitted papers is impossible at at least im-
+practical. We challenge this notion by present-
+ing an approach that is able to identify the au-
+thors of anonymous papers with signiﬁcant ac-
+curacy by exploiting authors’ stylistic idiosyn-
+crasies.
+
+Identifying the authors of multi-authored
+documents presents new challenges. Since it
+is unclear which author contributed which part
+of a document, we lack ground truth that could
+be used to build a model for each author. Em-
+ploying a document-level perspective as done
+in previous work may confuse idiosyncrasies
+of several authors (see Section 3.1). We pro-
+pose employing a sentence-level perspective in
+which we predict an author for each individ-
+ual sentence and then aggregate those to paper-
+level author predictions. We empirically eval-
+uate all approaches on both synthetic and real
+world data and discuss where such techniques
+might fail.
+
+2 Related Work
+
+A large body of research exists on attributing
+authorship on the document level. The pioneer-
+ing study of Mendenhall (Mendenhall, 1887)
+in the 19th century marks the ﬁrst attempt to
+quantify writing style on the plays of Shake-
+speare, which later was followed by statisti-
+cal studies by Yule (Yule, 1939; Yule, 1944)
+and Zipf (Zipf, 1932). Recent approaches
+can broadly be categorized into varying among
+the dimensions of feature selection, model se-
+lection, and candidate selection (Stamatatos,
+2009). Features can be divided into lexical
+(token- and word features), character (char-
+acter n-grams), syntactic (POS tags, phrase
+structure), semantic (synonymous and depen-
+dencies) and application-speciﬁc features (Sta-
+matatos, 2009). More sophisticated features
+such as local histograms (Escalante et al., 2011)
+and grammatical errors
+(Koppel and Schler,
+2003) have also been explored. Authorship at-
+tribution approaches taking into account only
+self-citations often perform well
+(Hill and
+Provost, 2003) compared to their supervised
+
+counterparts.
+
+A variety of supervised and unsupervised
+Machine Learning methods have been applied
+to the problem of authorship attribution (Sta-
+matatos, 2009). Simple similarity-based mod-
+els (nearest-neighbors) also perform surpris-
+ingly well (Koppel et al., 2012) and often out-
+perform more “sophisticated” supervised clas-
+siﬁers such as SVMs (Narayanan et al., 2012).
+The size of the candidate author set is another
+important dimension and only few researchers
+have applied attribution models to web-scale
+data (Narayanan et al., 2012).
+
+Predicting authors in multi-authored scien-
+tiﬁc publications has been out of focus of the
+scientiﬁc community thus far (to be best of our
+knowledge). However, some work has looked
+at using scientiﬁc publications to predict gen-
+der (Sarawgi et al., 2011; Bergsma et al., 2012)
+and whether or not the publication was written
+by a native speaker or submitted to a workshop
+instead of a conference (Bergsma et al., 2012).
+
+3 Approach
+
+3.1 Author mixing
+
+One key drawback of employing a paper-level
+perspective on authorship attribution is that it
+might fail to disentangle different stylistic in-
+ﬂuences and falsely attribute the paper to an in-
+correct author. Let A and B be the correct au-
+thors of a paper who have quite different styles
+of writing. Thus, A has a low probability of
+actually writing B’s sentences and vice versa.
+Then, an incorrect author C who stylistically re-
+sembles both A and B in some way might actu-
+ally have a higher probability of being a paper
+author than A or B. We coin this issue “author
+mixing”.
+
+3.2 Notation
+Our corpus (P, A) consists of a set of papers
+P = {p1, . . . , pN} and a set of authors A =
+{a1, . . . , aK}. Each paper pi is divided into
+j ∈ pi that we assume were written
+sentences si
+by a single author authors(si
+j) = ak. While
+we assume that a sentence is written by a single
+author we do not actually observe author labels
+on sentence level. We only observe paper level
+authors and assume that the sentence author
+is one of the paper authors. Mathematically,
+given paper level annotation authorp(pi) =
+{a1, a7, a9} we assume
+
+∀si
+
+j ∈ pi : authors(si
+
+j) ∈ authorp(pi)
+
+is to learn to differentiate author
+Our goal
+styles from the ambiguous ground truth labels
+authorp such that we can assign each sentence
+in a paper to a single author.
+
+We represent this mapping from sentence to
+author as a matrix M that, for all sentences,
+contains the single author that is believed to
+have written that sentence, e.g. M (si
+j) =
+ak. The authors’ individual styles are cap-
+tured through parameters θ = (θ1, . . . , θK) that
+includes an independent parameter vector for
+each author ak ∈ A.
+3.3 Sentence authorship model
+The core of our model describes how likely
+a given author a is to have generated a given
+sentence s, p(a|s). We represent a sentence
+through features F (s) ∈ Rn (for more details
+on our features please refer to section 4.3). We
+use the following logit model:
+
+p(a|s) =
+
+=
+
+logit−1((cid:104)θa, F (s)(cid:105))
+1 + exp(−(cid:104)θa, F (s)(cid:105) )
+
+1
+
+Figure 1: Training procedure considering co-
+author negative examples in addition to random
+negative examples
+
+Note that this model formulation is equivalent
+to a log-linear model:
+log p(authors(s) = a|s) = (cid:104)θa, F (s)(cid:105)−log Z
+where Z is a normalizing constant
+
+Z = 1 + exp((cid:104)θa, F (s)(cid:105)).
+
+Further note that we have K of these models,
+
+one for each author.
+
+3.4 Learning to differentiate author styles
+
+from ambiguous labels
+
+Let
+
+A core challenge in learning such logit models
+is that we lack sentence-level author labels. As
+described above, we only observe paper level
+j) ∈ authorp(pi)
+author labels, i.e. authors(si
+but we have no basis for assuming any concrete
+author yet.
+the
+be
+authorp(pi) = {a1, a2}. To train a model
+for author a1 we need both positive examples
+(sentences that a1 did write) and negative
+example (sentences that a1 did not write).
+j ∈ pi we do not know
+For any sentence si
+whether it was written by a1 or a2, i.e. we have
+ambigious sentence labels. Negative examples
+
+authors
+
+paper
+
+of
+
+a
+
+pi
+
+Visualizing	  training	  examples	  for	  author	  ak	  ak	  only	  ak	  or	  co-­‐author(ak)	  co-­‐author(ak)	  	  but	  not	  ak	  not	  ak	  and	  not	  co-­‐author(ak)	  Decision	  boundary	  	  accoun=ng	  for	  	  coauthors	  Standard	  decision	  boundary	  are much easier to come by, sentences from
+any paper that a1 did not co-author would
+provide true negative examples.
+
+Since we have no basis for assuming, a pri-
+ori, that sentence si
+j was deﬁnitly written by ei-
+ther a1 or a2 we include all sentences that a1
+might have written as positive examples when
+training an author model for a1. Obviously, this
+will include false positive examples that a2 ac-
+tually wrote and we need to make sure that the
+model does not only capture the combined style
+of a1 and a2. To this end, we propose to care-
+fully select negative examples that differentiate
+a1’s style from that of a2. We can achieve this
+by including positive examples from a2 in as
+negative examples for a1.
+In fact, we do not
+only include but positive examples from all co-
+authors of a1. This idea is visualized in Figure
+1.
+
+In the following, we describe this idea more
+formally. We denote the set of all coauthors of
+a given author ak by
+
+coauthor(ak) = {al ∈ A | ∀p ∈ P :
+al ∈ authorp(p) ⇒ ak ∈ authorp(p)}
+
+Formally, we use the following set of positive
+examples for ak:
+POS(ak) = {si
+
+j ∈ pi | ak ∈ authorp(pi)}
+
+3.5 Reﬁning author models through
+
+Expectation Maximization
+
+Modeling authorship on sentence level gives
+us the opportunity to further reﬁne our author
+models (this is not possible on paper level). The
+approach described above uses all sentences
+that could possibly have been written by au-
+thor ak as positive examples (recall POS(ak)).
+However, this will include many sentences that
+were actually written by one of ak’s coauthors.
+Based on our conﬁdence about which sentences
+were likely written by ak we can ﬁlter the pos-
+itive examples to yield a cleaner set of positive
+examples for ak. We now formalize this intu-
+ition.
+
+For the likelihood of the full corpus (P, A)
+
+we treat each sentence independently:
+
+(cid:89)
+
+(cid:89)
+
+pi∈P
+
+j∈pi
+si
+
+P (M, θ|P, A) =
+
+p(M (si
+
+j)|si
+j).
+
+The parameter inference problem then be-
+
+comes
+ˆM , ˆθ = argmaxM,θ P (M, θ|P, A) − Ω(M, θ),
+where Ω(M, θ) is a regularizer on the parame-
+ters to avoid overﬁtting.
+
+Since this optimization depends on both M
+and θ we proceed by coordinate ascent on
+(M, θ), i.e. by alternately optimizing
+
+And the following set of negative examples for
+ak:
+NEG(ak) = {si
+
+j ∈ pi | ∃al ∈ coauthor(ak) :
+al ∈ authorp(pi) ∧ ak /∈ authorp(pi)}
+
+and
+
+M i = argmaxM P (M, θi|A, P )
+
+θi+1 = argmaxθ P (M i, θ|A, P )
+
+We further add random sentences to NEG(ak)
+since authors have a varying number of co-
+authors and those with few would end up with
+very few negative examples otherwise.
+
+until convergence, i.e. until M i differs from
+M i−1 on less than a prespeciﬁed number of
+sentences (alternatively, one can alternate for a
+constant number of iterations).
+
+Being a local optimization procedure, co-
+ordinate ascent
+is sensitive to initialization.
+Therefore, we initialize the style parameters for
+each author θ0 by training independent logis-
+tic regression models using the procedure de-
+scribed in Section 3.4.
+
+Optimizing for M then is a simple inference
+step where we dependently assign each sen-
+tence to the most likely possible author:
+
+M (si
+
+j) = argmaxa p(a|si
+
+j, θ)
+
+Based on this assignment, optimizing for θ
+then becomes estimating K independent logis-
+tic regression models for all authors based on
+the assignment M.
+
+3.6 Predicting paper authors from
+
+sentence authors
+
+Our proposed model gives us predictions on
+sentence-level M (si
+j). While those sentence-
+level predictions are interesting in its own right
+(e.g.
+to estimate contribution of different au-
+thors) we ultimately want to predict authors
+on paper-level. To this end, we aggregate our
+sentence-level predictions to paper level predic-
+j vote for its
+tions by having each sentence si
+most likely author (namely, M (si
+j)).
+
+Compared to this hard voting scheme we also
+experimented with a soft voting scheme where
+each author gets a fractional vote depending on
+their conﬁdence to have written this particular
+sentence. However, empirically we found that
+soft-voting across all sentences of a paper suf-
+fers from the same problems that paper-level
+predictions do (see Section 3.1). Hard voting
+performed best in most cases.
+
+4 Experimental Setup
+
+Synthetic
+dataset
+108
+360
+78,577
+
+Real-world
+dataset
+100
+234
+206,300
+
+Authors
+
+Publications
+Sentences
+
+Table 1: Descriptive statistics of the datasets
+
+publications available through arXiv. The com-
+plete set of PDF documents includes about
+700,000 publications. We converted all PDF
+documents into raw text ﬁles using Apache
+Tika1. For documents in either one of the two
+datasets we produced sentence tokenizations
+and annotations using Stanford CoreNLP2 on
+the converted text ﬁles. The datasets are sum-
+marized in Table 1.
+
+4.1 Synthetic data
+
+In order to evaluate our sentence-level predic-
+tions we generated an synthetic dataset with
+sentence-level labels as follows. Let A be the
+set of authors such that every author a ∈ A
+has more than 10 single-authored papers and
+more than 120 paragraphs with at least 500
+words. Let Pa be the set of paragraphs of more
+than 500 words written by a ∈ A. We gener-
+ate a document by randomly picking 3 authors
+a1, a2, a3 ∈ A and sampling 40 paragraphs
+from Pa1, Pa2, Pa3 without replacement. We
+repeat this procedure until not enough para-
+graphs are left to generate a full document. This
+procedure yields a corpus of 108 authors, 360
+publications, 14,027 paragraphs and 78,577
+sentences. Each author gets approximately the
+same number of publications and paragraphs.
+
+We evaluate our hypothesis on both synthetic
+and real-world data. We obtained scientiﬁc
+
+1http://tika.apache.org/
+2http://nlp.stanford.edu/software/corenlp.shtml
+
+4.2 Real-world data
+To test our model in the real world, we sub-
+sample the arXiv dataset. We are interested in
+distinguishing authors in similar ﬁelds, there-
+fore we start from a list of authors (“bootstrap
+list”) working in the ﬁeld of social and infor-
+mation networks.3 We sample a set of papers
+written by any of these authors and their coau-
+thors, controlling each author to have at most
+10 papers. We get a corpus of 234 papers, 100
+authors (the 8 authors in the “bootstrap list” and
+their 92 coauthors) and 206,300 sentences.
+
+4.3 Features
+The parameters of our models correspond to
+features categorized into content and style. Ta-
+ble 2 contains a detailed description of the fea-
+ture space we are considering. We tried to make
+a clear distinction between content and style
+features, but we acknowledge that some fea-
+tures can be regarded as capturing both content
+and style (e.g. character n-grams).
+
+5 Results
+
+In addition to the two models presented in sec-
+tion 3 we evaluate a paper-level logistic re-
+gression classiﬁer using the same feature set as
+described above. We also present results for
+majority-class baselines.
+
+5.1 Evaluation metrics
+We evaluate paper-level predictions using pre-
+cision@1 and average precision (Manning et
+al., 2008) . Precision@1 is deﬁned as the frac-
+tion of papers where the most likely author
+(ranked highest according to our classiﬁer) is
+
+3These authors include: Alex Pentland, Bernardo Hu-
+berman, Brian Karrer, Johan Ugander, Jon Kleinberg, Jure
+Leskovec, Lada Adamic, and Lars Backstrom (sorted by
+ﬁrst name).
+
+one of the correct co-authors of the paper. Av-
+erage Precision (Manning et al., 2008) comple-
+ments precision@1 in that it captures correct
+predictions beyond the highest-ranked author.
+We also provide numbers for sentence-level
+precision evaluated on the synthetic dataset
+(sentence-level ground truth for real-world data
+is not available).
+
+5.2 Results
+Tables 3 and 4 show our results. We can see
+that aggregated predictions outperform paper-
+level predictions in some cases. This is mainly
+due to the mixing issue discussed in section
+3.1. All our models use L2 regularization with
+the regularization parameter optimized using 5-
+fold cross validation.
+It is interesting to note
+that even though sentence-level precision is rel-
+atively low, aggregating the sentence predic-
+tions leads to good paper-level predictions.
+
+5.3 Discussion
+This section discusses our ﬁnding and speciﬁ-
+cally investigates why sentence-level models do
+not outperform paper-level models in all cases.
+First, we recognize basic assumptions of our
+models: We assume everyone writes something
+(). Obviously this might not hold in the real-
+world since all authors might do something but
+not all might contribute writing. Given that
+we assign all sentences in a paper as positive
+examples to each paper author, in a way, we
+assume uniform distribution of author contri-
+butions. When lacking good negative exam-
+ples we might fail to reject many sentences for
+an author thereby overestimating their contri-
+bution. Future work should make use of scien-
+tiﬁc publications with annotation on sentence-
+or paragraph-level to investigate this.
+
+Second, we assume that each sentence is
+written by a single author but recognize that
+
+Type
+Feature Name
+Content Word N-grams
+
+Character N-grams
+Stylistic Character unigrams
+
+POS tag N-grams
+
+Function word N-grams
+
+Lengths
+
+Sentence start
+
+Transition words
+
+Punctuation sequence
+
+Sentence shape
+
+Description
+Unigrams, bigrams, and trigrams of all
+words.
+Bigrams and trigrams of characters.
+Unigrams of characters.
+Unigrams and bigrams of POS tags
+(tagged by NLTK default Penn Tree-
+bank POS tagger).
+unigrams, bigrams, and trigrams of
+function words.
+Sentence length and average word
+length of each sentence.
+First word in sentence if it is a function
+word.
+First word after a punctuation if it is a
+function word.
+Concatenation of all the punctuations in
+a sentence.
+Punctuation sequence and number of
+words (“M” if more than 3) between
+each two punctuations.
+
+Table 2: Features
+
+Examples
+“a distance matrix”, “quartet
+topologies embedded”
+“NWD”, “Ref”
+‘%’, ‘{’, ‘?’, ‘α’
+DT NN, PRP VBP, -LRB- NN
+
+“under our”, “but all the”
+
+81 chars, 17 words, average
+word length=4.7
+“We”, “It”, “However”
+
+“However, we observe” would
+give the feature “we”.
+“.”, “,.”, “,;,.”, “,().”
+
+“3,M;2,M.”
+
+Precision@1
+
+Average Precision
+
+Sentence-level precision
+
+Majority class
+
+0.04
+0.04
+0.04
+
+Paper-level
+
+0.93
+0.69
+
+-
+
+LR sentence
+
+0.97
+0.85
+0.17
+
+EM sentence
+
+0.99
+0.86
+0.20
+
+Table 3: Experimental results on the synthetic dataset
+
+multiple authors could have contributed to its
+writing. Our toy dataset was generated from
+single-author papers that presumably were
+written by its single author but this assumption
+might not hold on real-world papers.
+
+only contribute a single vote among many. In
+contrast, such features could very strongly in-
+ﬂuence paper-level predictions. Future work
+could investigate hybrid approaches that aim at
+the best of both worlds.
+
+Third, while the sentence-level perspective
+has clear advantages (see Section 3.1) we must
+acknowledge some limitations of the proposed
+approach. Since we aggregate sentence-level
+predictions by voting to paper-level predictions,
+even when a sentence gives away authorship
+(e.g. by an obvious self-citation) this would
+
+Fourth, assigning single authors to sentences
+and aggregating these hard votes to paper-level
+predictions could be improved. For instance,
+one might one want to use high-conﬁdence
+votes. In our empirical evaluations we ﬁnd that
+this does not lead to signiﬁcant performance
+improvements. For most sentences many au-
+
+Precision@1
+
+Average Precision
+
+Sentence-level precision
+
+Majority class
+
+0.02
+0.04
+
+-
+
+Paper-level
+
+0.35
+0.41
+
+-
+
+LR sentence
+
+0.30
+0.34
+
+-
+
+EM sentence
+
+0.27
+0.31
+
+-
+
+Table 4: Experimental results on the real-world dataset
+
+thors will have a high likelihood since most
+sentences do not contain very unique and dis-
+criminative features. Based on more common
+features, e.g.
+character n-grams, many au-
+thors will be assigned a high-likelihood. One
+could address this by casting a vote if and only
+if the ﬁrst ranked author is signiﬁcantly more
+likely than the second ranked author. We also
+ran experiments in which we assigned a sen-
+tence to multiple authors. While this leads to
+more stability across EM iterations we do not
+always ﬁnd signiﬁcant performance improve-
+ments over the paper-level model (on the real-
+world dataset).
+
+6 Future Work
+
+Future work should investigate the impact of in-
+dividual features on the predictive performane
+of our author models. We also hypothesize
+that higher-level knowledge such as citations,
+co-authorship correlation, author order, sen-
+tence sequence order, and domain knowledge
+in scientiﬁc writing is likely to improve perfor-
+mance signiﬁcantly. We performed initial ex-
+periments using a Conditional Random Field
+(CRF) model with promising results.
+
+To better understand the performance gap be-
+tween paper-level and sentence-level models on
+the real-world dataset, error analysis using a
+real-world dataset with ground truth annotation
+on sentence level should be performed.
+
+Another line for future work is to investigate
+the impact of author pool size to the task: how
+many papers for each author do we need to train
+
+a good model for an author? How does increas-
+ing the number of authors affect the difﬁculty
+for prediction?
+
+7 Conclusion
+
+In this paper, we introduce the novel problem
+of authorship attribution in multi-authored doc-
+uments, and focus on scientiﬁc publications.
+
+A core challenge in this setting is the lack of
+ground truth of which authors write which parts
+of the publication. To address this challenge,
+we propose and evaluate different models in-
+cluding (1) paper-level logistic regression, (2)
+sentence-level logistic regression models along
+with different aggregation frameworks, and (3)
+an Expectation-Maximization technique to fur-
+ther reﬁne author models. We also propose a
+novel supervision method to obtain training ex-
+amples in the presence of ambiguous author-
+ship labels.
+
+We devise a set of stylistic features as well as
+content-based features, and ﬁnd that paper au-
+thors can be predicted with signiﬁcant accuracy
+by exploiting authors’ stylistic idiosyncrasies.
+Based on our evaluation on a synthetic
+dataset as well as a real-world dataset, we
+conclude several results:
+(1) in some cases
+sentence-level models can lead to signiﬁcant
+performance improvements.
+(2) We are able
+to identify authors with high accuracy demon-
+strating a tenfold improvement over the major-
+ity class baseline.
+
+Our results challenge the notion that simply
+removing names from a paper submission en-
+
+Thomas Corwin Mendenhall.
+
+acteristic curves of composition.
+(214S):237–246.
+
+1887. The char-
+Science,
+
+Thomas VN Merriam and Robert AJ Matthews.
+1994. Neural computation in stylometry ii:
+An application to the works of shakespeare and
+marlowe. Literary and Linguistic Computing,
+9(1):1–6.
+
+Frederick Mosteller and David Wallace. 1964. In-
+ference and disputed authorship: The federalist.
+
+Arvind Narayanan, Hristo Paskov, Neil Zhenqiang
+Gong, John Bethencourt, Emil Stefanov, Eui
+Chul Richard Shin, and Dawn Song. 2012. On
+the feasibility of internet-scale author identiﬁca-
+In Security and Privacy (SP), 2012 IEEE
+tion.
+Symposium on, pages 300–314. IEEE.
+
+Ruchita Sarawgi, Kailash Gajulapalli, and Yejin
+Choi. 2011. Gender attribution: tracing stylo-
+metric evidence beyond topic and genre. In Pro-
+ceedings of the Fifteenth Conference on Compu-
+tational Natural Language Learning, pages 78–
+86.
+
+Efstathios Stamatatos. 2009. A survey of modern
+authorship attribution methods. Journal of the
+American Society for information Science and
+Technology, 60(3):538–556.
+
+G Udny Yule.
+
+1939. On sentence-length as a
+statistical characteristic of style in prose: With
+application to two cases of disputed authorship.
+Biometrika, 30(3-4):363–390.
+
+George Udny Yule. 1944. The statistical study of
+
+literary vocabulary. CUP Archive.
+
+George Kingsley Zipf. 1932. Selected studies of
+
+the principle of relative frequency in language.
+
+sures anonymity in a double-blind submission
+process and hope that this work can serve as a
+basis for future research on authorship attribu-
+tion in multi-authored documents.
+
+References
+Shane Bergsma, Matt Post, and David Yarowsky.
+Stylometric analysis of scientiﬁc arti-
+2012.
+In Proceedings of the 2012 Conference
+cles.
+of the North American Chapter of the Associa-
+tion for Computational Linguistics: Human Lan-
+guage Technologies, pages 327–337. Association
+for Computational Linguistics.
+
+2011.
+
+Hugo Jair Escalante, Thamar Solorio, and Manuel
+Montes-y G´omez.
+Local histograms
+of character n-grams for authorship attribution.
+In Proceedings of the 49th Annual Meeting of
+the Association for Computational Linguistics:
+Human Language Technologies-Volume 1, pages
+288–298. Association for Computational Lin-
+guistics.
+
+Shawndra Hill and Foster Provost. 2003. The myth
+of the double-blind review?: author identiﬁca-
+tion using only citations. ACM SIGKDD Explo-
+rations Newsletter, 5(2):179–184.
+
+Moshe Koppel and Jonathan Schler. 2003. Exploit-
+ing stylistic idiosyncrasies for authorship attribu-
+In Proceedings of IJCAI’03 Workshop on
+tion.
+Computational Approaches to Style Analysis and
+Synthesis, volume 69, pages 72–80. Citeseer.
+
+Moshe Koppel, Jonathan Schler, Shlomo Argamon,
+and Yaron Winter. 2012. The fundamental prob-
+lem of authorship attribution. English Studies,
+93(3):284–291.
+
+Christopher D Manning, Prabhakar Raghavan, and
+Hinrich Sch¨utze. 2008. Introduction to informa-
+tion retrieval, volume 1. Cambridge university
+press Cambridge.
+
+Robert AJ Matthews and Thomas VN Merriam.
+1993. Neural computation in stylometry i: An
+application to the works of shakespeare and
+Literary and Linguistic Computing,
+ﬂetcher.
+8(4):203–209.
+
+

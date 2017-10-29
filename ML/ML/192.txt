@@ -1,0 +1,1828 @@
+CS229 Final Project - Medical Record Understanding
+
+Justin Fu
+
+Daniel Thirman
+
+justinfu@stanford.edu
+
+dthirman@stanford.edu
+
+1
+
+Introduction and Background
+
+After completing an examination or treatment
+with a patient, doctors record detailed notes known
+as medical records. These records typically in-
+clude a summary of past medical history, medica-
+tions, a brief hospital course, discharge diagnoses,
+etc.
+
+The ICD coding system is a relatively compre-
+hensive system with support for most symptoms,
+operations, and diseases (the ICD-9 system has
+over 17,000 codes, and the ICD-10 system has
+over 100,000). ICD codes are important because
+they are a computer-readable summary that is in-
+valuable for collecting statistics, and hospitals use
+these codes to predict risk factors, mortality rates,
+etc.
+
+The problem of automatic ICD coding gained
+signiﬁcant interest in the biomedical informatics
+research community following the release of the
+”2007 Computational Medicine Center Interna-
+tional Challenge: Classifying Clinical Free Text
+Using Natural Language Processing”.
+In partic-
+ular, two styles of approaches were popular, rule-
+based algorithms (such as [5]), and machine learn-
+ing algorithms. Rule-based methods were found to
+be surprisingly effective [1].
+
+Previous work on using text-based machine
+learning algorithms have typically relied on using
+bag-of-words features and expert-crafted rules [4].
+However, such methods have been shown to scale
+poorly with the large label space [3], and no re-
+sults to date have achieved a practically usable ac-
+curacy on this problem. Recent work has applied
+intuitions about the structure of the problem, such
+as using hierarchical SVMs [2] to leverage the fact
+that the many labels are speciﬁc instantiations of
+others.
+
+The goal of our project is to understand the er-
+rors made by previous work on this problem, dis-
+cover additional structure in the data, and leverage
+
+Figure 1: The distribution of codes on the MIMIC
+III dataset. The x-axis is the number of codes, and
+the y-axis is the percentage of coverage over the
+dataset.
+
+that to build a better model and improve accuracy.
+
+2 Dataset
+We used the MIMIC III dataset for our project,
+which contains roughly 50,000 emergency room
+discharge records from a single hospital. These
+notes were hand-labeled with ICD-9 codes by 3
+experts (two hospitals and a company) and then
+aggregated together. A single note typically has
+10-15 codes.
+
+There are several well-known challenges with
+existing medical record datasets, some of which
+we do not attempt to tackle in this project:
+
+1. Label distribution: The distribution of la-
+bels is incredibly lopsided, since only a small
+minority of symptoms and diseases are com-
+mon.
+In our dataset, a total of 6985 la-
+bels were present, but the ﬁrst 500 labels ac-
+counted for approximately 80% of all codes,
+and approximately 1500 codes had only 1 ex-
+ample. This distributino is shown in ﬁgure 1.
+
+2. Label noise: ICD codes are known to be very
+noisy [6]. For example, in the cited report,
+
+CS229 Final Project - Medical Record Understanding
+
+Justin Fu
+
+Daniel Thirman
+
+justinfu@stanford.edu
+
+dthirman@stanford.edu
+
+1
+
+Introduction and Background
+
+After completing an examination or treatment
+with a patient, doctors record detailed notes known
+as medical records. These records typically in-
+clude a summary of past medical history, medica-
+tions, a brief hospital course, discharge diagnoses,
+etc.
+
+The ICD coding system is a relatively compre-
+hensive system with support for most symptoms,
+operations, and diseases (the ICD-9 system has
+over 17,000 codes, and the ICD-10 system has
+over 100,000). ICD codes are important because
+they are a computer-readable summary that is in-
+valuable for collecting statistics, and hospitals use
+these codes to predict risk factors, mortality rates,
+etc.
+
+The problem of automatic ICD coding gained
+signiﬁcant interest in the biomedical informatics
+research community following the release of the
+”2007 Computational Medicine Center Interna-
+tional Challenge: Classifying Clinical Free Text
+Using Natural Language Processing”.
+In partic-
+ular, two styles of approaches were popular, rule-
+based algorithms (such as [5]), and machine learn-
+ing algorithms. Rule-based methods were found to
+be surprisingly effective [1].
+
+Previous work on using text-based machine
+learning algorithms have typically relied on using
+bag-of-words features and expert-crafted rules [4].
+However, such methods have been shown to scale
+poorly with the large label space [3], and no re-
+sults to date have achieved a practically usable ac-
+curacy on this problem. Recent work has applied
+intuitions about the structure of the problem, such
+as using hierarchical SVMs [2] to leverage the fact
+that the many labels are speciﬁc instantiations of
+others.
+
+The goal of our project is to understand the er-
+rors made by previous work on this problem, dis-
+cover additional structure in the data, and leverage
+
+Figure 1: The distribution of codes on the MIMIC
+III dataset. The x-axis is the number of codes, and
+the y-axis is the percentage of coverage over the
+dataset.
+
+that to build a better model and improve accuracy.
+
+2 Dataset
+We used the MIMIC III dataset for our project,
+which contains roughly 50,000 emergency room
+discharge records from a single hospital. These
+notes were hand-labeled with ICD-9 codes by 3
+experts (two hospitals and a company) and then
+aggregated together. A single note typically has
+10-15 codes.
+
+There are several well-known challenges with
+existing medical record datasets, some of which
+we do not attempt to tackle in this project:
+
+1. Label distribution: The distribution of la-
+bels is incredibly lopsided, since only a small
+minority of symptoms and diseases are com-
+mon.
+In our dataset, a total of 6985 la-
+bels were present, but the ﬁrst 500 labels ac-
+counted for approximately 80% of all codes,
+and approximately 1500 codes had only 1 ex-
+ample. This distributino is shown in ﬁgure 1.
+
+2. Label noise: ICD codes are known to be very
+noisy [6]. For example, in the cited report,
+
+65% of Alzheimer’s cases were present in the
+notes but not coded, and 5% of cases were
+coded without evidence in the note. Similar
+numbers hold for other diseases.
+
+3 Baseline Model
+
+3.1 Model
+For our baseline model, we used a multi-label,
+multi-class logistic regression model with L1 reg-
+ularization to enforce sparsity of features. We
+implemented our model using Theano and used
+Scipy for optimization.
+
+3.2 Features
+We tried several variations of bag-of-words fea-
+tures, and in the end, we settled on using the SPE-
+CIALIST lexicon as a dictionary containing rel-
+evant words and phrases. Phrases proved to be
+important, for example, the feature ”urinary tract
+infection” is a great feature for the urinary tract in-
+fection, but the individual words are very generic
+and low-precision.
+
+In total,
+
+there were 484,628 phrases we ex-
+tracted from the lexicon, and after ﬁltering by fre-
+quency in our dataset, we ended up with approxi-
+mately 38,556 features.
+
+3.3 Results
+While our entire dataset had 6985 total labels, we
+focused on a small 9-label subset in order to do in-
+depth error analysis. For this subset, we achieved
+an macro-averaged F1 score of 60%. We scaled
+up to 30 labels, this score dropped to 45%. We
+report our results in table 1, and the top 3 features
+for each code in table 2. Unfortunately, we did
+not yet ﬁnd other paper in the literature that uses
+the MIMIC III dataset, but F1 scores in previous
+work have typically ranged from the 80% range on
+10 codes (with hand-engineered features), down to
+about 15% on 700 codes [2].
+
+3.4 Results
+Surprisingly, the features learned were very rea-
+sonable, except for ”Pulmonary Hypertension”,
+which had the lowest training support out of all
+9 labels.
+
+Features learned were typically drug names
+(such as ”Albuterol”, ”Singulair” for Asthma),
+naming variations (such as HCAP, for hospital
+acquired pneumonia), or generally related proce-
+
+dures (such as intubation/extubation for respira-
+tory failure).
+
+3.5 Error Analysis
+We observed several phenomena during our error
+analysis, and we categorized several commonly
+occurring ones. Typically, different codes present
+different types of errors, which means that this
+list is likely incomplete since we only analyzed 9
+codes in-depth.
+3.5.1 Overﬁtting to Noise
+This was one of the most common errors made by
+our model. For false negatives our model typically
+picked up a single strong signal that was correct,
+but it was drowned out by several hundred smaller
+features which summed up to cancel out the cor-
+rect signal (each note has on the order of 300-700
+features ﬁring). A typical false positive looks like
+(in this case, we are trying to predict pneumonia):
+Top Features Weight Bottom Features Weight
+-0.233
+pneumonia
+-0.228
+-0.210
+-0.142
+-0.130
+
+ESLD
+neither
+blastic
+mg oxide
+high normal
+
+2.108
+1.130
+0.837
+0.448
+0.282
+
+levoﬂoxacin
+
+PNA
+
+LLL
+
+lower lobe
+A false positive typically has many some-
+what related (such as ”intubation”/”extubation”
+for acute respiratory failure) or completely unre-
+lated words with small positive scores that sum up
+to a certain threshold. Although we added L1 reg-
+ularization to enforce sparsity, it only zeroed out
+some of the weights and many were still left with
+small ones.
+3.5.2 Label Structure
+ICD-9 codes form a hierarchy, but if a patient has
+some speciﬁc disease such as ”diabetes with renal
+complications”, the doctor does not apply every
+code on the path from the root to the code of inter-
+est. Instead, there are speciﬁc coding guidelines,
+such as only the most speciﬁc code should be used,
+or that certain codes are mutually exclusive. If our
+model predicted diabetes and kidney failure, we
+would be wrong. In our 9 code analysis, we only
+used the most general forms of diseases, and thus,
+we had false positives whenever a more speciﬁc
+form of a disease was present.
+3.5.3 Requires deeper inference/computation
+A large class of these errors arose from test results
+in which the only evidence for a blood-related di-
+agnoses is a low hematocrit (% of red blood cells
+
+CS229 Final Project - Medical Record Understanding
+
+Justin Fu
+
+Daniel Thirman
+
+justinfu@stanford.edu
+
+dthirman@stanford.edu
+
+1
+
+Introduction and Background
+
+After completing an examination or treatment
+with a patient, doctors record detailed notes known
+as medical records. These records typically in-
+clude a summary of past medical history, medica-
+tions, a brief hospital course, discharge diagnoses,
+etc.
+
+The ICD coding system is a relatively compre-
+hensive system with support for most symptoms,
+operations, and diseases (the ICD-9 system has
+over 17,000 codes, and the ICD-10 system has
+over 100,000). ICD codes are important because
+they are a computer-readable summary that is in-
+valuable for collecting statistics, and hospitals use
+these codes to predict risk factors, mortality rates,
+etc.
+
+The problem of automatic ICD coding gained
+signiﬁcant interest in the biomedical informatics
+research community following the release of the
+”2007 Computational Medicine Center Interna-
+tional Challenge: Classifying Clinical Free Text
+Using Natural Language Processing”.
+In partic-
+ular, two styles of approaches were popular, rule-
+based algorithms (such as [5]), and machine learn-
+ing algorithms. Rule-based methods were found to
+be surprisingly effective [1].
+
+Previous work on using text-based machine
+learning algorithms have typically relied on using
+bag-of-words features and expert-crafted rules [4].
+However, such methods have been shown to scale
+poorly with the large label space [3], and no re-
+sults to date have achieved a practically usable ac-
+curacy on this problem. Recent work has applied
+intuitions about the structure of the problem, such
+as using hierarchical SVMs [2] to leverage the fact
+that the many labels are speciﬁc instantiations of
+others.
+
+The goal of our project is to understand the er-
+rors made by previous work on this problem, dis-
+cover additional structure in the data, and leverage
+
+Figure 1: The distribution of codes on the MIMIC
+III dataset. The x-axis is the number of codes, and
+the y-axis is the percentage of coverage over the
+dataset.
+
+that to build a better model and improve accuracy.
+
+2 Dataset
+We used the MIMIC III dataset for our project,
+which contains roughly 50,000 emergency room
+discharge records from a single hospital. These
+notes were hand-labeled with ICD-9 codes by 3
+experts (two hospitals and a company) and then
+aggregated together. A single note typically has
+10-15 codes.
+
+There are several well-known challenges with
+existing medical record datasets, some of which
+we do not attempt to tackle in this project:
+
+1. Label distribution: The distribution of la-
+bels is incredibly lopsided, since only a small
+minority of symptoms and diseases are com-
+mon.
+In our dataset, a total of 6985 la-
+bels were present, but the ﬁrst 500 labels ac-
+counted for approximately 80% of all codes,
+and approximately 1500 codes had only 1 ex-
+ample. This distributino is shown in ﬁgure 1.
+
+2. Label noise: ICD codes are known to be very
+noisy [6]. For example, in the cited report,
+
+65% of Alzheimer’s cases were present in the
+notes but not coded, and 5% of cases were
+coded without evidence in the note. Similar
+numbers hold for other diseases.
+
+3 Baseline Model
+
+3.1 Model
+For our baseline model, we used a multi-label,
+multi-class logistic regression model with L1 reg-
+ularization to enforce sparsity of features. We
+implemented our model using Theano and used
+Scipy for optimization.
+
+3.2 Features
+We tried several variations of bag-of-words fea-
+tures, and in the end, we settled on using the SPE-
+CIALIST lexicon as a dictionary containing rel-
+evant words and phrases. Phrases proved to be
+important, for example, the feature ”urinary tract
+infection” is a great feature for the urinary tract in-
+fection, but the individual words are very generic
+and low-precision.
+
+In total,
+
+there were 484,628 phrases we ex-
+tracted from the lexicon, and after ﬁltering by fre-
+quency in our dataset, we ended up with approxi-
+mately 38,556 features.
+
+3.3 Results
+While our entire dataset had 6985 total labels, we
+focused on a small 9-label subset in order to do in-
+depth error analysis. For this subset, we achieved
+an macro-averaged F1 score of 60%. We scaled
+up to 30 labels, this score dropped to 45%. We
+report our results in table 1, and the top 3 features
+for each code in table 2. Unfortunately, we did
+not yet ﬁnd other paper in the literature that uses
+the MIMIC III dataset, but F1 scores in previous
+work have typically ranged from the 80% range on
+10 codes (with hand-engineered features), down to
+about 15% on 700 codes [2].
+
+3.4 Results
+Surprisingly, the features learned were very rea-
+sonable, except for ”Pulmonary Hypertension”,
+which had the lowest training support out of all
+9 labels.
+
+Features learned were typically drug names
+(such as ”Albuterol”, ”Singulair” for Asthma),
+naming variations (such as HCAP, for hospital
+acquired pneumonia), or generally related proce-
+
+dures (such as intubation/extubation for respira-
+tory failure).
+
+3.5 Error Analysis
+We observed several phenomena during our error
+analysis, and we categorized several commonly
+occurring ones. Typically, different codes present
+different types of errors, which means that this
+list is likely incomplete since we only analyzed 9
+codes in-depth.
+3.5.1 Overﬁtting to Noise
+This was one of the most common errors made by
+our model. For false negatives our model typically
+picked up a single strong signal that was correct,
+but it was drowned out by several hundred smaller
+features which summed up to cancel out the cor-
+rect signal (each note has on the order of 300-700
+features ﬁring). A typical false positive looks like
+(in this case, we are trying to predict pneumonia):
+Top Features Weight Bottom Features Weight
+-0.233
+pneumonia
+-0.228
+-0.210
+-0.142
+-0.130
+
+ESLD
+neither
+blastic
+mg oxide
+high normal
+
+2.108
+1.130
+0.837
+0.448
+0.282
+
+levoﬂoxacin
+
+PNA
+
+LLL
+
+lower lobe
+A false positive typically has many some-
+what related (such as ”intubation”/”extubation”
+for acute respiratory failure) or completely unre-
+lated words with small positive scores that sum up
+to a certain threshold. Although we added L1 reg-
+ularization to enforce sparsity, it only zeroed out
+some of the weights and many were still left with
+small ones.
+3.5.2 Label Structure
+ICD-9 codes form a hierarchy, but if a patient has
+some speciﬁc disease such as ”diabetes with renal
+complications”, the doctor does not apply every
+code on the path from the root to the code of inter-
+est. Instead, there are speciﬁc coding guidelines,
+such as only the most speciﬁc code should be used,
+or that certain codes are mutually exclusive. If our
+model predicted diabetes and kidney failure, we
+would be wrong. In our 9 code analysis, we only
+used the most general forms of diseases, and thus,
+we had false positives whenever a more speciﬁc
+form of a disease was present.
+3.5.3 Requires deeper inference/computation
+A large class of these errors arose from test results
+in which the only evidence for a blood-related di-
+agnoses is a low hematocrit (% of red blood cells
+
+ICD Code
+
+Urinary Tract Infection
+
+Thrombocytopenia
+
+Pneumonia
+
+Acute Resp. Failure
+
+Anemia
+
+Cardiac Arrest
+
+Asthma
+
+Rheumatoid Arthritis
+
+Pulmonary Hypertension
+
+Macro-averaged total
+
+Precision Recall F1 Score Support
+1057
+493
+756
+1173
+884
+209
+354
+112
+56
+5094
+
+0.82
+0.60
+0.59
+0.70
+0.49
+0.63
+0.72
+0.78
+0.06
+0.65
+
+0.75
+0.39
+0.49
+0.71
+0.42
+0.37
+0.47
+0.28
+0.02
+0.56
+
+0.78
+0.47
+0.53
+0.71
+0.45
+0.47
+0.57
+0.41
+0.03
+0.60
+
+Table 1: Test set F1 scores for baseline model.
+
+First
+UTI
+
+Second
+
+Urinary Tract Infection
+
+ICD Code
+
+Urinary Tract Infection
+
+Thrombocytopenia
+
+Pneumonia
+
+Thrombocytopenia
+
+Pneumonia
+
+Acute Resp. Failure
+
+Respiratory Failure
+
+Anemia
+
+Cardiac Arrest
+
+Asthma
+
+Anemia
+Arrest
+Asthma
+
+HIT
+HCAP
+
+Intubation
+Normocytic
+
+PEA
+
+Albuterol
+
+Third
+
+Urinary Tract
+
+Antibody
+
+Hospital Acquired Pneumonia
+
+Extubation
+Dilution
+
+CPR
+
+Singulair
+Arthritis
+Although
+
+Rheumatoid Arthritis
+
+Pulmonary Hypertension
+
+Rheumatoid
+Moderate
+
+Rheumatoid Arthritis
+
+Contrast
+
+Table 2: Top indicators for baseline model.
+
+by volume, for anemia) or low platelet count (for
+thrombocytopenia). For example:
+
+Test Result
+
+PLT SMR-LOW PLT COUNT-84*
+Hematocrit is 28.8; platelets 357.
+
+Diagnosis
+Thrombo.
+Anemia
+Hematocrit of 36; platelet count 183. Thrombo.
+Our model can only pick up on single words,
+and cannot execute logic such as comparing test
+results against a threshold.
+
+Some more difﬁcult errors are ones involving
+judgement of the severity of an illness. Our model
+commonly predicted false positives for ”acute res-
+piratory failure” when the true label was ”acute
+respiratory distress”, since outside of explicitly
+mentioning ”distress” and ”failure”, the two codes
+present similar features. The only difference we
+observed was that the ”failure” cases were more
+severe than the ”distress” cases, and indeed, the
+two codes are mutually exclusive by the ICD-9
+coding guidelines.
+
+3.5.4 Context
+A nonzero amount of our false positives came
+from features ﬁring from the ”Medical History”
+
+section, which for some diseases should not be
+coded. However, for others, such as chronic dis-
+eases (such as rheumatoid arthritis, which is an au-
+toimmune disease which attacks the joints), being
+present in the medical history is enough to justify
+a code.
+
+3.5.5 Multi-word understanding
+In many cases, the only good feature that ﬁres is
+one related to a disease, but not necessarily enough
+to make a decision on its own. For example, the
+following is a sentence from a note coded with
+thrombocytopenia, or low platelet count.
+
+She also had acute platelet drop
+while on balloon pump and heparin.
+”Platelet” is a feature that is obviously relevant
+to thrombocytopenia, but it is common to mention
+it with blood tests and other blood-related com-
+plications, so it is a very low-precision feature.
+However, the phrase ”acute platelet drop” is very
+indicative of thrombocytopenia, especially when
+it is mentioned with heparin, which is an antico-
+agulant that commonly causes platelet levels to
+drop, resulting in heparin-induced thrombocytope-
+
+CS229 Final Project - Medical Record Understanding
+
+Justin Fu
+
+Daniel Thirman
+
+justinfu@stanford.edu
+
+dthirman@stanford.edu
+
+1
+
+Introduction and Background
+
+After completing an examination or treatment
+with a patient, doctors record detailed notes known
+as medical records. These records typically in-
+clude a summary of past medical history, medica-
+tions, a brief hospital course, discharge diagnoses,
+etc.
+
+The ICD coding system is a relatively compre-
+hensive system with support for most symptoms,
+operations, and diseases (the ICD-9 system has
+over 17,000 codes, and the ICD-10 system has
+over 100,000). ICD codes are important because
+they are a computer-readable summary that is in-
+valuable for collecting statistics, and hospitals use
+these codes to predict risk factors, mortality rates,
+etc.
+
+The problem of automatic ICD coding gained
+signiﬁcant interest in the biomedical informatics
+research community following the release of the
+”2007 Computational Medicine Center Interna-
+tional Challenge: Classifying Clinical Free Text
+Using Natural Language Processing”.
+In partic-
+ular, two styles of approaches were popular, rule-
+based algorithms (such as [5]), and machine learn-
+ing algorithms. Rule-based methods were found to
+be surprisingly effective [1].
+
+Previous work on using text-based machine
+learning algorithms have typically relied on using
+bag-of-words features and expert-crafted rules [4].
+However, such methods have been shown to scale
+poorly with the large label space [3], and no re-
+sults to date have achieved a practically usable ac-
+curacy on this problem. Recent work has applied
+intuitions about the structure of the problem, such
+as using hierarchical SVMs [2] to leverage the fact
+that the many labels are speciﬁc instantiations of
+others.
+
+The goal of our project is to understand the er-
+rors made by previous work on this problem, dis-
+cover additional structure in the data, and leverage
+
+Figure 1: The distribution of codes on the MIMIC
+III dataset. The x-axis is the number of codes, and
+the y-axis is the percentage of coverage over the
+dataset.
+
+that to build a better model and improve accuracy.
+
+2 Dataset
+We used the MIMIC III dataset for our project,
+which contains roughly 50,000 emergency room
+discharge records from a single hospital. These
+notes were hand-labeled with ICD-9 codes by 3
+experts (two hospitals and a company) and then
+aggregated together. A single note typically has
+10-15 codes.
+
+There are several well-known challenges with
+existing medical record datasets, some of which
+we do not attempt to tackle in this project:
+
+1. Label distribution: The distribution of la-
+bels is incredibly lopsided, since only a small
+minority of symptoms and diseases are com-
+mon.
+In our dataset, a total of 6985 la-
+bels were present, but the ﬁrst 500 labels ac-
+counted for approximately 80% of all codes,
+and approximately 1500 codes had only 1 ex-
+ample. This distributino is shown in ﬁgure 1.
+
+2. Label noise: ICD codes are known to be very
+noisy [6]. For example, in the cited report,
+
+65% of Alzheimer’s cases were present in the
+notes but not coded, and 5% of cases were
+coded without evidence in the note. Similar
+numbers hold for other diseases.
+
+3 Baseline Model
+
+3.1 Model
+For our baseline model, we used a multi-label,
+multi-class logistic regression model with L1 reg-
+ularization to enforce sparsity of features. We
+implemented our model using Theano and used
+Scipy for optimization.
+
+3.2 Features
+We tried several variations of bag-of-words fea-
+tures, and in the end, we settled on using the SPE-
+CIALIST lexicon as a dictionary containing rel-
+evant words and phrases. Phrases proved to be
+important, for example, the feature ”urinary tract
+infection” is a great feature for the urinary tract in-
+fection, but the individual words are very generic
+and low-precision.
+
+In total,
+
+there were 484,628 phrases we ex-
+tracted from the lexicon, and after ﬁltering by fre-
+quency in our dataset, we ended up with approxi-
+mately 38,556 features.
+
+3.3 Results
+While our entire dataset had 6985 total labels, we
+focused on a small 9-label subset in order to do in-
+depth error analysis. For this subset, we achieved
+an macro-averaged F1 score of 60%. We scaled
+up to 30 labels, this score dropped to 45%. We
+report our results in table 1, and the top 3 features
+for each code in table 2. Unfortunately, we did
+not yet ﬁnd other paper in the literature that uses
+the MIMIC III dataset, but F1 scores in previous
+work have typically ranged from the 80% range on
+10 codes (with hand-engineered features), down to
+about 15% on 700 codes [2].
+
+3.4 Results
+Surprisingly, the features learned were very rea-
+sonable, except for ”Pulmonary Hypertension”,
+which had the lowest training support out of all
+9 labels.
+
+Features learned were typically drug names
+(such as ”Albuterol”, ”Singulair” for Asthma),
+naming variations (such as HCAP, for hospital
+acquired pneumonia), or generally related proce-
+
+dures (such as intubation/extubation for respira-
+tory failure).
+
+3.5 Error Analysis
+We observed several phenomena during our error
+analysis, and we categorized several commonly
+occurring ones. Typically, different codes present
+different types of errors, which means that this
+list is likely incomplete since we only analyzed 9
+codes in-depth.
+3.5.1 Overﬁtting to Noise
+This was one of the most common errors made by
+our model. For false negatives our model typically
+picked up a single strong signal that was correct,
+but it was drowned out by several hundred smaller
+features which summed up to cancel out the cor-
+rect signal (each note has on the order of 300-700
+features ﬁring). A typical false positive looks like
+(in this case, we are trying to predict pneumonia):
+Top Features Weight Bottom Features Weight
+-0.233
+pneumonia
+-0.228
+-0.210
+-0.142
+-0.130
+
+ESLD
+neither
+blastic
+mg oxide
+high normal
+
+2.108
+1.130
+0.837
+0.448
+0.282
+
+levoﬂoxacin
+
+PNA
+
+LLL
+
+lower lobe
+A false positive typically has many some-
+what related (such as ”intubation”/”extubation”
+for acute respiratory failure) or completely unre-
+lated words with small positive scores that sum up
+to a certain threshold. Although we added L1 reg-
+ularization to enforce sparsity, it only zeroed out
+some of the weights and many were still left with
+small ones.
+3.5.2 Label Structure
+ICD-9 codes form a hierarchy, but if a patient has
+some speciﬁc disease such as ”diabetes with renal
+complications”, the doctor does not apply every
+code on the path from the root to the code of inter-
+est. Instead, there are speciﬁc coding guidelines,
+such as only the most speciﬁc code should be used,
+or that certain codes are mutually exclusive. If our
+model predicted diabetes and kidney failure, we
+would be wrong. In our 9 code analysis, we only
+used the most general forms of diseases, and thus,
+we had false positives whenever a more speciﬁc
+form of a disease was present.
+3.5.3 Requires deeper inference/computation
+A large class of these errors arose from test results
+in which the only evidence for a blood-related di-
+agnoses is a low hematocrit (% of red blood cells
+
+ICD Code
+
+Urinary Tract Infection
+
+Thrombocytopenia
+
+Pneumonia
+
+Acute Resp. Failure
+
+Anemia
+
+Cardiac Arrest
+
+Asthma
+
+Rheumatoid Arthritis
+
+Pulmonary Hypertension
+
+Macro-averaged total
+
+Precision Recall F1 Score Support
+1057
+493
+756
+1173
+884
+209
+354
+112
+56
+5094
+
+0.82
+0.60
+0.59
+0.70
+0.49
+0.63
+0.72
+0.78
+0.06
+0.65
+
+0.75
+0.39
+0.49
+0.71
+0.42
+0.37
+0.47
+0.28
+0.02
+0.56
+
+0.78
+0.47
+0.53
+0.71
+0.45
+0.47
+0.57
+0.41
+0.03
+0.60
+
+Table 1: Test set F1 scores for baseline model.
+
+First
+UTI
+
+Second
+
+Urinary Tract Infection
+
+ICD Code
+
+Urinary Tract Infection
+
+Thrombocytopenia
+
+Pneumonia
+
+Thrombocytopenia
+
+Pneumonia
+
+Acute Resp. Failure
+
+Respiratory Failure
+
+Anemia
+
+Cardiac Arrest
+
+Asthma
+
+Anemia
+Arrest
+Asthma
+
+HIT
+HCAP
+
+Intubation
+Normocytic
+
+PEA
+
+Albuterol
+
+Third
+
+Urinary Tract
+
+Antibody
+
+Hospital Acquired Pneumonia
+
+Extubation
+Dilution
+
+CPR
+
+Singulair
+Arthritis
+Although
+
+Rheumatoid Arthritis
+
+Pulmonary Hypertension
+
+Rheumatoid
+Moderate
+
+Rheumatoid Arthritis
+
+Contrast
+
+Table 2: Top indicators for baseline model.
+
+by volume, for anemia) or low platelet count (for
+thrombocytopenia). For example:
+
+Test Result
+
+PLT SMR-LOW PLT COUNT-84*
+Hematocrit is 28.8; platelets 357.
+
+Diagnosis
+Thrombo.
+Anemia
+Hematocrit of 36; platelet count 183. Thrombo.
+Our model can only pick up on single words,
+and cannot execute logic such as comparing test
+results against a threshold.
+
+Some more difﬁcult errors are ones involving
+judgement of the severity of an illness. Our model
+commonly predicted false positives for ”acute res-
+piratory failure” when the true label was ”acute
+respiratory distress”, since outside of explicitly
+mentioning ”distress” and ”failure”, the two codes
+present similar features. The only difference we
+observed was that the ”failure” cases were more
+severe than the ”distress” cases, and indeed, the
+two codes are mutually exclusive by the ICD-9
+coding guidelines.
+
+3.5.4 Context
+A nonzero amount of our false positives came
+from features ﬁring from the ”Medical History”
+
+section, which for some diseases should not be
+coded. However, for others, such as chronic dis-
+eases (such as rheumatoid arthritis, which is an au-
+toimmune disease which attacks the joints), being
+present in the medical history is enough to justify
+a code.
+
+3.5.5 Multi-word understanding
+In many cases, the only good feature that ﬁres is
+one related to a disease, but not necessarily enough
+to make a decision on its own. For example, the
+following is a sentence from a note coded with
+thrombocytopenia, or low platelet count.
+
+She also had acute platelet drop
+while on balloon pump and heparin.
+”Platelet” is a feature that is obviously relevant
+to thrombocytopenia, but it is common to mention
+it with blood tests and other blood-related com-
+plications, so it is a very low-precision feature.
+However, the phrase ”acute platelet drop” is very
+indicative of thrombocytopenia, especially when
+it is mentioned with heparin, which is an antico-
+agulant that commonly causes platelet levels to
+drop, resulting in heparin-induced thrombocytope-
+
+Additionally, there are a few architectural prob-
+lems which we are in the process of ﬁguring out
+how to solve. One is that this model trains ex-
+tremely slowly due to the non-differentiability of
+using a max for segment selection, and we are cur-
+rently multiplying in the score to the logits as a
+workaround instead of resorting to Monte-Carlo
+methods such as REINFORCE. The second is that
+noisy features still end up affecting the segment
+selection, which further slow down training since
+only weights from the best segment get adjusted
+due to the aforementioned differentiability prob-
+lems.
+
+4.2 Results
+Again, due to how slowly the model trains, we
+have run very few experiments for this model. So
+far, we have done experiments on anemia with a
+balanced dataset consisting of equal numbers of
+positive and negative labels, and have achieved
+a test F1 score of 42% with the bag-of-words
+embedding, and 35% with the RNN embedding.
+These results are only slightly worse than our
+baseline, but the problem is much easier due to the
+balanced dataset.
+
+5 Conclusions
+
+We presented a baseline linear model, which to the
+best of our knowledge, has achieved comparable
+results to several other pure classiﬁcation-based
+methods that have previously used.
+
+We have not seen good results from our full
+model yet, but we are in the process of running
+more training iterations and possibly rethinking
+our architecture to make it easier to train.
+
+6 Future Work
+
+There are several potential problems of interest
+that we have not addressed in this project. One is
+exploiting the structure of the codes/labels, since
+we know that some labels are mutually exclusive,
+some are a conjunction of two other labels, and
+some are subclasses of other labels. The subclass
+observation has been explored in previous work,
+but not the others.
+
+Another potential problem to tackle is address-
+ing the codes which have little training support be
+exploiting outside knowledge. Each code has a
+short description, and using knowledge bases or
+the Internet can provide the additional information
+
+Figure 2: A diagram of our model
+
+nia (abbreviated as HIT, which is one of the top
+features). Part of the issue here is that we don’t
+have a good mechanism for automatically extract-
+ing good phrase features from the text.
+
+4 Full Model
+4.1 Model
+We wished to revise our model in order to ﬁx some
+of the errors we observed - in particular, we fo-
+cused on enforcing sparsity to reduce overﬁtting,
+high-level context understanding, and multi-word
+understanding. A pictoral representation of our
+model is located in ﬁgure 2.
+
+Our model is roughly split into 3 parts.
+
+1. We divide each document into multiple seg-
+ments (we used a heuristic rule and divided
+be section, such as ”medical history”, ”hos-
+pital course”), and score each segment with a
+coarse model. We simply used a linear func-
+tion with weights initialized from our base-
+line model. This segment selection process
+helps reduce the number of features that ﬁre,
+and allows the model to assign low scores to
+sections such as ”Medical History”.
+
+2. We embed the best segment, either using an
+RNN (with the word embedding layer initial-
+ized with word2vec) or as a bag of words.
+
+3. We score the embedding using logistic re-
+gression (linear layer + softmax). To allevi-
+ate non-differentiability problems, we multi-
+ply the segment score into the logits before
+passing it into the softmax.
+
+Due to time limitations, we have currently only
+implemented this model to work for binary classi-
+ﬁcation on one code.
+
+CS229 Final Project - Medical Record Understanding
+
+Justin Fu
+
+Daniel Thirman
+
+justinfu@stanford.edu
+
+dthirman@stanford.edu
+
+1
+
+Introduction and Background
+
+After completing an examination or treatment
+with a patient, doctors record detailed notes known
+as medical records. These records typically in-
+clude a summary of past medical history, medica-
+tions, a brief hospital course, discharge diagnoses,
+etc.
+
+The ICD coding system is a relatively compre-
+hensive system with support for most symptoms,
+operations, and diseases (the ICD-9 system has
+over 17,000 codes, and the ICD-10 system has
+over 100,000). ICD codes are important because
+they are a computer-readable summary that is in-
+valuable for collecting statistics, and hospitals use
+these codes to predict risk factors, mortality rates,
+etc.
+
+The problem of automatic ICD coding gained
+signiﬁcant interest in the biomedical informatics
+research community following the release of the
+”2007 Computational Medicine Center Interna-
+tional Challenge: Classifying Clinical Free Text
+Using Natural Language Processing”.
+In partic-
+ular, two styles of approaches were popular, rule-
+based algorithms (such as [5]), and machine learn-
+ing algorithms. Rule-based methods were found to
+be surprisingly effective [1].
+
+Previous work on using text-based machine
+learning algorithms have typically relied on using
+bag-of-words features and expert-crafted rules [4].
+However, such methods have been shown to scale
+poorly with the large label space [3], and no re-
+sults to date have achieved a practically usable ac-
+curacy on this problem. Recent work has applied
+intuitions about the structure of the problem, such
+as using hierarchical SVMs [2] to leverage the fact
+that the many labels are speciﬁc instantiations of
+others.
+
+The goal of our project is to understand the er-
+rors made by previous work on this problem, dis-
+cover additional structure in the data, and leverage
+
+Figure 1: The distribution of codes on the MIMIC
+III dataset. The x-axis is the number of codes, and
+the y-axis is the percentage of coverage over the
+dataset.
+
+that to build a better model and improve accuracy.
+
+2 Dataset
+We used the MIMIC III dataset for our project,
+which contains roughly 50,000 emergency room
+discharge records from a single hospital. These
+notes were hand-labeled with ICD-9 codes by 3
+experts (two hospitals and a company) and then
+aggregated together. A single note typically has
+10-15 codes.
+
+There are several well-known challenges with
+existing medical record datasets, some of which
+we do not attempt to tackle in this project:
+
+1. Label distribution: The distribution of la-
+bels is incredibly lopsided, since only a small
+minority of symptoms and diseases are com-
+mon.
+In our dataset, a total of 6985 la-
+bels were present, but the ﬁrst 500 labels ac-
+counted for approximately 80% of all codes,
+and approximately 1500 codes had only 1 ex-
+ample. This distributino is shown in ﬁgure 1.
+
+2. Label noise: ICD codes are known to be very
+noisy [6]. For example, in the cited report,
+
+65% of Alzheimer’s cases were present in the
+notes but not coded, and 5% of cases were
+coded without evidence in the note. Similar
+numbers hold for other diseases.
+
+3 Baseline Model
+
+3.1 Model
+For our baseline model, we used a multi-label,
+multi-class logistic regression model with L1 reg-
+ularization to enforce sparsity of features. We
+implemented our model using Theano and used
+Scipy for optimization.
+
+3.2 Features
+We tried several variations of bag-of-words fea-
+tures, and in the end, we settled on using the SPE-
+CIALIST lexicon as a dictionary containing rel-
+evant words and phrases. Phrases proved to be
+important, for example, the feature ”urinary tract
+infection” is a great feature for the urinary tract in-
+fection, but the individual words are very generic
+and low-precision.
+
+In total,
+
+there were 484,628 phrases we ex-
+tracted from the lexicon, and after ﬁltering by fre-
+quency in our dataset, we ended up with approxi-
+mately 38,556 features.
+
+3.3 Results
+While our entire dataset had 6985 total labels, we
+focused on a small 9-label subset in order to do in-
+depth error analysis. For this subset, we achieved
+an macro-averaged F1 score of 60%. We scaled
+up to 30 labels, this score dropped to 45%. We
+report our results in table 1, and the top 3 features
+for each code in table 2. Unfortunately, we did
+not yet ﬁnd other paper in the literature that uses
+the MIMIC III dataset, but F1 scores in previous
+work have typically ranged from the 80% range on
+10 codes (with hand-engineered features), down to
+about 15% on 700 codes [2].
+
+3.4 Results
+Surprisingly, the features learned were very rea-
+sonable, except for ”Pulmonary Hypertension”,
+which had the lowest training support out of all
+9 labels.
+
+Features learned were typically drug names
+(such as ”Albuterol”, ”Singulair” for Asthma),
+naming variations (such as HCAP, for hospital
+acquired pneumonia), or generally related proce-
+
+dures (such as intubation/extubation for respira-
+tory failure).
+
+3.5 Error Analysis
+We observed several phenomena during our error
+analysis, and we categorized several commonly
+occurring ones. Typically, different codes present
+different types of errors, which means that this
+list is likely incomplete since we only analyzed 9
+codes in-depth.
+3.5.1 Overﬁtting to Noise
+This was one of the most common errors made by
+our model. For false negatives our model typically
+picked up a single strong signal that was correct,
+but it was drowned out by several hundred smaller
+features which summed up to cancel out the cor-
+rect signal (each note has on the order of 300-700
+features ﬁring). A typical false positive looks like
+(in this case, we are trying to predict pneumonia):
+Top Features Weight Bottom Features Weight
+-0.233
+pneumonia
+-0.228
+-0.210
+-0.142
+-0.130
+
+ESLD
+neither
+blastic
+mg oxide
+high normal
+
+2.108
+1.130
+0.837
+0.448
+0.282
+
+levoﬂoxacin
+
+PNA
+
+LLL
+
+lower lobe
+A false positive typically has many some-
+what related (such as ”intubation”/”extubation”
+for acute respiratory failure) or completely unre-
+lated words with small positive scores that sum up
+to a certain threshold. Although we added L1 reg-
+ularization to enforce sparsity, it only zeroed out
+some of the weights and many were still left with
+small ones.
+3.5.2 Label Structure
+ICD-9 codes form a hierarchy, but if a patient has
+some speciﬁc disease such as ”diabetes with renal
+complications”, the doctor does not apply every
+code on the path from the root to the code of inter-
+est. Instead, there are speciﬁc coding guidelines,
+such as only the most speciﬁc code should be used,
+or that certain codes are mutually exclusive. If our
+model predicted diabetes and kidney failure, we
+would be wrong. In our 9 code analysis, we only
+used the most general forms of diseases, and thus,
+we had false positives whenever a more speciﬁc
+form of a disease was present.
+3.5.3 Requires deeper inference/computation
+A large class of these errors arose from test results
+in which the only evidence for a blood-related di-
+agnoses is a low hematocrit (% of red blood cells
+
+ICD Code
+
+Urinary Tract Infection
+
+Thrombocytopenia
+
+Pneumonia
+
+Acute Resp. Failure
+
+Anemia
+
+Cardiac Arrest
+
+Asthma
+
+Rheumatoid Arthritis
+
+Pulmonary Hypertension
+
+Macro-averaged total
+
+Precision Recall F1 Score Support
+1057
+493
+756
+1173
+884
+209
+354
+112
+56
+5094
+
+0.82
+0.60
+0.59
+0.70
+0.49
+0.63
+0.72
+0.78
+0.06
+0.65
+
+0.75
+0.39
+0.49
+0.71
+0.42
+0.37
+0.47
+0.28
+0.02
+0.56
+
+0.78
+0.47
+0.53
+0.71
+0.45
+0.47
+0.57
+0.41
+0.03
+0.60
+
+Table 1: Test set F1 scores for baseline model.
+
+First
+UTI
+
+Second
+
+Urinary Tract Infection
+
+ICD Code
+
+Urinary Tract Infection
+
+Thrombocytopenia
+
+Pneumonia
+
+Thrombocytopenia
+
+Pneumonia
+
+Acute Resp. Failure
+
+Respiratory Failure
+
+Anemia
+
+Cardiac Arrest
+
+Asthma
+
+Anemia
+Arrest
+Asthma
+
+HIT
+HCAP
+
+Intubation
+Normocytic
+
+PEA
+
+Albuterol
+
+Third
+
+Urinary Tract
+
+Antibody
+
+Hospital Acquired Pneumonia
+
+Extubation
+Dilution
+
+CPR
+
+Singulair
+Arthritis
+Although
+
+Rheumatoid Arthritis
+
+Pulmonary Hypertension
+
+Rheumatoid
+Moderate
+
+Rheumatoid Arthritis
+
+Contrast
+
+Table 2: Top indicators for baseline model.
+
+by volume, for anemia) or low platelet count (for
+thrombocytopenia). For example:
+
+Test Result
+
+PLT SMR-LOW PLT COUNT-84*
+Hematocrit is 28.8; platelets 357.
+
+Diagnosis
+Thrombo.
+Anemia
+Hematocrit of 36; platelet count 183. Thrombo.
+Our model can only pick up on single words,
+and cannot execute logic such as comparing test
+results against a threshold.
+
+Some more difﬁcult errors are ones involving
+judgement of the severity of an illness. Our model
+commonly predicted false positives for ”acute res-
+piratory failure” when the true label was ”acute
+respiratory distress”, since outside of explicitly
+mentioning ”distress” and ”failure”, the two codes
+present similar features. The only difference we
+observed was that the ”failure” cases were more
+severe than the ”distress” cases, and indeed, the
+two codes are mutually exclusive by the ICD-9
+coding guidelines.
+
+3.5.4 Context
+A nonzero amount of our false positives came
+from features ﬁring from the ”Medical History”
+
+section, which for some diseases should not be
+coded. However, for others, such as chronic dis-
+eases (such as rheumatoid arthritis, which is an au-
+toimmune disease which attacks the joints), being
+present in the medical history is enough to justify
+a code.
+
+3.5.5 Multi-word understanding
+In many cases, the only good feature that ﬁres is
+one related to a disease, but not necessarily enough
+to make a decision on its own. For example, the
+following is a sentence from a note coded with
+thrombocytopenia, or low platelet count.
+
+She also had acute platelet drop
+while on balloon pump and heparin.
+”Platelet” is a feature that is obviously relevant
+to thrombocytopenia, but it is common to mention
+it with blood tests and other blood-related com-
+plications, so it is a very low-precision feature.
+However, the phrase ”acute platelet drop” is very
+indicative of thrombocytopenia, especially when
+it is mentioned with heparin, which is an antico-
+agulant that commonly causes platelet levels to
+drop, resulting in heparin-induced thrombocytope-
+
+Additionally, there are a few architectural prob-
+lems which we are in the process of ﬁguring out
+how to solve. One is that this model trains ex-
+tremely slowly due to the non-differentiability of
+using a max for segment selection, and we are cur-
+rently multiplying in the score to the logits as a
+workaround instead of resorting to Monte-Carlo
+methods such as REINFORCE. The second is that
+noisy features still end up affecting the segment
+selection, which further slow down training since
+only weights from the best segment get adjusted
+due to the aforementioned differentiability prob-
+lems.
+
+4.2 Results
+Again, due to how slowly the model trains, we
+have run very few experiments for this model. So
+far, we have done experiments on anemia with a
+balanced dataset consisting of equal numbers of
+positive and negative labels, and have achieved
+a test F1 score of 42% with the bag-of-words
+embedding, and 35% with the RNN embedding.
+These results are only slightly worse than our
+baseline, but the problem is much easier due to the
+balanced dataset.
+
+5 Conclusions
+
+We presented a baseline linear model, which to the
+best of our knowledge, has achieved comparable
+results to several other pure classiﬁcation-based
+methods that have previously used.
+
+We have not seen good results from our full
+model yet, but we are in the process of running
+more training iterations and possibly rethinking
+our architecture to make it easier to train.
+
+6 Future Work
+
+There are several potential problems of interest
+that we have not addressed in this project. One is
+exploiting the structure of the codes/labels, since
+we know that some labels are mutually exclusive,
+some are a conjunction of two other labels, and
+some are subclasses of other labels. The subclass
+observation has been explored in previous work,
+but not the others.
+
+Another potential problem to tackle is address-
+ing the codes which have little training support be
+exploiting outside knowledge. Each code has a
+short description, and using knowledge bases or
+the Internet can provide the additional information
+
+Figure 2: A diagram of our model
+
+nia (abbreviated as HIT, which is one of the top
+features). Part of the issue here is that we don’t
+have a good mechanism for automatically extract-
+ing good phrase features from the text.
+
+4 Full Model
+4.1 Model
+We wished to revise our model in order to ﬁx some
+of the errors we observed - in particular, we fo-
+cused on enforcing sparsity to reduce overﬁtting,
+high-level context understanding, and multi-word
+understanding. A pictoral representation of our
+model is located in ﬁgure 2.
+
+Our model is roughly split into 3 parts.
+
+1. We divide each document into multiple seg-
+ments (we used a heuristic rule and divided
+be section, such as ”medical history”, ”hos-
+pital course”), and score each segment with a
+coarse model. We simply used a linear func-
+tion with weights initialized from our base-
+line model. This segment selection process
+helps reduce the number of features that ﬁre,
+and allows the model to assign low scores to
+sections such as ”Medical History”.
+
+2. We embed the best segment, either using an
+RNN (with the word embedding layer initial-
+ized with word2vec) or as a bag of words.
+
+3. We score the embedding using logistic re-
+gression (linear layer + softmax). To allevi-
+ate non-differentiability problems, we multi-
+ply the segment score into the logits before
+passing it into the softmax.
+
+Due to time limitations, we have currently only
+implemented this model to work for binary classi-
+ﬁcation on one code.
+
+necessary for a model to justify a label. How-
+ever, since these are rare codes, it’s not clear if
+there is a strong practical need to get these correct,
+and much of previous work (especially ones with
+hand-engineered features) have only focused on
+subsets of codes, as we have done in this project.
+Finally, an important problem to tackle is the is-
+sue of noisy labels in the dataset. We wish to apply
+ideas such as semi-supervised learning and boot-
+strapping to improve our model’s ability to handle
+label noise.
+
+References
+[1] Ira Goldstein, Anna Arzumtsyan, and Ozlem
+Uzuner. Three approaches to automatic as-
+signment of icd-9-cm codes to radiology re-
+ports. In AMIA Annual Symposium, 2007.
+
+[2] Adler Perotte, Rimma Pivovarov, Karthik
+Natarajan, Nicole Weiskopf, Frank Wood, and
+Nomie Elhadad. Diagnosis code assignment:
+In Journal
+models and evaluation metrics.
+of the American Medical Informatics Associ-
+ation (JAMIA), 2014.
+
+[3] Stefano G. Rizzo, Danilo Montesi, Andrea
+Fabbri, and Giulio Marchesini.
+Icd code re-
+trieval: Novel approach for assisted disease
+classiﬁcation. In Data Integration in the Life
+Sciences (DILS), 2015.
+
+[4] Suchi Saria, Gayle McElvain, Anand K. Ra-
+jani, Anna A. Penn, and Daphne L. Koller.
+Combining structured and free-text data for
+automatic coding of patient outcomes.
+In
+AMIA Annual Symposium, 2010.
+
+[5] Illes Solt, Domonkos Tikk, Viktor Gal, and
+Zsolt T. Kardkovacs. Semantic classiﬁcation
+of diseases in discharge summaries using a
+context-aware rule-based classiﬁer. In Journal
+of the American Medical Informatics Associa-
+tion (JAMIA), 2009.
+
+[6] Wei-Qi Wei, Pedro L. Teixeira, Huan Mo,
+Robert M. Cronin, Jeremy L. Warner, and
+Joshua C. Denny. Combining billing codes,
+clinical notes, and medications from elec-
+tronic health records provides superior phe-
+the
+notyping performance.
+American Medical Informatics Association
+(JAMIA), 2015.
+
+In Journal of
+
+

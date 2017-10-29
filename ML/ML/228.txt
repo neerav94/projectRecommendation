@@ -1,0 +1,2711 @@
+Fast Tree-Structured
+
+Recursive Neural Tensor Networks
+
+avati@cs.stanford.edu, ncchen@stanford.edu
+
+Anand Avati, Nai-Chia Chen
+
+Stanford University
+
+Project TA: Youssef Ahres
+
+1
+
+Introduction
+
+In this project we explore different ways in which we can optimize the computation of training a
+Tree-structured RNTN, in particular batching techniques in combining many matrix-vector multi-
+plications into matrix-matrix multiplications, and many tensor-vector operations into tensor-matrix
+operations. We assume that training is performed using mini-batch AdaGrad algorithm, and explore
+how we can exploit the presence of multiple examples and batch computation across the set as a
+whole. We explore how we can apply our optimization techniques to the forward propagation phase,
+the back propagation phase, and run the batched operations on GPUs. Our goal is to speed up the
+execution of Tree-structured RNNs so that its runtime performance is no more a limiting factor for
+adoption.
+We use the Stanford CoreNLP project that has an implementation of RNTN in Java as our baseline.
+All our implementation and experiments are performed over this.
+
+2 Background - Recursive Neural Tensor Networks
+
+Recursive Neural Tensor Network (RNTN) is a model for semantic compositionality, proposed by
+Socher et al [1]. This network has been successfully applied to sentiment analysis, where the input
+is a sentence in its parse tree structure, and the output is the classiﬁcation for the input sentence, i.e.,
+whether the meaning is very negative, negative, neutral, positive, or very positive.
+
+2.1 Forward propagation
+
+In the forward phase, each input is a sentence in its parse tree structure. (See ﬁgure (1)). Each word
+in the input sentence is converted to a d-dimensional word vector through a word embedding matrix
+L ∈ Rd×|V |, where |V | is the size of the vocabulary. Further more, each word vector is converted
+to a d-dimensional node vector through the element-wise tanh function and stored in the leaf node
+of the tree. The node vectors of internal nodes are then computed in a bottom-up fashion as follows.
+Let xi be the parent node of its left and right children nodes xi
+R, then the node vector at xi is
+deﬁned as
+
+L, xi
+
+V
+
++ W
+
+L
+xi
+R
+
+xi = tanh(
+
+(1)
+where W ∈ R2d×d is the weight matrix, V ∈ R2d×2d×d is the weight tensor, and tanh applies on
+vectors element-wise.
+Each node in the tree is now a d-dimensional vector. The network predicts the meaning (very
+negative, negative, neutral, positive, or very positive) of every node by producing a probability
+vector yi ∈ R5 deﬁned as
+
+L
+xi
+R
+
+(cid:20)xi
+
+(cid:21)T
+
+(cid:20)xi
+
+(cid:21)
+
+(cid:21)
+
+(cid:20)xi
+
+L
+xi
+R
+
+) ∈ Rd,
+
+yi = softmax(Wsxi) ∈ R5,
+
+(2)
+
+1
+
+Fast Tree-Structured
+
+Recursive Neural Tensor Networks
+
+avati@cs.stanford.edu, ncchen@stanford.edu
+
+Anand Avati, Nai-Chia Chen
+
+Stanford University
+
+Project TA: Youssef Ahres
+
+1
+
+Introduction
+
+In this project we explore different ways in which we can optimize the computation of training a
+Tree-structured RNTN, in particular batching techniques in combining many matrix-vector multi-
+plications into matrix-matrix multiplications, and many tensor-vector operations into tensor-matrix
+operations. We assume that training is performed using mini-batch AdaGrad algorithm, and explore
+how we can exploit the presence of multiple examples and batch computation across the set as a
+whole. We explore how we can apply our optimization techniques to the forward propagation phase,
+the back propagation phase, and run the batched operations on GPUs. Our goal is to speed up the
+execution of Tree-structured RNNs so that its runtime performance is no more a limiting factor for
+adoption.
+We use the Stanford CoreNLP project that has an implementation of RNTN in Java as our baseline.
+All our implementation and experiments are performed over this.
+
+2 Background - Recursive Neural Tensor Networks
+
+Recursive Neural Tensor Network (RNTN) is a model for semantic compositionality, proposed by
+Socher et al [1]. This network has been successfully applied to sentiment analysis, where the input
+is a sentence in its parse tree structure, and the output is the classiﬁcation for the input sentence, i.e.,
+whether the meaning is very negative, negative, neutral, positive, or very positive.
+
+2.1 Forward propagation
+
+In the forward phase, each input is a sentence in its parse tree structure. (See ﬁgure (1)). Each word
+in the input sentence is converted to a d-dimensional word vector through a word embedding matrix
+L ∈ Rd×|V |, where |V | is the size of the vocabulary. Further more, each word vector is converted
+to a d-dimensional node vector through the element-wise tanh function and stored in the leaf node
+of the tree. The node vectors of internal nodes are then computed in a bottom-up fashion as follows.
+Let xi be the parent node of its left and right children nodes xi
+R, then the node vector at xi is
+deﬁned as
+
+L, xi
+
+V
+
++ W
+
+L
+xi
+R
+
+xi = tanh(
+
+(1)
+where W ∈ R2d×d is the weight matrix, V ∈ R2d×2d×d is the weight tensor, and tanh applies on
+vectors element-wise.
+Each node in the tree is now a d-dimensional vector. The network predicts the meaning (very
+negative, negative, neutral, positive, or very positive) of every node by producing a probability
+vector yi ∈ R5 deﬁned as
+
+L
+xi
+R
+
+(cid:20)xi
+
+(cid:21)T
+
+(cid:20)xi
+
+(cid:21)
+
+(cid:21)
+
+(cid:20)xi
+
+L
+xi
+R
+
+) ∈ Rd,
+
+yi = softmax(Wsxi) ∈ R5,
+
+(2)
+
+1
+
+where Ws ∈ R5×d is the sentiment classiﬁcation matrix. Moreover, each node xi is associated with
+a ground truth (or target vector) ti ∈ R5, which is a binary vector whose j-th component is 1 if j is
+the correct label and is 0 in all other components. In order to minimize the KL-divergence between
+the predicted distribution yi and the true distribution ti, the error function with regularization is
+deﬁned as
+
+E(θ) = −(cid:88)
+
+< ti, log yi > +λ||θ||2,
+
+where the model parameters are θ = (L, W, Ws, V ), and the log function applies on yi element-
+wise.
+
+i
+
+Figure 1: Each training example is a sentence.
+
+2.2 Backpropagation [2]
+
+The formulae for errors at the node xi are as follows. Let δi,s denote the softmax error and δi,com
+denote the complete incoming error, then
+
+δi,s = W T
+
+s (yi − ti),
+
+δi,s,
+
+if xi is the root
+
+δi,com =
+
+δi,s + δp(i),down[1 : d], if xi is the left child of xp(i)
+δi,s + δp(i),down[d + 1 : 2d], if xi is the right child of xp(i)
+
+δi,down = (W T δi,com + Si) ◦ f(cid:48)(xi),
+where ◦ denotes the Hadamard product, f(cid:48)(x) = 1 − x2.
+
+(3)
+
+Si =
+
+δi,com
+(cid:96)
+
+V [(cid:96)] + (V [(cid:96)])T
+
+(cid:19)(cid:20)xi
+
+(cid:21)
+
+.
+
+L
+xi
+R
+
+(cid:18)
+
+d(cid:88)
+(cid:20)xi
+
+(cid:96)=1
+
+(cid:21)T
+
+The gradients of the error with respect to W , Ws, V [(cid:96)] are
+
+∂E
+∂W
+
+=
+
+δi,com
+
+L
+xi
+R
+
+,
+
+∂E
+∂Ws
+
+=
+
+(yi − ti)xiT
+
+,
+
+∂E
+∂V [(cid:96)]
+
+=
+
+(cid:88)
+
+i
+
+(cid:88)
+
+i
+
+(cid:88)
+
+i
+
+δi,com
+(cid:96)
+
+(cid:21)T
+
+(cid:20)xi
+
+L
+xi
+R
+
+(cid:21)(cid:20)xi
+
+L
+xi
+R
+
+.
+
+(4)
+
+3 Techniques for Batching Computation
+
+The existing code in Stanford CoreNLP trains RNTN with mini-batch adaptive gradient descent
+(AdaGrad) [3], where the gradients are computed one training example at a time, and the for-
+ward/backward propagation are computed one node at a time. For these computations, we observe
+that in the formulae (1, 2, 3), the parameters (W, Ws, V ) are shared across training examples in a
+mini-batch and across nodes.
+For foward propagation, we say a node xi is ready to compute if both xi
+R have been com-
+puted. For backward propagation, we say δi is ready to compute if the errors of its parent node, i.e.,
+δp(i),s, δp(i),com, and δp(i),down, have been computed.
+
+L and xi
+
+2
+
+The moviefantastic.isFast Tree-Structured
+
+Recursive Neural Tensor Networks
+
+avati@cs.stanford.edu, ncchen@stanford.edu
+
+Anand Avati, Nai-Chia Chen
+
+Stanford University
+
+Project TA: Youssef Ahres
+
+1
+
+Introduction
+
+In this project we explore different ways in which we can optimize the computation of training a
+Tree-structured RNTN, in particular batching techniques in combining many matrix-vector multi-
+plications into matrix-matrix multiplications, and many tensor-vector operations into tensor-matrix
+operations. We assume that training is performed using mini-batch AdaGrad algorithm, and explore
+how we can exploit the presence of multiple examples and batch computation across the set as a
+whole. We explore how we can apply our optimization techniques to the forward propagation phase,
+the back propagation phase, and run the batched operations on GPUs. Our goal is to speed up the
+execution of Tree-structured RNNs so that its runtime performance is no more a limiting factor for
+adoption.
+We use the Stanford CoreNLP project that has an implementation of RNTN in Java as our baseline.
+All our implementation and experiments are performed over this.
+
+2 Background - Recursive Neural Tensor Networks
+
+Recursive Neural Tensor Network (RNTN) is a model for semantic compositionality, proposed by
+Socher et al [1]. This network has been successfully applied to sentiment analysis, where the input
+is a sentence in its parse tree structure, and the output is the classiﬁcation for the input sentence, i.e.,
+whether the meaning is very negative, negative, neutral, positive, or very positive.
+
+2.1 Forward propagation
+
+In the forward phase, each input is a sentence in its parse tree structure. (See ﬁgure (1)). Each word
+in the input sentence is converted to a d-dimensional word vector through a word embedding matrix
+L ∈ Rd×|V |, where |V | is the size of the vocabulary. Further more, each word vector is converted
+to a d-dimensional node vector through the element-wise tanh function and stored in the leaf node
+of the tree. The node vectors of internal nodes are then computed in a bottom-up fashion as follows.
+Let xi be the parent node of its left and right children nodes xi
+R, then the node vector at xi is
+deﬁned as
+
+L, xi
+
+V
+
++ W
+
+L
+xi
+R
+
+xi = tanh(
+
+(1)
+where W ∈ R2d×d is the weight matrix, V ∈ R2d×2d×d is the weight tensor, and tanh applies on
+vectors element-wise.
+Each node in the tree is now a d-dimensional vector. The network predicts the meaning (very
+negative, negative, neutral, positive, or very positive) of every node by producing a probability
+vector yi ∈ R5 deﬁned as
+
+L
+xi
+R
+
+(cid:20)xi
+
+(cid:21)T
+
+(cid:20)xi
+
+(cid:21)
+
+(cid:21)
+
+(cid:20)xi
+
+L
+xi
+R
+
+) ∈ Rd,
+
+yi = softmax(Wsxi) ∈ R5,
+
+(2)
+
+1
+
+where Ws ∈ R5×d is the sentiment classiﬁcation matrix. Moreover, each node xi is associated with
+a ground truth (or target vector) ti ∈ R5, which is a binary vector whose j-th component is 1 if j is
+the correct label and is 0 in all other components. In order to minimize the KL-divergence between
+the predicted distribution yi and the true distribution ti, the error function with regularization is
+deﬁned as
+
+E(θ) = −(cid:88)
+
+< ti, log yi > +λ||θ||2,
+
+where the model parameters are θ = (L, W, Ws, V ), and the log function applies on yi element-
+wise.
+
+i
+
+Figure 1: Each training example is a sentence.
+
+2.2 Backpropagation [2]
+
+The formulae for errors at the node xi are as follows. Let δi,s denote the softmax error and δi,com
+denote the complete incoming error, then
+
+δi,s = W T
+
+s (yi − ti),
+
+δi,s,
+
+if xi is the root
+
+δi,com =
+
+δi,s + δp(i),down[1 : d], if xi is the left child of xp(i)
+δi,s + δp(i),down[d + 1 : 2d], if xi is the right child of xp(i)
+
+δi,down = (W T δi,com + Si) ◦ f(cid:48)(xi),
+where ◦ denotes the Hadamard product, f(cid:48)(x) = 1 − x2.
+
+(3)
+
+Si =
+
+δi,com
+(cid:96)
+
+V [(cid:96)] + (V [(cid:96)])T
+
+(cid:19)(cid:20)xi
+
+(cid:21)
+
+.
+
+L
+xi
+R
+
+(cid:18)
+
+d(cid:88)
+(cid:20)xi
+
+(cid:96)=1
+
+(cid:21)T
+
+The gradients of the error with respect to W , Ws, V [(cid:96)] are
+
+∂E
+∂W
+
+=
+
+δi,com
+
+L
+xi
+R
+
+,
+
+∂E
+∂Ws
+
+=
+
+(yi − ti)xiT
+
+,
+
+∂E
+∂V [(cid:96)]
+
+=
+
+(cid:88)
+
+i
+
+(cid:88)
+
+i
+
+(cid:88)
+
+i
+
+δi,com
+(cid:96)
+
+(cid:21)T
+
+(cid:20)xi
+
+L
+xi
+R
+
+(cid:21)(cid:20)xi
+
+L
+xi
+R
+
+.
+
+(4)
+
+3 Techniques for Batching Computation
+
+The existing code in Stanford CoreNLP trains RNTN with mini-batch adaptive gradient descent
+(AdaGrad) [3], where the gradients are computed one training example at a time, and the for-
+ward/backward propagation are computed one node at a time. For these computations, we observe
+that in the formulae (1, 2, 3), the parameters (W, Ws, V ) are shared across training examples in a
+mini-batch and across nodes.
+For foward propagation, we say a node xi is ready to compute if both xi
+R have been com-
+puted. For backward propagation, we say δi is ready to compute if the errors of its parent node, i.e.,
+δp(i),s, δp(i),com, and δp(i),down, have been computed.
+
+L and xi
+
+2
+
+The moviefantastic.isWe may group ready nodes across trees and compute them all together at once by using the following
+formulae.
+
+3.1 Group matrix-vector multiplications
+After a rearrangement of indices, let xi, i = 1,··· k, be the nodes that are ready to compute and we
+have
+
+(cid:21)
+
+(cid:20)xi
+
+L
+xi
+R
+
+ui =
+
+, U =
+
+(cid:34) |
+
+|
+u1 u2
+|
+|
+
+|
+··· uk
+|
+
+(cid:35)
+
+.
+
+To compute the matrix-vector multiplication part of (1) over all ready nodes, we have
+
+[Wu1 Wu2
+
+··· Wuk] = W [u1 u2
+
+··· uk] .
+
+3.2 Group Bilinear Operations
+
+To compute the tensor part of (1) over all ready nodes, we have
+
+1 Vu1 uT
+
+2 Vu2
+
+··· uT
+
+k Vuk
+
+(cid:3) = Flatten2(V)(cid:0)U (cid:12) U(cid:1),
+
+(cid:2)uT
+
+where (cid:12) is the Khatri-Rao product (deﬁned in the appendix), and the matrix Flatten2(V) ∈ Rd×4d2
+is obtained by taking lateral slices of the tensor V and ordering these slices from left to right. See
+ﬁgure 2(b).
+
+(a) Horizontal
+
+(b) Lateral
+
+(c) Frontal
+
+Figure 2: Slice of a 3rd-order tensor
+
+3.3 Group Errors δi,com and δi,down respectively
+
+To compute the δi,com over all ready nodes using (3), let
+
+∆com =
+
+δ1,com δ2,com ···
+
+|
+|
+
+|
+|
+
+δk,com
+
+ ∈ Rd×k,
+ = Flatten1(A)(∆com (cid:12) U ),
+
+uk
+uk
+
+δ1,com
+1
+δ1,com
+2
+...
+δ1,com
+d
+
+u1
+u1
+
+u1
+
+···
+···
+...
+···
+
+δk,com
+1
+δk,com
+2
+...
+δk,com
+d
+
+uk
+
+ |
+··· A[d](cid:3)
+
+|
+
+
+
+ =
+
+(cid:18)
+
+then we have
+
+ =(cid:2)A[1]
+
+|
+··· Sk
+|
+
+ |
+
+S1
+|
+
+
+
+where A[(cid:96)] = V [(cid:96)] +(V [(cid:96)])T , and the matrix Flatten1(A) ∈ R2d×2d2 is obtained by taking horizontal
+slices of the tensor A and ordering these slices from left to right. See ﬁgure 2(a).
+As for δi,down, we have
+
+|
+|
+
+δ1,down
+
+|
+|
+
+δ2,down
+
+···
+
+|
+|
+
+δk,down
+
+WT ∆com+
+
+|
+S1 S2
+|
+|
+
+|
+··· Sk
+|
+
+(cid:19)
+
+◦ f(cid:48)(cid:18) |
+
+|
+x1 x2
+|
+|
+
+···
+
+|
+xk
+|
+
+(cid:19)
+
+.
+
+ |
+
+3
+
+Fast Tree-Structured
+
+Recursive Neural Tensor Networks
+
+avati@cs.stanford.edu, ncchen@stanford.edu
+
+Anand Avati, Nai-Chia Chen
+
+Stanford University
+
+Project TA: Youssef Ahres
+
+1
+
+Introduction
+
+In this project we explore different ways in which we can optimize the computation of training a
+Tree-structured RNTN, in particular batching techniques in combining many matrix-vector multi-
+plications into matrix-matrix multiplications, and many tensor-vector operations into tensor-matrix
+operations. We assume that training is performed using mini-batch AdaGrad algorithm, and explore
+how we can exploit the presence of multiple examples and batch computation across the set as a
+whole. We explore how we can apply our optimization techniques to the forward propagation phase,
+the back propagation phase, and run the batched operations on GPUs. Our goal is to speed up the
+execution of Tree-structured RNNs so that its runtime performance is no more a limiting factor for
+adoption.
+We use the Stanford CoreNLP project that has an implementation of RNTN in Java as our baseline.
+All our implementation and experiments are performed over this.
+
+2 Background - Recursive Neural Tensor Networks
+
+Recursive Neural Tensor Network (RNTN) is a model for semantic compositionality, proposed by
+Socher et al [1]. This network has been successfully applied to sentiment analysis, where the input
+is a sentence in its parse tree structure, and the output is the classiﬁcation for the input sentence, i.e.,
+whether the meaning is very negative, negative, neutral, positive, or very positive.
+
+2.1 Forward propagation
+
+In the forward phase, each input is a sentence in its parse tree structure. (See ﬁgure (1)). Each word
+in the input sentence is converted to a d-dimensional word vector through a word embedding matrix
+L ∈ Rd×|V |, where |V | is the size of the vocabulary. Further more, each word vector is converted
+to a d-dimensional node vector through the element-wise tanh function and stored in the leaf node
+of the tree. The node vectors of internal nodes are then computed in a bottom-up fashion as follows.
+Let xi be the parent node of its left and right children nodes xi
+R, then the node vector at xi is
+deﬁned as
+
+L, xi
+
+V
+
++ W
+
+L
+xi
+R
+
+xi = tanh(
+
+(1)
+where W ∈ R2d×d is the weight matrix, V ∈ R2d×2d×d is the weight tensor, and tanh applies on
+vectors element-wise.
+Each node in the tree is now a d-dimensional vector. The network predicts the meaning (very
+negative, negative, neutral, positive, or very positive) of every node by producing a probability
+vector yi ∈ R5 deﬁned as
+
+L
+xi
+R
+
+(cid:20)xi
+
+(cid:21)T
+
+(cid:20)xi
+
+(cid:21)
+
+(cid:21)
+
+(cid:20)xi
+
+L
+xi
+R
+
+) ∈ Rd,
+
+yi = softmax(Wsxi) ∈ R5,
+
+(2)
+
+1
+
+where Ws ∈ R5×d is the sentiment classiﬁcation matrix. Moreover, each node xi is associated with
+a ground truth (or target vector) ti ∈ R5, which is a binary vector whose j-th component is 1 if j is
+the correct label and is 0 in all other components. In order to minimize the KL-divergence between
+the predicted distribution yi and the true distribution ti, the error function with regularization is
+deﬁned as
+
+E(θ) = −(cid:88)
+
+< ti, log yi > +λ||θ||2,
+
+where the model parameters are θ = (L, W, Ws, V ), and the log function applies on yi element-
+wise.
+
+i
+
+Figure 1: Each training example is a sentence.
+
+2.2 Backpropagation [2]
+
+The formulae for errors at the node xi are as follows. Let δi,s denote the softmax error and δi,com
+denote the complete incoming error, then
+
+δi,s = W T
+
+s (yi − ti),
+
+δi,s,
+
+if xi is the root
+
+δi,com =
+
+δi,s + δp(i),down[1 : d], if xi is the left child of xp(i)
+δi,s + δp(i),down[d + 1 : 2d], if xi is the right child of xp(i)
+
+δi,down = (W T δi,com + Si) ◦ f(cid:48)(xi),
+where ◦ denotes the Hadamard product, f(cid:48)(x) = 1 − x2.
+
+(3)
+
+Si =
+
+δi,com
+(cid:96)
+
+V [(cid:96)] + (V [(cid:96)])T
+
+(cid:19)(cid:20)xi
+
+(cid:21)
+
+.
+
+L
+xi
+R
+
+(cid:18)
+
+d(cid:88)
+(cid:20)xi
+
+(cid:96)=1
+
+(cid:21)T
+
+The gradients of the error with respect to W , Ws, V [(cid:96)] are
+
+∂E
+∂W
+
+=
+
+δi,com
+
+L
+xi
+R
+
+,
+
+∂E
+∂Ws
+
+=
+
+(yi − ti)xiT
+
+,
+
+∂E
+∂V [(cid:96)]
+
+=
+
+(cid:88)
+
+i
+
+(cid:88)
+
+i
+
+(cid:88)
+
+i
+
+δi,com
+(cid:96)
+
+(cid:21)T
+
+(cid:20)xi
+
+L
+xi
+R
+
+(cid:21)(cid:20)xi
+
+L
+xi
+R
+
+.
+
+(4)
+
+3 Techniques for Batching Computation
+
+The existing code in Stanford CoreNLP trains RNTN with mini-batch adaptive gradient descent
+(AdaGrad) [3], where the gradients are computed one training example at a time, and the for-
+ward/backward propagation are computed one node at a time. For these computations, we observe
+that in the formulae (1, 2, 3), the parameters (W, Ws, V ) are shared across training examples in a
+mini-batch and across nodes.
+For foward propagation, we say a node xi is ready to compute if both xi
+R have been com-
+puted. For backward propagation, we say δi is ready to compute if the errors of its parent node, i.e.,
+δp(i),s, δp(i),com, and δp(i),down, have been computed.
+
+L and xi
+
+2
+
+The moviefantastic.isWe may group ready nodes across trees and compute them all together at once by using the following
+formulae.
+
+3.1 Group matrix-vector multiplications
+After a rearrangement of indices, let xi, i = 1,··· k, be the nodes that are ready to compute and we
+have
+
+(cid:21)
+
+(cid:20)xi
+
+L
+xi
+R
+
+ui =
+
+, U =
+
+(cid:34) |
+
+|
+u1 u2
+|
+|
+
+|
+··· uk
+|
+
+(cid:35)
+
+.
+
+To compute the matrix-vector multiplication part of (1) over all ready nodes, we have
+
+[Wu1 Wu2
+
+··· Wuk] = W [u1 u2
+
+··· uk] .
+
+3.2 Group Bilinear Operations
+
+To compute the tensor part of (1) over all ready nodes, we have
+
+1 Vu1 uT
+
+2 Vu2
+
+··· uT
+
+k Vuk
+
+(cid:3) = Flatten2(V)(cid:0)U (cid:12) U(cid:1),
+
+(cid:2)uT
+
+where (cid:12) is the Khatri-Rao product (deﬁned in the appendix), and the matrix Flatten2(V) ∈ Rd×4d2
+is obtained by taking lateral slices of the tensor V and ordering these slices from left to right. See
+ﬁgure 2(b).
+
+(a) Horizontal
+
+(b) Lateral
+
+(c) Frontal
+
+Figure 2: Slice of a 3rd-order tensor
+
+3.3 Group Errors δi,com and δi,down respectively
+
+To compute the δi,com over all ready nodes using (3), let
+
+∆com =
+
+δ1,com δ2,com ···
+
+|
+|
+
+|
+|
+
+δk,com
+
+ ∈ Rd×k,
+ = Flatten1(A)(∆com (cid:12) U ),
+
+uk
+uk
+
+δ1,com
+1
+δ1,com
+2
+...
+δ1,com
+d
+
+u1
+u1
+
+u1
+
+···
+···
+...
+···
+
+δk,com
+1
+δk,com
+2
+...
+δk,com
+d
+
+uk
+
+ |
+··· A[d](cid:3)
+
+|
+
+
+
+ =
+
+(cid:18)
+
+then we have
+
+ =(cid:2)A[1]
+
+|
+··· Sk
+|
+
+ |
+
+S1
+|
+
+
+
+where A[(cid:96)] = V [(cid:96)] +(V [(cid:96)])T , and the matrix Flatten1(A) ∈ R2d×2d2 is obtained by taking horizontal
+slices of the tensor A and ordering these slices from left to right. See ﬁgure 2(a).
+As for δi,down, we have
+
+|
+|
+
+δ1,down
+
+|
+|
+
+δ2,down
+
+···
+
+|
+|
+
+δk,down
+
+WT ∆com+
+
+|
+S1 S2
+|
+|
+
+|
+··· Sk
+|
+
+(cid:19)
+
+◦ f(cid:48)(cid:18) |
+
+|
+x1 x2
+|
+|
+
+···
+
+|
+xk
+|
+
+(cid:19)
+
+.
+
+ |
+
+3
+
+3.4 Group Gradients
+
+We rewrite equations (4) as follows:
+
+(yi − ti)xiT
+
+i
+
+i
+
+δi,com
+
+(cid:88)
+(cid:88)
+(cid:88)
+...(cid:88)
+
+
+
+i
+
+i
+
+∂E
+∂W
+
+=
+
+∂E
+∂Ws
+
+=
+
+ =
+
+
+
+∂E
+∂V[1]
+
+...
+
+∂E
+∂V[d]
+
+As for the gradients of the tensor V , we have
+
+(cid:21)T
+
+(cid:20)xi
+
+L
+xi
+R
+
+(cid:88)
+
+=
+
+δi,comuT
+
+i =
+
+i
+
+= (Y − T )X T .
+
+ =(cid:2)δ1,com ⊗ u1
+
+δi,com
+1
+
+δi,com
+d
+
+uiuT
+i
+
+uiuT
+i
+
+ |
+
+|
+
+δ1,com ···
+
+ = ∆comUT .
+
+
+
+uT
+
+1
+uT
+2
+...
+uT
+k
+
+|
+|
+
+δk,com
+
+···
+
+δk,com ⊗ uk
+
+ = (∆com (cid:12) U )U T .
+
+(cid:3)
+
+uT
+
+1
+uT
+2
+...
+uT
+k
+
+4 Experiments and Results
+
+We have implemented the above batching techniques as modiﬁcations to the “sentiment” module in
+the Stanford coreNLP project. We use INDArray [5]s from the Nd4j [6] project to represent matrices
+and tensors. This way it is easy to run the batched operations on a GPU. We ran similar workloads on
+the three conﬁgurations - unmodiﬁed coreNLP baseline, batched implementation on CPU, batched
+implementation on GPU and we share the results below.
+
+The speciﬁcs of our experiments are as follows:
+
+• We have used git commit id 55bbcb of coreNLP.git as our baseline.
+
+4
+
+Fast Tree-Structured
+
+Recursive Neural Tensor Networks
+
+avati@cs.stanford.edu, ncchen@stanford.edu
+
+Anand Avati, Nai-Chia Chen
+
+Stanford University
+
+Project TA: Youssef Ahres
+
+1
+
+Introduction
+
+In this project we explore different ways in which we can optimize the computation of training a
+Tree-structured RNTN, in particular batching techniques in combining many matrix-vector multi-
+plications into matrix-matrix multiplications, and many tensor-vector operations into tensor-matrix
+operations. We assume that training is performed using mini-batch AdaGrad algorithm, and explore
+how we can exploit the presence of multiple examples and batch computation across the set as a
+whole. We explore how we can apply our optimization techniques to the forward propagation phase,
+the back propagation phase, and run the batched operations on GPUs. Our goal is to speed up the
+execution of Tree-structured RNNs so that its runtime performance is no more a limiting factor for
+adoption.
+We use the Stanford CoreNLP project that has an implementation of RNTN in Java as our baseline.
+All our implementation and experiments are performed over this.
+
+2 Background - Recursive Neural Tensor Networks
+
+Recursive Neural Tensor Network (RNTN) is a model for semantic compositionality, proposed by
+Socher et al [1]. This network has been successfully applied to sentiment analysis, where the input
+is a sentence in its parse tree structure, and the output is the classiﬁcation for the input sentence, i.e.,
+whether the meaning is very negative, negative, neutral, positive, or very positive.
+
+2.1 Forward propagation
+
+In the forward phase, each input is a sentence in its parse tree structure. (See ﬁgure (1)). Each word
+in the input sentence is converted to a d-dimensional word vector through a word embedding matrix
+L ∈ Rd×|V |, where |V | is the size of the vocabulary. Further more, each word vector is converted
+to a d-dimensional node vector through the element-wise tanh function and stored in the leaf node
+of the tree. The node vectors of internal nodes are then computed in a bottom-up fashion as follows.
+Let xi be the parent node of its left and right children nodes xi
+R, then the node vector at xi is
+deﬁned as
+
+L, xi
+
+V
+
++ W
+
+L
+xi
+R
+
+xi = tanh(
+
+(1)
+where W ∈ R2d×d is the weight matrix, V ∈ R2d×2d×d is the weight tensor, and tanh applies on
+vectors element-wise.
+Each node in the tree is now a d-dimensional vector. The network predicts the meaning (very
+negative, negative, neutral, positive, or very positive) of every node by producing a probability
+vector yi ∈ R5 deﬁned as
+
+L
+xi
+R
+
+(cid:20)xi
+
+(cid:21)T
+
+(cid:20)xi
+
+(cid:21)
+
+(cid:21)
+
+(cid:20)xi
+
+L
+xi
+R
+
+) ∈ Rd,
+
+yi = softmax(Wsxi) ∈ R5,
+
+(2)
+
+1
+
+where Ws ∈ R5×d is the sentiment classiﬁcation matrix. Moreover, each node xi is associated with
+a ground truth (or target vector) ti ∈ R5, which is a binary vector whose j-th component is 1 if j is
+the correct label and is 0 in all other components. In order to minimize the KL-divergence between
+the predicted distribution yi and the true distribution ti, the error function with regularization is
+deﬁned as
+
+E(θ) = −(cid:88)
+
+< ti, log yi > +λ||θ||2,
+
+where the model parameters are θ = (L, W, Ws, V ), and the log function applies on yi element-
+wise.
+
+i
+
+Figure 1: Each training example is a sentence.
+
+2.2 Backpropagation [2]
+
+The formulae for errors at the node xi are as follows. Let δi,s denote the softmax error and δi,com
+denote the complete incoming error, then
+
+δi,s = W T
+
+s (yi − ti),
+
+δi,s,
+
+if xi is the root
+
+δi,com =
+
+δi,s + δp(i),down[1 : d], if xi is the left child of xp(i)
+δi,s + δp(i),down[d + 1 : 2d], if xi is the right child of xp(i)
+
+δi,down = (W T δi,com + Si) ◦ f(cid:48)(xi),
+where ◦ denotes the Hadamard product, f(cid:48)(x) = 1 − x2.
+
+(3)
+
+Si =
+
+δi,com
+(cid:96)
+
+V [(cid:96)] + (V [(cid:96)])T
+
+(cid:19)(cid:20)xi
+
+(cid:21)
+
+.
+
+L
+xi
+R
+
+(cid:18)
+
+d(cid:88)
+(cid:20)xi
+
+(cid:96)=1
+
+(cid:21)T
+
+The gradients of the error with respect to W , Ws, V [(cid:96)] are
+
+∂E
+∂W
+
+=
+
+δi,com
+
+L
+xi
+R
+
+,
+
+∂E
+∂Ws
+
+=
+
+(yi − ti)xiT
+
+,
+
+∂E
+∂V [(cid:96)]
+
+=
+
+(cid:88)
+
+i
+
+(cid:88)
+
+i
+
+(cid:88)
+
+i
+
+δi,com
+(cid:96)
+
+(cid:21)T
+
+(cid:20)xi
+
+L
+xi
+R
+
+(cid:21)(cid:20)xi
+
+L
+xi
+R
+
+.
+
+(4)
+
+3 Techniques for Batching Computation
+
+The existing code in Stanford CoreNLP trains RNTN with mini-batch adaptive gradient descent
+(AdaGrad) [3], where the gradients are computed one training example at a time, and the for-
+ward/backward propagation are computed one node at a time. For these computations, we observe
+that in the formulae (1, 2, 3), the parameters (W, Ws, V ) are shared across training examples in a
+mini-batch and across nodes.
+For foward propagation, we say a node xi is ready to compute if both xi
+R have been com-
+puted. For backward propagation, we say δi is ready to compute if the errors of its parent node, i.e.,
+δp(i),s, δp(i),com, and δp(i),down, have been computed.
+
+L and xi
+
+2
+
+The moviefantastic.isWe may group ready nodes across trees and compute them all together at once by using the following
+formulae.
+
+3.1 Group matrix-vector multiplications
+After a rearrangement of indices, let xi, i = 1,··· k, be the nodes that are ready to compute and we
+have
+
+(cid:21)
+
+(cid:20)xi
+
+L
+xi
+R
+
+ui =
+
+, U =
+
+(cid:34) |
+
+|
+u1 u2
+|
+|
+
+|
+··· uk
+|
+
+(cid:35)
+
+.
+
+To compute the matrix-vector multiplication part of (1) over all ready nodes, we have
+
+[Wu1 Wu2
+
+··· Wuk] = W [u1 u2
+
+··· uk] .
+
+3.2 Group Bilinear Operations
+
+To compute the tensor part of (1) over all ready nodes, we have
+
+1 Vu1 uT
+
+2 Vu2
+
+··· uT
+
+k Vuk
+
+(cid:3) = Flatten2(V)(cid:0)U (cid:12) U(cid:1),
+
+(cid:2)uT
+
+where (cid:12) is the Khatri-Rao product (deﬁned in the appendix), and the matrix Flatten2(V) ∈ Rd×4d2
+is obtained by taking lateral slices of the tensor V and ordering these slices from left to right. See
+ﬁgure 2(b).
+
+(a) Horizontal
+
+(b) Lateral
+
+(c) Frontal
+
+Figure 2: Slice of a 3rd-order tensor
+
+3.3 Group Errors δi,com and δi,down respectively
+
+To compute the δi,com over all ready nodes using (3), let
+
+∆com =
+
+δ1,com δ2,com ···
+
+|
+|
+
+|
+|
+
+δk,com
+
+ ∈ Rd×k,
+ = Flatten1(A)(∆com (cid:12) U ),
+
+uk
+uk
+
+δ1,com
+1
+δ1,com
+2
+...
+δ1,com
+d
+
+u1
+u1
+
+u1
+
+···
+···
+...
+···
+
+δk,com
+1
+δk,com
+2
+...
+δk,com
+d
+
+uk
+
+ |
+··· A[d](cid:3)
+
+|
+
+
+
+ =
+
+(cid:18)
+
+then we have
+
+ =(cid:2)A[1]
+
+|
+··· Sk
+|
+
+ |
+
+S1
+|
+
+
+
+where A[(cid:96)] = V [(cid:96)] +(V [(cid:96)])T , and the matrix Flatten1(A) ∈ R2d×2d2 is obtained by taking horizontal
+slices of the tensor A and ordering these slices from left to right. See ﬁgure 2(a).
+As for δi,down, we have
+
+|
+|
+
+δ1,down
+
+|
+|
+
+δ2,down
+
+···
+
+|
+|
+
+δk,down
+
+WT ∆com+
+
+|
+S1 S2
+|
+|
+
+|
+··· Sk
+|
+
+(cid:19)
+
+◦ f(cid:48)(cid:18) |
+
+|
+x1 x2
+|
+|
+
+···
+
+|
+xk
+|
+
+(cid:19)
+
+.
+
+ |
+
+3
+
+3.4 Group Gradients
+
+We rewrite equations (4) as follows:
+
+(yi − ti)xiT
+
+i
+
+i
+
+δi,com
+
+(cid:88)
+(cid:88)
+(cid:88)
+...(cid:88)
+
+
+
+i
+
+i
+
+∂E
+∂W
+
+=
+
+∂E
+∂Ws
+
+=
+
+ =
+
+
+
+∂E
+∂V[1]
+
+...
+
+∂E
+∂V[d]
+
+As for the gradients of the tensor V , we have
+
+(cid:21)T
+
+(cid:20)xi
+
+L
+xi
+R
+
+(cid:88)
+
+=
+
+δi,comuT
+
+i =
+
+i
+
+= (Y − T )X T .
+
+ =(cid:2)δ1,com ⊗ u1
+
+δi,com
+1
+
+δi,com
+d
+
+uiuT
+i
+
+uiuT
+i
+
+ |
+
+|
+
+δ1,com ···
+
+ = ∆comUT .
+
+
+
+uT
+
+1
+uT
+2
+...
+uT
+k
+
+|
+|
+
+δk,com
+
+···
+
+δk,com ⊗ uk
+
+ = (∆com (cid:12) U )U T .
+
+(cid:3)
+
+uT
+
+1
+uT
+2
+...
+uT
+k
+
+4 Experiments and Results
+
+We have implemented the above batching techniques as modiﬁcations to the “sentiment” module in
+the Stanford coreNLP project. We use INDArray [5]s from the Nd4j [6] project to represent matrices
+and tensors. This way it is easy to run the batched operations on a GPU. We ran similar workloads on
+the three conﬁgurations - unmodiﬁed coreNLP baseline, batched implementation on CPU, batched
+implementation on GPU and we share the results below.
+
+The speciﬁcs of our experiments are as follows:
+
+• We have used git commit id 55bbcb of coreNLP.git as our baseline.
+
+4
+
+• Nd4j version 0.4-rc3.6
+• CUDA/jcublas version 6.5
+• CPU: Intel(R) Xeon(R) CPU E5-2609 0 @ 2.40GHz (8 cores)
+• RAM: 128GB DDR3
+• GPU: GeForce GTX 680
+• Dataset: Stanford Sentiment Treebank
+• Workload: 1 epoch of training on the Dataset varying batch size (25, 50, 100) and word-
+• Code: All our code is at http://github.com/avati/coreNLP/commits/rntn-gpu
+
+vector dimensions (25, 50, 100) in each of the three modes (CPU, CPU-batch, GPU).
+
+5 Conclusion and Future Work
+
+Based on the results shown above, we conclude the following:
+
+• Batching computation is always better.
+• GPUs offer signiﬁcant speed-up (up to 4x in our tests) when word-vector dimensions and
+• At lower batch and word-vector dimensions, the overheads of managing data on GPU sur-
+
+batch sizes are large enough.
+
+pass the beneﬁts of faster computation.
+
+Testing with larger word-vector sizes was interrupted due to a known bug in Nd4j. We are eager to
+resume testing once the bug is ﬁxed as we expect greater speed-up.
+
+6 Appendix
+
+In this section, we review the deﬁnitions of three matrix products [4].
+Deﬁnitions: Let A = (aij), B = (bij) be m-by-n matrices, C = (cij) be a p-by-q matrix, and
+D = (dij) be a r-by-n matrix. Then
+
+1. Hadamard product:
+
+A ◦ B =
+
+2. Kronecker product:
+
+A ⊗ C =
+
+...
+
+a21b21
+
+a12b12
+a22b22
+
+am1bm1 am2bm2
+
+ a11b11
+ a11C a12C ···
+
+a21C a22C ···
+...
+...
+am1C am2C ···
+
+...
+
+...
+
+···
+···
+...
+···
+
+a1nb1n
+a2nb2n
+
+...
+
+amnbmn
+
+ ∈ Rm×n.
+ ∈ Rmp×nq.
+
+a1nC
+a2nC
+
+...
+
+amnC
+
+3. Khatri-Rao product:
+
+A (cid:12) D = [a1 ⊗ d1 a2 ⊗ d2
+
+···
+
+an ⊗ dn] ∈ Rmr×n.
+
+Acknowledgement
+
+We thank Sam Bowman for introducing the problem and many helpful discussions, Youssef Ahres
+for mentoring us and offering his expertise when we needed, and ﬁnally Prof. Andrew Ng for the
+education and conducting this wonderful course.
+
+5
+
+Fast Tree-Structured
+
+Recursive Neural Tensor Networks
+
+avati@cs.stanford.edu, ncchen@stanford.edu
+
+Anand Avati, Nai-Chia Chen
+
+Stanford University
+
+Project TA: Youssef Ahres
+
+1
+
+Introduction
+
+In this project we explore different ways in which we can optimize the computation of training a
+Tree-structured RNTN, in particular batching techniques in combining many matrix-vector multi-
+plications into matrix-matrix multiplications, and many tensor-vector operations into tensor-matrix
+operations. We assume that training is performed using mini-batch AdaGrad algorithm, and explore
+how we can exploit the presence of multiple examples and batch computation across the set as a
+whole. We explore how we can apply our optimization techniques to the forward propagation phase,
+the back propagation phase, and run the batched operations on GPUs. Our goal is to speed up the
+execution of Tree-structured RNNs so that its runtime performance is no more a limiting factor for
+adoption.
+We use the Stanford CoreNLP project that has an implementation of RNTN in Java as our baseline.
+All our implementation and experiments are performed over this.
+
+2 Background - Recursive Neural Tensor Networks
+
+Recursive Neural Tensor Network (RNTN) is a model for semantic compositionality, proposed by
+Socher et al [1]. This network has been successfully applied to sentiment analysis, where the input
+is a sentence in its parse tree structure, and the output is the classiﬁcation for the input sentence, i.e.,
+whether the meaning is very negative, negative, neutral, positive, or very positive.
+
+2.1 Forward propagation
+
+In the forward phase, each input is a sentence in its parse tree structure. (See ﬁgure (1)). Each word
+in the input sentence is converted to a d-dimensional word vector through a word embedding matrix
+L ∈ Rd×|V |, where |V | is the size of the vocabulary. Further more, each word vector is converted
+to a d-dimensional node vector through the element-wise tanh function and stored in the leaf node
+of the tree. The node vectors of internal nodes are then computed in a bottom-up fashion as follows.
+Let xi be the parent node of its left and right children nodes xi
+R, then the node vector at xi is
+deﬁned as
+
+L, xi
+
+V
+
++ W
+
+L
+xi
+R
+
+xi = tanh(
+
+(1)
+where W ∈ R2d×d is the weight matrix, V ∈ R2d×2d×d is the weight tensor, and tanh applies on
+vectors element-wise.
+Each node in the tree is now a d-dimensional vector. The network predicts the meaning (very
+negative, negative, neutral, positive, or very positive) of every node by producing a probability
+vector yi ∈ R5 deﬁned as
+
+L
+xi
+R
+
+(cid:20)xi
+
+(cid:21)T
+
+(cid:20)xi
+
+(cid:21)
+
+(cid:21)
+
+(cid:20)xi
+
+L
+xi
+R
+
+) ∈ Rd,
+
+yi = softmax(Wsxi) ∈ R5,
+
+(2)
+
+1
+
+where Ws ∈ R5×d is the sentiment classiﬁcation matrix. Moreover, each node xi is associated with
+a ground truth (or target vector) ti ∈ R5, which is a binary vector whose j-th component is 1 if j is
+the correct label and is 0 in all other components. In order to minimize the KL-divergence between
+the predicted distribution yi and the true distribution ti, the error function with regularization is
+deﬁned as
+
+E(θ) = −(cid:88)
+
+< ti, log yi > +λ||θ||2,
+
+where the model parameters are θ = (L, W, Ws, V ), and the log function applies on yi element-
+wise.
+
+i
+
+Figure 1: Each training example is a sentence.
+
+2.2 Backpropagation [2]
+
+The formulae for errors at the node xi are as follows. Let δi,s denote the softmax error and δi,com
+denote the complete incoming error, then
+
+δi,s = W T
+
+s (yi − ti),
+
+δi,s,
+
+if xi is the root
+
+δi,com =
+
+δi,s + δp(i),down[1 : d], if xi is the left child of xp(i)
+δi,s + δp(i),down[d + 1 : 2d], if xi is the right child of xp(i)
+
+δi,down = (W T δi,com + Si) ◦ f(cid:48)(xi),
+where ◦ denotes the Hadamard product, f(cid:48)(x) = 1 − x2.
+
+(3)
+
+Si =
+
+δi,com
+(cid:96)
+
+V [(cid:96)] + (V [(cid:96)])T
+
+(cid:19)(cid:20)xi
+
+(cid:21)
+
+.
+
+L
+xi
+R
+
+(cid:18)
+
+d(cid:88)
+(cid:20)xi
+
+(cid:96)=1
+
+(cid:21)T
+
+The gradients of the error with respect to W , Ws, V [(cid:96)] are
+
+∂E
+∂W
+
+=
+
+δi,com
+
+L
+xi
+R
+
+,
+
+∂E
+∂Ws
+
+=
+
+(yi − ti)xiT
+
+,
+
+∂E
+∂V [(cid:96)]
+
+=
+
+(cid:88)
+
+i
+
+(cid:88)
+
+i
+
+(cid:88)
+
+i
+
+δi,com
+(cid:96)
+
+(cid:21)T
+
+(cid:20)xi
+
+L
+xi
+R
+
+(cid:21)(cid:20)xi
+
+L
+xi
+R
+
+.
+
+(4)
+
+3 Techniques for Batching Computation
+
+The existing code in Stanford CoreNLP trains RNTN with mini-batch adaptive gradient descent
+(AdaGrad) [3], where the gradients are computed one training example at a time, and the for-
+ward/backward propagation are computed one node at a time. For these computations, we observe
+that in the formulae (1, 2, 3), the parameters (W, Ws, V ) are shared across training examples in a
+mini-batch and across nodes.
+For foward propagation, we say a node xi is ready to compute if both xi
+R have been com-
+puted. For backward propagation, we say δi is ready to compute if the errors of its parent node, i.e.,
+δp(i),s, δp(i),com, and δp(i),down, have been computed.
+
+L and xi
+
+2
+
+The moviefantastic.isWe may group ready nodes across trees and compute them all together at once by using the following
+formulae.
+
+3.1 Group matrix-vector multiplications
+After a rearrangement of indices, let xi, i = 1,··· k, be the nodes that are ready to compute and we
+have
+
+(cid:21)
+
+(cid:20)xi
+
+L
+xi
+R
+
+ui =
+
+, U =
+
+(cid:34) |
+
+|
+u1 u2
+|
+|
+
+|
+··· uk
+|
+
+(cid:35)
+
+.
+
+To compute the matrix-vector multiplication part of (1) over all ready nodes, we have
+
+[Wu1 Wu2
+
+··· Wuk] = W [u1 u2
+
+··· uk] .
+
+3.2 Group Bilinear Operations
+
+To compute the tensor part of (1) over all ready nodes, we have
+
+1 Vu1 uT
+
+2 Vu2
+
+··· uT
+
+k Vuk
+
+(cid:3) = Flatten2(V)(cid:0)U (cid:12) U(cid:1),
+
+(cid:2)uT
+
+where (cid:12) is the Khatri-Rao product (deﬁned in the appendix), and the matrix Flatten2(V) ∈ Rd×4d2
+is obtained by taking lateral slices of the tensor V and ordering these slices from left to right. See
+ﬁgure 2(b).
+
+(a) Horizontal
+
+(b) Lateral
+
+(c) Frontal
+
+Figure 2: Slice of a 3rd-order tensor
+
+3.3 Group Errors δi,com and δi,down respectively
+
+To compute the δi,com over all ready nodes using (3), let
+
+∆com =
+
+δ1,com δ2,com ···
+
+|
+|
+
+|
+|
+
+δk,com
+
+ ∈ Rd×k,
+ = Flatten1(A)(∆com (cid:12) U ),
+
+uk
+uk
+
+δ1,com
+1
+δ1,com
+2
+...
+δ1,com
+d
+
+u1
+u1
+
+u1
+
+···
+···
+...
+···
+
+δk,com
+1
+δk,com
+2
+...
+δk,com
+d
+
+uk
+
+ |
+··· A[d](cid:3)
+
+|
+
+
+
+ =
+
+(cid:18)
+
+then we have
+
+ =(cid:2)A[1]
+
+|
+··· Sk
+|
+
+ |
+
+S1
+|
+
+
+
+where A[(cid:96)] = V [(cid:96)] +(V [(cid:96)])T , and the matrix Flatten1(A) ∈ R2d×2d2 is obtained by taking horizontal
+slices of the tensor A and ordering these slices from left to right. See ﬁgure 2(a).
+As for δi,down, we have
+
+|
+|
+
+δ1,down
+
+|
+|
+
+δ2,down
+
+···
+
+|
+|
+
+δk,down
+
+WT ∆com+
+
+|
+S1 S2
+|
+|
+
+|
+··· Sk
+|
+
+(cid:19)
+
+◦ f(cid:48)(cid:18) |
+
+|
+x1 x2
+|
+|
+
+···
+
+|
+xk
+|
+
+(cid:19)
+
+.
+
+ |
+
+3
+
+3.4 Group Gradients
+
+We rewrite equations (4) as follows:
+
+(yi − ti)xiT
+
+i
+
+i
+
+δi,com
+
+(cid:88)
+(cid:88)
+(cid:88)
+...(cid:88)
+
+
+
+i
+
+i
+
+∂E
+∂W
+
+=
+
+∂E
+∂Ws
+
+=
+
+ =
+
+
+
+∂E
+∂V[1]
+
+...
+
+∂E
+∂V[d]
+
+As for the gradients of the tensor V , we have
+
+(cid:21)T
+
+(cid:20)xi
+
+L
+xi
+R
+
+(cid:88)
+
+=
+
+δi,comuT
+
+i =
+
+i
+
+= (Y − T )X T .
+
+ =(cid:2)δ1,com ⊗ u1
+
+δi,com
+1
+
+δi,com
+d
+
+uiuT
+i
+
+uiuT
+i
+
+ |
+
+|
+
+δ1,com ···
+
+ = ∆comUT .
+
+
+
+uT
+
+1
+uT
+2
+...
+uT
+k
+
+|
+|
+
+δk,com
+
+···
+
+δk,com ⊗ uk
+
+ = (∆com (cid:12) U )U T .
+
+(cid:3)
+
+uT
+
+1
+uT
+2
+...
+uT
+k
+
+4 Experiments and Results
+
+We have implemented the above batching techniques as modiﬁcations to the “sentiment” module in
+the Stanford coreNLP project. We use INDArray [5]s from the Nd4j [6] project to represent matrices
+and tensors. This way it is easy to run the batched operations on a GPU. We ran similar workloads on
+the three conﬁgurations - unmodiﬁed coreNLP baseline, batched implementation on CPU, batched
+implementation on GPU and we share the results below.
+
+The speciﬁcs of our experiments are as follows:
+
+• We have used git commit id 55bbcb of coreNLP.git as our baseline.
+
+4
+
+• Nd4j version 0.4-rc3.6
+• CUDA/jcublas version 6.5
+• CPU: Intel(R) Xeon(R) CPU E5-2609 0 @ 2.40GHz (8 cores)
+• RAM: 128GB DDR3
+• GPU: GeForce GTX 680
+• Dataset: Stanford Sentiment Treebank
+• Workload: 1 epoch of training on the Dataset varying batch size (25, 50, 100) and word-
+• Code: All our code is at http://github.com/avati/coreNLP/commits/rntn-gpu
+
+vector dimensions (25, 50, 100) in each of the three modes (CPU, CPU-batch, GPU).
+
+5 Conclusion and Future Work
+
+Based on the results shown above, we conclude the following:
+
+• Batching computation is always better.
+• GPUs offer signiﬁcant speed-up (up to 4x in our tests) when word-vector dimensions and
+• At lower batch and word-vector dimensions, the overheads of managing data on GPU sur-
+
+batch sizes are large enough.
+
+pass the beneﬁts of faster computation.
+
+Testing with larger word-vector sizes was interrupted due to a known bug in Nd4j. We are eager to
+resume testing once the bug is ﬁxed as we expect greater speed-up.
+
+6 Appendix
+
+In this section, we review the deﬁnitions of three matrix products [4].
+Deﬁnitions: Let A = (aij), B = (bij) be m-by-n matrices, C = (cij) be a p-by-q matrix, and
+D = (dij) be a r-by-n matrix. Then
+
+1. Hadamard product:
+
+A ◦ B =
+
+2. Kronecker product:
+
+A ⊗ C =
+
+...
+
+a21b21
+
+a12b12
+a22b22
+
+am1bm1 am2bm2
+
+ a11b11
+ a11C a12C ···
+
+a21C a22C ···
+...
+...
+am1C am2C ···
+
+...
+
+...
+
+···
+···
+...
+···
+
+a1nb1n
+a2nb2n
+
+...
+
+amnbmn
+
+ ∈ Rm×n.
+ ∈ Rmp×nq.
+
+a1nC
+a2nC
+
+...
+
+amnC
+
+3. Khatri-Rao product:
+
+A (cid:12) D = [a1 ⊗ d1 a2 ⊗ d2
+
+···
+
+an ⊗ dn] ∈ Rmr×n.
+
+Acknowledgement
+
+We thank Sam Bowman for introducing the problem and many helpful discussions, Youssef Ahres
+for mentoring us and offering his expertise when we needed, and ﬁnally Prof. Andrew Ng for the
+education and conducting this wonderful course.
+
+5
+
+References
+[1] Richard Socher, Alex Perelygin, Jean Y. Wu, Jason Chuang, Christopher D. Manning, Andrew
+Y. Ng, and Christopher Potts, Recursive Deep Models for Semantic Compositionality Over a
+Sentiment Treebank, EMNLP (2013)
+
+[2] Christoph Goller and Andreas Kchler, Learning Task-Dependent Distributed Representations
+
+by Backpropagation Through Structure, ICNN (1996)
+
+[3] John Duchi, Elad Hazan, and Yoram Singer, Adaptive Subgradient Methods for Online Learn-
+
+ing and Stochastic Optimization, JMLR (2012)
+
+[4] Shuangzhe Liu and Gotz Trenkler, Hadamard, Khatri-Rao, Kronecker and Other Matrix
+
+Products, Int. J. Inform. Syst. Sci (2008)
+
+[5] http://nd4j.org/apidocs/org/nd4j/linalg/api/ndarray/INDArray.html
+[6] Nd4j http://nd4j.org
+
+6
+
+

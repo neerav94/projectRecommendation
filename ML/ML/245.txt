@@ -1,0 +1,1347 @@
+Similar Language Detection
+
+Shenglan Qiao
+
+Stanford University
+
+Daniel L´evy
+
+Stanford University
+
+Abstract
+
+Language identiﬁcation is a key component of multiple NLP applications. Dis-
+criminating between similar languages is one of the bottlenecks of state-of-the-art
+language identiﬁcation systems. In this paper, we present a hierarchical method
+that ﬁrst classiﬁes a written sentence into a linguistically deﬁned language group
+and then determines the language. We are able to achieve an overall test accuracy
+of 92.6% (12039/13000). Our method is robust and easily scalable to incorporate
+many languages as well as more training data.
+
+1
+
+Introduction
+
+Language identiﬁcation has many applications across different domains (translation, language inter-
+pretation, etc.). While it is trivial to discriminate between disparate languages, it is far from a solved
+one for highly similar languages and dialects. Our problem is presented in the Discriminating Simi-
+lar Language (DSL) Task, a contest that requires teams to predict the language of sentences written
+in similar languages. The categories can be different languages or variations of the same languages;
+distinguishing one from another is far from trivial. For example, in the training dataset provided
+by DSL, more than 20% of the sentences in the South-West Slavic group were written with words
+present in all three languages, making it impossible to solve with a simple dictionary look-up.
+In this paper, we present a hierarchical method that breaks down the problem into two consecutive
+stages. Languages are grouped by their degrees of similarity into groups. A simple word-frequency
+method ﬁrst identiﬁes the group a written text belongs to. A more sophisticated method using an
+ensemble of Support Vector Machine (SVM) classiﬁers then determines the language within the
+group.We have also developed this method with efﬁciency and scalability in mind. Our computing
+resources were limited to our personal computers; we had to ﬁnd a way to keep the size of the data
+and the complexity manageable without sacriﬁcing too much accuracy.
+
+2 Related Work
+
+Classifying tests written in disparate languages is considered a solved problem. [1] presented the
+word frequency method for language classiﬁcation, which we used for discriminating among lan-
+guage groups.
+Discriminating among similar languages is a fairly present subject in literature and still open for
+discussion. In September 2015, the LT4VarDial, a joint workshop on Language Technology for
+closely related language, varieties and dialects was held in Bulgaria. This workshop featured the
+DSL Task, a contest where teams were given a training set to build models that would be tested
+on an undisclosed testing set. This shared task inspired several research papers on the subject (an
+overview can be seen in [3]).
+[4] introduced us to the idea of an ensemble classiﬁer. However, [4] included all languages in a
+single ensemble classiﬁer. We decided this method would be difﬁcult to scale up to include more
+languages to multiple languages; it would also be computationally inefﬁcient or impossible for us
+
+1
+
+Similar Language Detection
+
+Shenglan Qiao
+
+Stanford University
+
+Daniel L´evy
+
+Stanford University
+
+Abstract
+
+Language identiﬁcation is a key component of multiple NLP applications. Dis-
+criminating between similar languages is one of the bottlenecks of state-of-the-art
+language identiﬁcation systems. In this paper, we present a hierarchical method
+that ﬁrst classiﬁes a written sentence into a linguistically deﬁned language group
+and then determines the language. We are able to achieve an overall test accuracy
+of 92.6% (12039/13000). Our method is robust and easily scalable to incorporate
+many languages as well as more training data.
+
+1
+
+Introduction
+
+Language identiﬁcation has many applications across different domains (translation, language inter-
+pretation, etc.). While it is trivial to discriminate between disparate languages, it is far from a solved
+one for highly similar languages and dialects. Our problem is presented in the Discriminating Simi-
+lar Language (DSL) Task, a contest that requires teams to predict the language of sentences written
+in similar languages. The categories can be different languages or variations of the same languages;
+distinguishing one from another is far from trivial. For example, in the training dataset provided
+by DSL, more than 20% of the sentences in the South-West Slavic group were written with words
+present in all three languages, making it impossible to solve with a simple dictionary look-up.
+In this paper, we present a hierarchical method that breaks down the problem into two consecutive
+stages. Languages are grouped by their degrees of similarity into groups. A simple word-frequency
+method ﬁrst identiﬁes the group a written text belongs to. A more sophisticated method using an
+ensemble of Support Vector Machine (SVM) classiﬁers then determines the language within the
+group.We have also developed this method with efﬁciency and scalability in mind. Our computing
+resources were limited to our personal computers; we had to ﬁnd a way to keep the size of the data
+and the complexity manageable without sacriﬁcing too much accuracy.
+
+2 Related Work
+
+Classifying tests written in disparate languages is considered a solved problem. [1] presented the
+word frequency method for language classiﬁcation, which we used for discriminating among lan-
+guage groups.
+Discriminating among similar languages is a fairly present subject in literature and still open for
+discussion. In September 2015, the LT4VarDial, a joint workshop on Language Technology for
+closely related language, varieties and dialects was held in Bulgaria. This workshop featured the
+DSL Task, a contest where teams were given a training set to build models that would be tested
+on an undisclosed testing set. This shared task inspired several research papers on the subject (an
+overview can be seen in [3]).
+[4] introduced us to the idea of an ensemble classiﬁer. However, [4] included all languages in a
+single ensemble classiﬁer. We decided this method would be difﬁcult to scale up to include more
+languages to multiple languages; it would also be computationally inefﬁcient or impossible for us
+
+1
+
+given our limited resources. [6] convinced us that a hierarchical methods could perform almost as
+well as the winner of the task while being more robust and scalable.
+
+3 Dataset and features
+
+The data sets we used were part of the DSL-Shared Task of 2015. The task provided participants with
+training (17000 examples per language), development (2000 examples per language) and testing sets
+(1000 examples per languages). The sets consisted of individually labeled sentences extracted from
+the journalistic corpora in 13 different languages. The languages were part of 6 language groups.
+
+• South-Eastern Slavic (ses): Bulgarian (bg), Macedonian (mk)
+• South-Western Slavic (sws): Bosnian (bs), Croatian (hr), Serbian (sr)
+• West Slavic (ws): Czech (cz), Slovak (sk)
+• Spanish(es): Argentine Spanish (esar), Peninsular Spanish (eses)
+• Portuguese (pt): Brazilian Portuguese (ptbr), European Portuguese (ptpt)
+• Austronesian (aus): Indonesian (id), Malay (my)
+
+We engineered two categories of features (word and character) and we represented them in
+a sparse way: word n-grams (for example, given a sentence w1 . . . wn,
+the 2-grams are
+w1w2, w2w3, . . . , wn−1wn) and character n-grams: the same than above but with characters in-
+stead of words (with character cross-over between words). For example, the 5-grams of ”Hello
+World” are ”Hello”,”ello ”,”llo W”, ”lo Wo”, ”o Wor”, ” Worl”, ”World”.
+We used words n-grams for n ∈ {1, 2} and character n-grams for n ∈ {3, . . . , 6}.
+
+4 Methods
+
+The hierarchical method employs a simple word-frequency method that ﬁrst identiﬁes the group a
+test belongs to. It then uses an ensemble of SVM models to determine the ﬁnal output. Figure 1
+shows a schematic representation of the method. The SVM models are trained with examples within
+the language group and can have different number and combination of features across groups.
+
+Figure 1: Overview of our learning algorithm.
+
+In this section, we will describe the two stages of our hierarchical method as well as our protocol to
+avoid over-ﬁtting. Parameters of our method were tested and tuned with the development dataset,
+before applying it to the test dataset.
+
+4.1 The Word-Frequency method
+
+The ﬁrst block of our pipeline is a classiﬁer to distinguish the language group of an input. We built
+this classiﬁer using the following word-frequency method. From the training set, for each language
+
+2
+
+Similar Language Detection
+
+Shenglan Qiao
+
+Stanford University
+
+Daniel L´evy
+
+Stanford University
+
+Abstract
+
+Language identiﬁcation is a key component of multiple NLP applications. Dis-
+criminating between similar languages is one of the bottlenecks of state-of-the-art
+language identiﬁcation systems. In this paper, we present a hierarchical method
+that ﬁrst classiﬁes a written sentence into a linguistically deﬁned language group
+and then determines the language. We are able to achieve an overall test accuracy
+of 92.6% (12039/13000). Our method is robust and easily scalable to incorporate
+many languages as well as more training data.
+
+1
+
+Introduction
+
+Language identiﬁcation has many applications across different domains (translation, language inter-
+pretation, etc.). While it is trivial to discriminate between disparate languages, it is far from a solved
+one for highly similar languages and dialects. Our problem is presented in the Discriminating Simi-
+lar Language (DSL) Task, a contest that requires teams to predict the language of sentences written
+in similar languages. The categories can be different languages or variations of the same languages;
+distinguishing one from another is far from trivial. For example, in the training dataset provided
+by DSL, more than 20% of the sentences in the South-West Slavic group were written with words
+present in all three languages, making it impossible to solve with a simple dictionary look-up.
+In this paper, we present a hierarchical method that breaks down the problem into two consecutive
+stages. Languages are grouped by their degrees of similarity into groups. A simple word-frequency
+method ﬁrst identiﬁes the group a written text belongs to. A more sophisticated method using an
+ensemble of Support Vector Machine (SVM) classiﬁers then determines the language within the
+group.We have also developed this method with efﬁciency and scalability in mind. Our computing
+resources were limited to our personal computers; we had to ﬁnd a way to keep the size of the data
+and the complexity manageable without sacriﬁcing too much accuracy.
+
+2 Related Work
+
+Classifying tests written in disparate languages is considered a solved problem. [1] presented the
+word frequency method for language classiﬁcation, which we used for discriminating among lan-
+guage groups.
+Discriminating among similar languages is a fairly present subject in literature and still open for
+discussion. In September 2015, the LT4VarDial, a joint workshop on Language Technology for
+closely related language, varieties and dialects was held in Bulgaria. This workshop featured the
+DSL Task, a contest where teams were given a training set to build models that would be tested
+on an undisclosed testing set. This shared task inspired several research papers on the subject (an
+overview can be seen in [3]).
+[4] introduced us to the idea of an ensemble classiﬁer. However, [4] included all languages in a
+single ensemble classiﬁer. We decided this method would be difﬁcult to scale up to include more
+languages to multiple languages; it would also be computationally inefﬁcient or impossible for us
+
+1
+
+given our limited resources. [6] convinced us that a hierarchical methods could perform almost as
+well as the winner of the task while being more robust and scalable.
+
+3 Dataset and features
+
+The data sets we used were part of the DSL-Shared Task of 2015. The task provided participants with
+training (17000 examples per language), development (2000 examples per language) and testing sets
+(1000 examples per languages). The sets consisted of individually labeled sentences extracted from
+the journalistic corpora in 13 different languages. The languages were part of 6 language groups.
+
+• South-Eastern Slavic (ses): Bulgarian (bg), Macedonian (mk)
+• South-Western Slavic (sws): Bosnian (bs), Croatian (hr), Serbian (sr)
+• West Slavic (ws): Czech (cz), Slovak (sk)
+• Spanish(es): Argentine Spanish (esar), Peninsular Spanish (eses)
+• Portuguese (pt): Brazilian Portuguese (ptbr), European Portuguese (ptpt)
+• Austronesian (aus): Indonesian (id), Malay (my)
+
+We engineered two categories of features (word and character) and we represented them in
+a sparse way: word n-grams (for example, given a sentence w1 . . . wn,
+the 2-grams are
+w1w2, w2w3, . . . , wn−1wn) and character n-grams: the same than above but with characters in-
+stead of words (with character cross-over between words). For example, the 5-grams of ”Hello
+World” are ”Hello”,”ello ”,”llo W”, ”lo Wo”, ”o Wor”, ” Worl”, ”World”.
+We used words n-grams for n ∈ {1, 2} and character n-grams for n ∈ {3, . . . , 6}.
+
+4 Methods
+
+The hierarchical method employs a simple word-frequency method that ﬁrst identiﬁes the group a
+test belongs to. It then uses an ensemble of SVM models to determine the ﬁnal output. Figure 1
+shows a schematic representation of the method. The SVM models are trained with examples within
+the language group and can have different number and combination of features across groups.
+
+Figure 1: Overview of our learning algorithm.
+
+In this section, we will describe the two stages of our hierarchical method as well as our protocol to
+avoid over-ﬁtting. Parameters of our method were tested and tuned with the development dataset,
+before applying it to the test dataset.
+
+4.1 The Word-Frequency method
+
+The ﬁrst block of our pipeline is a classiﬁer to distinguish the language group of an input. We built
+this classiﬁer using the following word-frequency method. From the training set, for each language
+
+2
+
+i is the frequency of the ith common word of the lth
+
+l ∈ 1 . . . 13, we deﬁne xl ∈ R1000 s.t. xl
+language.
+i(s) = 1 if the ith word of the
+Given an unclassiﬁed sentence s, we deﬁne xl(s), l = 1 . . . 13 s.t. xl
+(cid:104)xl(s), xl(cid:105). To obtain
+lth language is present in the sentence. The classiﬁer is then h(s) := argmax
+l∈1...13
+the group, we then just have to return the group the language h(s) is part of.
+McNamee showed in [1] that this word frequency method was extremely effective when it came
+to classifying rather distinct languages. This method also proved computationally efﬁcient and ob-
+tained virtually perfect result (> 99% accuracy) for differentiating among language groups, which
+we will go more in-depth into in section 5.
+
+4.2 Multi-class SVMs
+
+In class, we derived the optimization program for 2-class SVM. In [7], Crammer and Singer makes
+a derivation for a multi-class SVM which we are using.
+Let’s replace ourselves in the context of the course but with k classes this time.
+Let (x(i), y(i)), i = 1 . . . m with x(i) ∈ Rn but y(i) ∈ {1 . . . k}. Crammer and Singer (2002)
+proposed the following multi-class approach by solving the following optimization problem:
+
+k(cid:88)
+
+l=1
+
+m(cid:88)
+l x(i) ≤ δi,l − ξi, i = 1, . . . , m.
+
+i=1
+
+ξi
+
+wT
+
+l wl + C
+x(i) − wT
+
+minimize
+
+wl,ξi,l=1...k,i=1...m
+
+1
+2
+
+subject to
+
+wT
+Where δi,l = 1 if i = l, δi,l = 0 if i (cid:54)= l.
+With the following decision function:
+
+y(i)
+
+(cid:88)
+
+(cid:88)
+
+hw1,...,wk (x) = argmax
+l∈{1,...,k}
+
+wT
+
+l x
+
+j(cid:104)x(i), x(j)(cid:105) +
+
+αl
+iαl
+
+1≤i≤m,1≤l≤k
+
+1≤i,j≤m,1≤l≤k
+
+k(cid:88)
+l=1
+i ≤ δi,lC,∀i ∈ {1, . . . , m},∀l ∈ {1, . . . k}
+αl
+
+i, i = 1, . . . , m.
+
+αl
+
+δi,lαl
+i
+
+We can derive the dual problem:
+
+minimize
+
+αl
+
+i,l=1...k,i=1...m
+
+subject to
+
+m(cid:80)
+
+i=1
+
+Where wl =
+
+αl
+ix(i), l = 1 . . . k
+
+We can then solve the dual using the coordinate ascent method seen in class. It is clear that this
+extension from 2 classes to k classes works in the exact same way than before and that this classiﬁer
+has the same properties (kernel trick...). We used LIBLINEAR SVM to implement this multi-class
+SVM.
+
+4.3 Feature scoring using tf-idf
+Character n-grams for higher values (n ≥ 4 mostly) are very prone to over-ﬁtting. In order to make
+our method robust, we had to select a subset of features for the ensemble of SVM models. Due to
+the size of our features set (approximately 3 millions) both PCA and forward/backward search were
+out of the question. To overcome this obstacle, we decided to score the features using tf-idf and use
+only the top-rankings ones.
+
+3
+
+Similar Language Detection
+
+Shenglan Qiao
+
+Stanford University
+
+Daniel L´evy
+
+Stanford University
+
+Abstract
+
+Language identiﬁcation is a key component of multiple NLP applications. Dis-
+criminating between similar languages is one of the bottlenecks of state-of-the-art
+language identiﬁcation systems. In this paper, we present a hierarchical method
+that ﬁrst classiﬁes a written sentence into a linguistically deﬁned language group
+and then determines the language. We are able to achieve an overall test accuracy
+of 92.6% (12039/13000). Our method is robust and easily scalable to incorporate
+many languages as well as more training data.
+
+1
+
+Introduction
+
+Language identiﬁcation has many applications across different domains (translation, language inter-
+pretation, etc.). While it is trivial to discriminate between disparate languages, it is far from a solved
+one for highly similar languages and dialects. Our problem is presented in the Discriminating Simi-
+lar Language (DSL) Task, a contest that requires teams to predict the language of sentences written
+in similar languages. The categories can be different languages or variations of the same languages;
+distinguishing one from another is far from trivial. For example, in the training dataset provided
+by DSL, more than 20% of the sentences in the South-West Slavic group were written with words
+present in all three languages, making it impossible to solve with a simple dictionary look-up.
+In this paper, we present a hierarchical method that breaks down the problem into two consecutive
+stages. Languages are grouped by their degrees of similarity into groups. A simple word-frequency
+method ﬁrst identiﬁes the group a written text belongs to. A more sophisticated method using an
+ensemble of Support Vector Machine (SVM) classiﬁers then determines the language within the
+group.We have also developed this method with efﬁciency and scalability in mind. Our computing
+resources were limited to our personal computers; we had to ﬁnd a way to keep the size of the data
+and the complexity manageable without sacriﬁcing too much accuracy.
+
+2 Related Work
+
+Classifying tests written in disparate languages is considered a solved problem. [1] presented the
+word frequency method for language classiﬁcation, which we used for discriminating among lan-
+guage groups.
+Discriminating among similar languages is a fairly present subject in literature and still open for
+discussion. In September 2015, the LT4VarDial, a joint workshop on Language Technology for
+closely related language, varieties and dialects was held in Bulgaria. This workshop featured the
+DSL Task, a contest where teams were given a training set to build models that would be tested
+on an undisclosed testing set. This shared task inspired several research papers on the subject (an
+overview can be seen in [3]).
+[4] introduced us to the idea of an ensemble classiﬁer. However, [4] included all languages in a
+single ensemble classiﬁer. We decided this method would be difﬁcult to scale up to include more
+languages to multiple languages; it would also be computationally inefﬁcient or impossible for us
+
+1
+
+given our limited resources. [6] convinced us that a hierarchical methods could perform almost as
+well as the winner of the task while being more robust and scalable.
+
+3 Dataset and features
+
+The data sets we used were part of the DSL-Shared Task of 2015. The task provided participants with
+training (17000 examples per language), development (2000 examples per language) and testing sets
+(1000 examples per languages). The sets consisted of individually labeled sentences extracted from
+the journalistic corpora in 13 different languages. The languages were part of 6 language groups.
+
+• South-Eastern Slavic (ses): Bulgarian (bg), Macedonian (mk)
+• South-Western Slavic (sws): Bosnian (bs), Croatian (hr), Serbian (sr)
+• West Slavic (ws): Czech (cz), Slovak (sk)
+• Spanish(es): Argentine Spanish (esar), Peninsular Spanish (eses)
+• Portuguese (pt): Brazilian Portuguese (ptbr), European Portuguese (ptpt)
+• Austronesian (aus): Indonesian (id), Malay (my)
+
+We engineered two categories of features (word and character) and we represented them in
+a sparse way: word n-grams (for example, given a sentence w1 . . . wn,
+the 2-grams are
+w1w2, w2w3, . . . , wn−1wn) and character n-grams: the same than above but with characters in-
+stead of words (with character cross-over between words). For example, the 5-grams of ”Hello
+World” are ”Hello”,”ello ”,”llo W”, ”lo Wo”, ”o Wor”, ” Worl”, ”World”.
+We used words n-grams for n ∈ {1, 2} and character n-grams for n ∈ {3, . . . , 6}.
+
+4 Methods
+
+The hierarchical method employs a simple word-frequency method that ﬁrst identiﬁes the group a
+test belongs to. It then uses an ensemble of SVM models to determine the ﬁnal output. Figure 1
+shows a schematic representation of the method. The SVM models are trained with examples within
+the language group and can have different number and combination of features across groups.
+
+Figure 1: Overview of our learning algorithm.
+
+In this section, we will describe the two stages of our hierarchical method as well as our protocol to
+avoid over-ﬁtting. Parameters of our method were tested and tuned with the development dataset,
+before applying it to the test dataset.
+
+4.1 The Word-Frequency method
+
+The ﬁrst block of our pipeline is a classiﬁer to distinguish the language group of an input. We built
+this classiﬁer using the following word-frequency method. From the training set, for each language
+
+2
+
+i is the frequency of the ith common word of the lth
+
+l ∈ 1 . . . 13, we deﬁne xl ∈ R1000 s.t. xl
+language.
+i(s) = 1 if the ith word of the
+Given an unclassiﬁed sentence s, we deﬁne xl(s), l = 1 . . . 13 s.t. xl
+(cid:104)xl(s), xl(cid:105). To obtain
+lth language is present in the sentence. The classiﬁer is then h(s) := argmax
+l∈1...13
+the group, we then just have to return the group the language h(s) is part of.
+McNamee showed in [1] that this word frequency method was extremely effective when it came
+to classifying rather distinct languages. This method also proved computationally efﬁcient and ob-
+tained virtually perfect result (> 99% accuracy) for differentiating among language groups, which
+we will go more in-depth into in section 5.
+
+4.2 Multi-class SVMs
+
+In class, we derived the optimization program for 2-class SVM. In [7], Crammer and Singer makes
+a derivation for a multi-class SVM which we are using.
+Let’s replace ourselves in the context of the course but with k classes this time.
+Let (x(i), y(i)), i = 1 . . . m with x(i) ∈ Rn but y(i) ∈ {1 . . . k}. Crammer and Singer (2002)
+proposed the following multi-class approach by solving the following optimization problem:
+
+k(cid:88)
+
+l=1
+
+m(cid:88)
+l x(i) ≤ δi,l − ξi, i = 1, . . . , m.
+
+i=1
+
+ξi
+
+wT
+
+l wl + C
+x(i) − wT
+
+minimize
+
+wl,ξi,l=1...k,i=1...m
+
+1
+2
+
+subject to
+
+wT
+Where δi,l = 1 if i = l, δi,l = 0 if i (cid:54)= l.
+With the following decision function:
+
+y(i)
+
+(cid:88)
+
+(cid:88)
+
+hw1,...,wk (x) = argmax
+l∈{1,...,k}
+
+wT
+
+l x
+
+j(cid:104)x(i), x(j)(cid:105) +
+
+αl
+iαl
+
+1≤i≤m,1≤l≤k
+
+1≤i,j≤m,1≤l≤k
+
+k(cid:88)
+l=1
+i ≤ δi,lC,∀i ∈ {1, . . . , m},∀l ∈ {1, . . . k}
+αl
+
+i, i = 1, . . . , m.
+
+αl
+
+δi,lαl
+i
+
+We can derive the dual problem:
+
+minimize
+
+αl
+
+i,l=1...k,i=1...m
+
+subject to
+
+m(cid:80)
+
+i=1
+
+Where wl =
+
+αl
+ix(i), l = 1 . . . k
+
+We can then solve the dual using the coordinate ascent method seen in class. It is clear that this
+extension from 2 classes to k classes works in the exact same way than before and that this classiﬁer
+has the same properties (kernel trick...). We used LIBLINEAR SVM to implement this multi-class
+SVM.
+
+4.3 Feature scoring using tf-idf
+Character n-grams for higher values (n ≥ 4 mostly) are very prone to over-ﬁtting. In order to make
+our method robust, we had to select a subset of features for the ensemble of SVM models. Due to
+the size of our features set (approximately 3 millions) both PCA and forward/backward search were
+out of the question. To overcome this obstacle, we decided to score the features using tf-idf and use
+only the top-rankings ones.
+
+3
+
+We deﬁned the tf-idf score of a feature t derived from training set D to be
+
+tﬁdf(t, D) = tf(t, D) × log
+
+N
+
+df(t, D)
+
+(1)
+
+where tf(t, D) is the total number of times t appeared in the training set, df(t, D) the number of
+examples that contain t, and N the number of training examples. Since N/df (t, D) if always greater
+or equal to 1, this deﬁnition of tf-idf is always non-negative. It is zero if the feature appears in every
+training example; intuitively, this means the feature is common to all languages in the training set
+and therefore cannot help distinguish them from one another.
+
+4.4 Ensemble methods
+
+To reduce variance, we also decided to train several SVM models on a given language group and
+combine them using ensemble methods. For each language groups, we trained p SVM using differ-
+ent hyper-parameters (features and C constant). Each one of these SVM i, outputs k weight vectors.
+We have (wi,l)1≤i≤p,1≤l≤k weight vectors at our disposition.
+After experimenting with several ensemble methods (majority vote, boosting, and mean conﬁdence)
+we settled on mean conﬁdence, which can be written as follows:
+
+h(wi,l)1≤i≤p,1≤l≤k
+
+(x) = arg max
+1≤l≤k
+
+wt,l, x(cid:105)
+
+(cid:104) p(cid:88)
+
+t=1
+
+For some language group, we did not need to use the ensemble method as high-accuracy classiﬁca-
+tion was straightforward. For the others, we trained and combined 5 SVMs, each had a combination
+word 1-grams, 2-grams, and character n-grams (n ∈ {3, 4, 5, 6}).
+
+5 Results and Discussions
+
+Our ﬁnal classiﬁcation results for the test set are shown in ﬁgure 2. Our hierarchical method yields
+an overall accuracy of 92.6% (12039/13000). For 99.5% of the test examples, the word-frequency
+method assigns them correctly to their respective language group. We chose to combine the South-
+Western and West Slavic languages into one group (the sws-ws group) since the word-frequency
+method tended to group these ﬁve languages together.
+
+Figure 2: Confusion matrix for all 13 languages. Group accuracy means the rate at which the word-
+frequency method correctly identiﬁed the language group of test examples.
+
+In order to avoid over-ﬁtting, we tuned the regularization parameter c and performed feature se-
+lection based on tf-idf scoring. Within each language group, multiple SVM models were built and
+tested on the development set. Test accuracies of these model as a function of c were plotted. For
+
+4
+
+Similar Language Detection
+
+Shenglan Qiao
+
+Stanford University
+
+Daniel L´evy
+
+Stanford University
+
+Abstract
+
+Language identiﬁcation is a key component of multiple NLP applications. Dis-
+criminating between similar languages is one of the bottlenecks of state-of-the-art
+language identiﬁcation systems. In this paper, we present a hierarchical method
+that ﬁrst classiﬁes a written sentence into a linguistically deﬁned language group
+and then determines the language. We are able to achieve an overall test accuracy
+of 92.6% (12039/13000). Our method is robust and easily scalable to incorporate
+many languages as well as more training data.
+
+1
+
+Introduction
+
+Language identiﬁcation has many applications across different domains (translation, language inter-
+pretation, etc.). While it is trivial to discriminate between disparate languages, it is far from a solved
+one for highly similar languages and dialects. Our problem is presented in the Discriminating Simi-
+lar Language (DSL) Task, a contest that requires teams to predict the language of sentences written
+in similar languages. The categories can be different languages or variations of the same languages;
+distinguishing one from another is far from trivial. For example, in the training dataset provided
+by DSL, more than 20% of the sentences in the South-West Slavic group were written with words
+present in all three languages, making it impossible to solve with a simple dictionary look-up.
+In this paper, we present a hierarchical method that breaks down the problem into two consecutive
+stages. Languages are grouped by their degrees of similarity into groups. A simple word-frequency
+method ﬁrst identiﬁes the group a written text belongs to. A more sophisticated method using an
+ensemble of Support Vector Machine (SVM) classiﬁers then determines the language within the
+group.We have also developed this method with efﬁciency and scalability in mind. Our computing
+resources were limited to our personal computers; we had to ﬁnd a way to keep the size of the data
+and the complexity manageable without sacriﬁcing too much accuracy.
+
+2 Related Work
+
+Classifying tests written in disparate languages is considered a solved problem. [1] presented the
+word frequency method for language classiﬁcation, which we used for discriminating among lan-
+guage groups.
+Discriminating among similar languages is a fairly present subject in literature and still open for
+discussion. In September 2015, the LT4VarDial, a joint workshop on Language Technology for
+closely related language, varieties and dialects was held in Bulgaria. This workshop featured the
+DSL Task, a contest where teams were given a training set to build models that would be tested
+on an undisclosed testing set. This shared task inspired several research papers on the subject (an
+overview can be seen in [3]).
+[4] introduced us to the idea of an ensemble classiﬁer. However, [4] included all languages in a
+single ensemble classiﬁer. We decided this method would be difﬁcult to scale up to include more
+languages to multiple languages; it would also be computationally inefﬁcient or impossible for us
+
+1
+
+given our limited resources. [6] convinced us that a hierarchical methods could perform almost as
+well as the winner of the task while being more robust and scalable.
+
+3 Dataset and features
+
+The data sets we used were part of the DSL-Shared Task of 2015. The task provided participants with
+training (17000 examples per language), development (2000 examples per language) and testing sets
+(1000 examples per languages). The sets consisted of individually labeled sentences extracted from
+the journalistic corpora in 13 different languages. The languages were part of 6 language groups.
+
+• South-Eastern Slavic (ses): Bulgarian (bg), Macedonian (mk)
+• South-Western Slavic (sws): Bosnian (bs), Croatian (hr), Serbian (sr)
+• West Slavic (ws): Czech (cz), Slovak (sk)
+• Spanish(es): Argentine Spanish (esar), Peninsular Spanish (eses)
+• Portuguese (pt): Brazilian Portuguese (ptbr), European Portuguese (ptpt)
+• Austronesian (aus): Indonesian (id), Malay (my)
+
+We engineered two categories of features (word and character) and we represented them in
+a sparse way: word n-grams (for example, given a sentence w1 . . . wn,
+the 2-grams are
+w1w2, w2w3, . . . , wn−1wn) and character n-grams: the same than above but with characters in-
+stead of words (with character cross-over between words). For example, the 5-grams of ”Hello
+World” are ”Hello”,”ello ”,”llo W”, ”lo Wo”, ”o Wor”, ” Worl”, ”World”.
+We used words n-grams for n ∈ {1, 2} and character n-grams for n ∈ {3, . . . , 6}.
+
+4 Methods
+
+The hierarchical method employs a simple word-frequency method that ﬁrst identiﬁes the group a
+test belongs to. It then uses an ensemble of SVM models to determine the ﬁnal output. Figure 1
+shows a schematic representation of the method. The SVM models are trained with examples within
+the language group and can have different number and combination of features across groups.
+
+Figure 1: Overview of our learning algorithm.
+
+In this section, we will describe the two stages of our hierarchical method as well as our protocol to
+avoid over-ﬁtting. Parameters of our method were tested and tuned with the development dataset,
+before applying it to the test dataset.
+
+4.1 The Word-Frequency method
+
+The ﬁrst block of our pipeline is a classiﬁer to distinguish the language group of an input. We built
+this classiﬁer using the following word-frequency method. From the training set, for each language
+
+2
+
+i is the frequency of the ith common word of the lth
+
+l ∈ 1 . . . 13, we deﬁne xl ∈ R1000 s.t. xl
+language.
+i(s) = 1 if the ith word of the
+Given an unclassiﬁed sentence s, we deﬁne xl(s), l = 1 . . . 13 s.t. xl
+(cid:104)xl(s), xl(cid:105). To obtain
+lth language is present in the sentence. The classiﬁer is then h(s) := argmax
+l∈1...13
+the group, we then just have to return the group the language h(s) is part of.
+McNamee showed in [1] that this word frequency method was extremely effective when it came
+to classifying rather distinct languages. This method also proved computationally efﬁcient and ob-
+tained virtually perfect result (> 99% accuracy) for differentiating among language groups, which
+we will go more in-depth into in section 5.
+
+4.2 Multi-class SVMs
+
+In class, we derived the optimization program for 2-class SVM. In [7], Crammer and Singer makes
+a derivation for a multi-class SVM which we are using.
+Let’s replace ourselves in the context of the course but with k classes this time.
+Let (x(i), y(i)), i = 1 . . . m with x(i) ∈ Rn but y(i) ∈ {1 . . . k}. Crammer and Singer (2002)
+proposed the following multi-class approach by solving the following optimization problem:
+
+k(cid:88)
+
+l=1
+
+m(cid:88)
+l x(i) ≤ δi,l − ξi, i = 1, . . . , m.
+
+i=1
+
+ξi
+
+wT
+
+l wl + C
+x(i) − wT
+
+minimize
+
+wl,ξi,l=1...k,i=1...m
+
+1
+2
+
+subject to
+
+wT
+Where δi,l = 1 if i = l, δi,l = 0 if i (cid:54)= l.
+With the following decision function:
+
+y(i)
+
+(cid:88)
+
+(cid:88)
+
+hw1,...,wk (x) = argmax
+l∈{1,...,k}
+
+wT
+
+l x
+
+j(cid:104)x(i), x(j)(cid:105) +
+
+αl
+iαl
+
+1≤i≤m,1≤l≤k
+
+1≤i,j≤m,1≤l≤k
+
+k(cid:88)
+l=1
+i ≤ δi,lC,∀i ∈ {1, . . . , m},∀l ∈ {1, . . . k}
+αl
+
+i, i = 1, . . . , m.
+
+αl
+
+δi,lαl
+i
+
+We can derive the dual problem:
+
+minimize
+
+αl
+
+i,l=1...k,i=1...m
+
+subject to
+
+m(cid:80)
+
+i=1
+
+Where wl =
+
+αl
+ix(i), l = 1 . . . k
+
+We can then solve the dual using the coordinate ascent method seen in class. It is clear that this
+extension from 2 classes to k classes works in the exact same way than before and that this classiﬁer
+has the same properties (kernel trick...). We used LIBLINEAR SVM to implement this multi-class
+SVM.
+
+4.3 Feature scoring using tf-idf
+Character n-grams for higher values (n ≥ 4 mostly) are very prone to over-ﬁtting. In order to make
+our method robust, we had to select a subset of features for the ensemble of SVM models. Due to
+the size of our features set (approximately 3 millions) both PCA and forward/backward search were
+out of the question. To overcome this obstacle, we decided to score the features using tf-idf and use
+only the top-rankings ones.
+
+3
+
+We deﬁned the tf-idf score of a feature t derived from training set D to be
+
+tﬁdf(t, D) = tf(t, D) × log
+
+N
+
+df(t, D)
+
+(1)
+
+where tf(t, D) is the total number of times t appeared in the training set, df(t, D) the number of
+examples that contain t, and N the number of training examples. Since N/df (t, D) if always greater
+or equal to 1, this deﬁnition of tf-idf is always non-negative. It is zero if the feature appears in every
+training example; intuitively, this means the feature is common to all languages in the training set
+and therefore cannot help distinguish them from one another.
+
+4.4 Ensemble methods
+
+To reduce variance, we also decided to train several SVM models on a given language group and
+combine them using ensemble methods. For each language groups, we trained p SVM using differ-
+ent hyper-parameters (features and C constant). Each one of these SVM i, outputs k weight vectors.
+We have (wi,l)1≤i≤p,1≤l≤k weight vectors at our disposition.
+After experimenting with several ensemble methods (majority vote, boosting, and mean conﬁdence)
+we settled on mean conﬁdence, which can be written as follows:
+
+h(wi,l)1≤i≤p,1≤l≤k
+
+(x) = arg max
+1≤l≤k
+
+wt,l, x(cid:105)
+
+(cid:104) p(cid:88)
+
+t=1
+
+For some language group, we did not need to use the ensemble method as high-accuracy classiﬁca-
+tion was straightforward. For the others, we trained and combined 5 SVMs, each had a combination
+word 1-grams, 2-grams, and character n-grams (n ∈ {3, 4, 5, 6}).
+
+5 Results and Discussions
+
+Our ﬁnal classiﬁcation results for the test set are shown in ﬁgure 2. Our hierarchical method yields
+an overall accuracy of 92.6% (12039/13000). For 99.5% of the test examples, the word-frequency
+method assigns them correctly to their respective language group. We chose to combine the South-
+Western and West Slavic languages into one group (the sws-ws group) since the word-frequency
+method tended to group these ﬁve languages together.
+
+Figure 2: Confusion matrix for all 13 languages. Group accuracy means the rate at which the word-
+frequency method correctly identiﬁed the language group of test examples.
+
+In order to avoid over-ﬁtting, we tuned the regularization parameter c and performed feature se-
+lection based on tf-idf scoring. Within each language group, multiple SVM models were built and
+tested on the development set. Test accuracies of these model as a function of c were plotted. For
+
+4
+
+each SVM model, we chose the value for c at which the testing accuracy gain was marginal com-
+pared to the training accuracy gain.
+We selected subsets of features for our ﬁnal SVM models by observing how their prediction accu-
+racies on the development set changed as a function of features. We ranked features by category
+(word 1-grams, 2-grams and character n-grams, n ∈ {3, 4, 5, 6}) using the tf-idf scores deﬁned in
+the method section. Starting with the highest ranking features, we computed test accuracies on the
+development set using model trained with increasing number of features. Figure 3 shows an ex-
+ample of plots we used for feature selection in the sws-ws group. Similar to tuning c, our feature
+selection protocol kept the top-ranking n features in our ﬁnal SVM or ensembles (in ﬁgure 3 n =
+30000) by which increasing the number of features stopped gaining any signiﬁcant test accuracy on
+the development set.
+
+Figure 3: Prediction accuracy on the devel-
+opment set (sws-ws language group) as a
+function of the number of top-ranking fea-
+tures.
+
+Figure 4: Prediction accuracy on the devel-
+opment (sws-ws language group) set as a
+function of sets of increasingly lower-ranked
+SVM features.
+
+Finally, we also demonstrated that the deﬁnition of tf-idf was appropriate for feature selection.
+SVMs built with lower ranking features had lower test accuracies when applied to the develop-
+ment set. For instance, ﬁgure 4 shows that test accuracy of models built with sets of word 1-grams
+decreased monotonically; the ﬁrst set contained the 10000 top-ranking features, and the successive
+sets contained the same number of increasingly lower-ranked features. This consistent trend proved
+that we were avoiding over-ﬁtting by retaining features most representative of the training data.
+
+6 Conclusion
+
+We have achieved classiﬁcation of 13 similar languages with an overall accuracy of 92.6%. This
+is close to the DSL Task winning team’s accuracy of 95%. More importantly, we have explored
+a method that is easily scalable and robust. The word-frequency classiﬁer requires maintaining a
+database of only one thousand frequently occurring words per language. SVM features are derived
+within a language group, typically made up of only two languages. Generalizing to many languages
+therefore does not require changing the modeling for existing languages in the hierarchical model
+but simply adds independent branches to the hierarchy. This advantage of scalability stems from the
+linguistic knowledge used to divide languages into groups. Additionally, our methodical selection
+of features and the regularization parameter has rendered our method robustness across the develop-
+ment and test sets. This gives us conﬁdence that given more training data our method will perform
+well on a variety of texts.
+Future work will involve improving performance on certain language groups. Our method prefers
+to label the test examples as a certain language within the South-Western Slavic, Spanish, and Por-
+tuguese groups. More investigation is needed to explain why this happens. Gathering training data
+from genres other than journalistic articles can also be valuable and may improve the performance
+of our method.
+
+5
+
+Similar Language Detection
+
+Shenglan Qiao
+
+Stanford University
+
+Daniel L´evy
+
+Stanford University
+
+Abstract
+
+Language identiﬁcation is a key component of multiple NLP applications. Dis-
+criminating between similar languages is one of the bottlenecks of state-of-the-art
+language identiﬁcation systems. In this paper, we present a hierarchical method
+that ﬁrst classiﬁes a written sentence into a linguistically deﬁned language group
+and then determines the language. We are able to achieve an overall test accuracy
+of 92.6% (12039/13000). Our method is robust and easily scalable to incorporate
+many languages as well as more training data.
+
+1
+
+Introduction
+
+Language identiﬁcation has many applications across different domains (translation, language inter-
+pretation, etc.). While it is trivial to discriminate between disparate languages, it is far from a solved
+one for highly similar languages and dialects. Our problem is presented in the Discriminating Simi-
+lar Language (DSL) Task, a contest that requires teams to predict the language of sentences written
+in similar languages. The categories can be different languages or variations of the same languages;
+distinguishing one from another is far from trivial. For example, in the training dataset provided
+by DSL, more than 20% of the sentences in the South-West Slavic group were written with words
+present in all three languages, making it impossible to solve with a simple dictionary look-up.
+In this paper, we present a hierarchical method that breaks down the problem into two consecutive
+stages. Languages are grouped by their degrees of similarity into groups. A simple word-frequency
+method ﬁrst identiﬁes the group a written text belongs to. A more sophisticated method using an
+ensemble of Support Vector Machine (SVM) classiﬁers then determines the language within the
+group.We have also developed this method with efﬁciency and scalability in mind. Our computing
+resources were limited to our personal computers; we had to ﬁnd a way to keep the size of the data
+and the complexity manageable without sacriﬁcing too much accuracy.
+
+2 Related Work
+
+Classifying tests written in disparate languages is considered a solved problem. [1] presented the
+word frequency method for language classiﬁcation, which we used for discriminating among lan-
+guage groups.
+Discriminating among similar languages is a fairly present subject in literature and still open for
+discussion. In September 2015, the LT4VarDial, a joint workshop on Language Technology for
+closely related language, varieties and dialects was held in Bulgaria. This workshop featured the
+DSL Task, a contest where teams were given a training set to build models that would be tested
+on an undisclosed testing set. This shared task inspired several research papers on the subject (an
+overview can be seen in [3]).
+[4] introduced us to the idea of an ensemble classiﬁer. However, [4] included all languages in a
+single ensemble classiﬁer. We decided this method would be difﬁcult to scale up to include more
+languages to multiple languages; it would also be computationally inefﬁcient or impossible for us
+
+1
+
+given our limited resources. [6] convinced us that a hierarchical methods could perform almost as
+well as the winner of the task while being more robust and scalable.
+
+3 Dataset and features
+
+The data sets we used were part of the DSL-Shared Task of 2015. The task provided participants with
+training (17000 examples per language), development (2000 examples per language) and testing sets
+(1000 examples per languages). The sets consisted of individually labeled sentences extracted from
+the journalistic corpora in 13 different languages. The languages were part of 6 language groups.
+
+• South-Eastern Slavic (ses): Bulgarian (bg), Macedonian (mk)
+• South-Western Slavic (sws): Bosnian (bs), Croatian (hr), Serbian (sr)
+• West Slavic (ws): Czech (cz), Slovak (sk)
+• Spanish(es): Argentine Spanish (esar), Peninsular Spanish (eses)
+• Portuguese (pt): Brazilian Portuguese (ptbr), European Portuguese (ptpt)
+• Austronesian (aus): Indonesian (id), Malay (my)
+
+We engineered two categories of features (word and character) and we represented them in
+a sparse way: word n-grams (for example, given a sentence w1 . . . wn,
+the 2-grams are
+w1w2, w2w3, . . . , wn−1wn) and character n-grams: the same than above but with characters in-
+stead of words (with character cross-over between words). For example, the 5-grams of ”Hello
+World” are ”Hello”,”ello ”,”llo W”, ”lo Wo”, ”o Wor”, ” Worl”, ”World”.
+We used words n-grams for n ∈ {1, 2} and character n-grams for n ∈ {3, . . . , 6}.
+
+4 Methods
+
+The hierarchical method employs a simple word-frequency method that ﬁrst identiﬁes the group a
+test belongs to. It then uses an ensemble of SVM models to determine the ﬁnal output. Figure 1
+shows a schematic representation of the method. The SVM models are trained with examples within
+the language group and can have different number and combination of features across groups.
+
+Figure 1: Overview of our learning algorithm.
+
+In this section, we will describe the two stages of our hierarchical method as well as our protocol to
+avoid over-ﬁtting. Parameters of our method were tested and tuned with the development dataset,
+before applying it to the test dataset.
+
+4.1 The Word-Frequency method
+
+The ﬁrst block of our pipeline is a classiﬁer to distinguish the language group of an input. We built
+this classiﬁer using the following word-frequency method. From the training set, for each language
+
+2
+
+i is the frequency of the ith common word of the lth
+
+l ∈ 1 . . . 13, we deﬁne xl ∈ R1000 s.t. xl
+language.
+i(s) = 1 if the ith word of the
+Given an unclassiﬁed sentence s, we deﬁne xl(s), l = 1 . . . 13 s.t. xl
+(cid:104)xl(s), xl(cid:105). To obtain
+lth language is present in the sentence. The classiﬁer is then h(s) := argmax
+l∈1...13
+the group, we then just have to return the group the language h(s) is part of.
+McNamee showed in [1] that this word frequency method was extremely effective when it came
+to classifying rather distinct languages. This method also proved computationally efﬁcient and ob-
+tained virtually perfect result (> 99% accuracy) for differentiating among language groups, which
+we will go more in-depth into in section 5.
+
+4.2 Multi-class SVMs
+
+In class, we derived the optimization program for 2-class SVM. In [7], Crammer and Singer makes
+a derivation for a multi-class SVM which we are using.
+Let’s replace ourselves in the context of the course but with k classes this time.
+Let (x(i), y(i)), i = 1 . . . m with x(i) ∈ Rn but y(i) ∈ {1 . . . k}. Crammer and Singer (2002)
+proposed the following multi-class approach by solving the following optimization problem:
+
+k(cid:88)
+
+l=1
+
+m(cid:88)
+l x(i) ≤ δi,l − ξi, i = 1, . . . , m.
+
+i=1
+
+ξi
+
+wT
+
+l wl + C
+x(i) − wT
+
+minimize
+
+wl,ξi,l=1...k,i=1...m
+
+1
+2
+
+subject to
+
+wT
+Where δi,l = 1 if i = l, δi,l = 0 if i (cid:54)= l.
+With the following decision function:
+
+y(i)
+
+(cid:88)
+
+(cid:88)
+
+hw1,...,wk (x) = argmax
+l∈{1,...,k}
+
+wT
+
+l x
+
+j(cid:104)x(i), x(j)(cid:105) +
+
+αl
+iαl
+
+1≤i≤m,1≤l≤k
+
+1≤i,j≤m,1≤l≤k
+
+k(cid:88)
+l=1
+i ≤ δi,lC,∀i ∈ {1, . . . , m},∀l ∈ {1, . . . k}
+αl
+
+i, i = 1, . . . , m.
+
+αl
+
+δi,lαl
+i
+
+We can derive the dual problem:
+
+minimize
+
+αl
+
+i,l=1...k,i=1...m
+
+subject to
+
+m(cid:80)
+
+i=1
+
+Where wl =
+
+αl
+ix(i), l = 1 . . . k
+
+We can then solve the dual using the coordinate ascent method seen in class. It is clear that this
+extension from 2 classes to k classes works in the exact same way than before and that this classiﬁer
+has the same properties (kernel trick...). We used LIBLINEAR SVM to implement this multi-class
+SVM.
+
+4.3 Feature scoring using tf-idf
+Character n-grams for higher values (n ≥ 4 mostly) are very prone to over-ﬁtting. In order to make
+our method robust, we had to select a subset of features for the ensemble of SVM models. Due to
+the size of our features set (approximately 3 millions) both PCA and forward/backward search were
+out of the question. To overcome this obstacle, we decided to score the features using tf-idf and use
+only the top-rankings ones.
+
+3
+
+We deﬁned the tf-idf score of a feature t derived from training set D to be
+
+tﬁdf(t, D) = tf(t, D) × log
+
+N
+
+df(t, D)
+
+(1)
+
+where tf(t, D) is the total number of times t appeared in the training set, df(t, D) the number of
+examples that contain t, and N the number of training examples. Since N/df (t, D) if always greater
+or equal to 1, this deﬁnition of tf-idf is always non-negative. It is zero if the feature appears in every
+training example; intuitively, this means the feature is common to all languages in the training set
+and therefore cannot help distinguish them from one another.
+
+4.4 Ensemble methods
+
+To reduce variance, we also decided to train several SVM models on a given language group and
+combine them using ensemble methods. For each language groups, we trained p SVM using differ-
+ent hyper-parameters (features and C constant). Each one of these SVM i, outputs k weight vectors.
+We have (wi,l)1≤i≤p,1≤l≤k weight vectors at our disposition.
+After experimenting with several ensemble methods (majority vote, boosting, and mean conﬁdence)
+we settled on mean conﬁdence, which can be written as follows:
+
+h(wi,l)1≤i≤p,1≤l≤k
+
+(x) = arg max
+1≤l≤k
+
+wt,l, x(cid:105)
+
+(cid:104) p(cid:88)
+
+t=1
+
+For some language group, we did not need to use the ensemble method as high-accuracy classiﬁca-
+tion was straightforward. For the others, we trained and combined 5 SVMs, each had a combination
+word 1-grams, 2-grams, and character n-grams (n ∈ {3, 4, 5, 6}).
+
+5 Results and Discussions
+
+Our ﬁnal classiﬁcation results for the test set are shown in ﬁgure 2. Our hierarchical method yields
+an overall accuracy of 92.6% (12039/13000). For 99.5% of the test examples, the word-frequency
+method assigns them correctly to their respective language group. We chose to combine the South-
+Western and West Slavic languages into one group (the sws-ws group) since the word-frequency
+method tended to group these ﬁve languages together.
+
+Figure 2: Confusion matrix for all 13 languages. Group accuracy means the rate at which the word-
+frequency method correctly identiﬁed the language group of test examples.
+
+In order to avoid over-ﬁtting, we tuned the regularization parameter c and performed feature se-
+lection based on tf-idf scoring. Within each language group, multiple SVM models were built and
+tested on the development set. Test accuracies of these model as a function of c were plotted. For
+
+4
+
+each SVM model, we chose the value for c at which the testing accuracy gain was marginal com-
+pared to the training accuracy gain.
+We selected subsets of features for our ﬁnal SVM models by observing how their prediction accu-
+racies on the development set changed as a function of features. We ranked features by category
+(word 1-grams, 2-grams and character n-grams, n ∈ {3, 4, 5, 6}) using the tf-idf scores deﬁned in
+the method section. Starting with the highest ranking features, we computed test accuracies on the
+development set using model trained with increasing number of features. Figure 3 shows an ex-
+ample of plots we used for feature selection in the sws-ws group. Similar to tuning c, our feature
+selection protocol kept the top-ranking n features in our ﬁnal SVM or ensembles (in ﬁgure 3 n =
+30000) by which increasing the number of features stopped gaining any signiﬁcant test accuracy on
+the development set.
+
+Figure 3: Prediction accuracy on the devel-
+opment set (sws-ws language group) as a
+function of the number of top-ranking fea-
+tures.
+
+Figure 4: Prediction accuracy on the devel-
+opment (sws-ws language group) set as a
+function of sets of increasingly lower-ranked
+SVM features.
+
+Finally, we also demonstrated that the deﬁnition of tf-idf was appropriate for feature selection.
+SVMs built with lower ranking features had lower test accuracies when applied to the develop-
+ment set. For instance, ﬁgure 4 shows that test accuracy of models built with sets of word 1-grams
+decreased monotonically; the ﬁrst set contained the 10000 top-ranking features, and the successive
+sets contained the same number of increasingly lower-ranked features. This consistent trend proved
+that we were avoiding over-ﬁtting by retaining features most representative of the training data.
+
+6 Conclusion
+
+We have achieved classiﬁcation of 13 similar languages with an overall accuracy of 92.6%. This
+is close to the DSL Task winning team’s accuracy of 95%. More importantly, we have explored
+a method that is easily scalable and robust. The word-frequency classiﬁer requires maintaining a
+database of only one thousand frequently occurring words per language. SVM features are derived
+within a language group, typically made up of only two languages. Generalizing to many languages
+therefore does not require changing the modeling for existing languages in the hierarchical model
+but simply adds independent branches to the hierarchy. This advantage of scalability stems from the
+linguistic knowledge used to divide languages into groups. Additionally, our methodical selection
+of features and the regularization parameter has rendered our method robustness across the develop-
+ment and test sets. This gives us conﬁdence that given more training data our method will perform
+well on a variety of texts.
+Future work will involve improving performance on certain language groups. Our method prefers
+to label the test examples as a certain language within the South-Western Slavic, Spanish, and Por-
+tuguese groups. More investigation is needed to explain why this happens. Gathering training data
+from genres other than journalistic articles can also be valuable and may improve the performance
+of our method.
+
+5
+
+References
+[1] McNamee, P.,2005 Language identiﬁcation: a solved problem suitable for undergraduate in-
+
+struction. Journal of Computing Sciences in Colleges, 20(3):94–101.
+
+[2] Franco-Salvador, M., Rangel,F.,Rosso,P.,Taule,Marti,M.,A.,2015.Language variety identiﬁca-
+tion using distributed representations of words and documents. Proceeding of the 6th Inter-
+national Conference of CLEF on Experimental IR meets Multilinguality, Multimodality, and
+Interaction (CLEF 2015), volume LNCS(9283). Springer-Verlag.
+
+[3] Zampieri, M., Tan, L., Ljubesic, N., Tiedemann, J., Nakov, P., Overview of the DSL Shared
+
+Task 2015. Proceeding of the LT4VarDial Workshop.
+
+[4] Malmasi, S., Dras, M., Language Identiﬁcation using Classiﬁer Ensembles. Proceeding of the
+
+LT4VarDial Workshop.
+
+[5] Franco-Salvador, M., Rosso, P., Rangel, F. 2015 Distributed Representations of Words and
+
+Documents for Discriminating Similar Languages. Proceeding of the LT4VarDial Workshop
+
+[6] Acs, J., Grad-Gyenge L., Bruno Rodrigues de Rezende Oliveira, T. 2015. A two-level classiﬁer
+
+for discriminating similar languages. Proceeding of the LT4VarDial Workshop
+
+[7] Crammer, K., Singer, Y. 2002 On the Learnability and Design of Output Codes for Multiclass
+
+Problems. Machine Learning, Vol. 47.
+
+6
+
+

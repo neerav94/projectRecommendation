@@ -1,0 +1,1672 @@
+Cardiac Dysrhythmia Detection with GPU-Accelerated Neural Networks
+
+Albert Haque
+Computer Science Department, Stanford University
+
+AHAQUE@CS.STANFORD.EDU
+
+Abstract
+
+Cardiac dysrhythmia is responsible for over half
+a million deaths in the United States annually. In
+this work, we evaluate the performance of neu-
+ral networks on classifying electrocardiogram
+(ECG) sequences as normal or abnormal (ar-
+rhythmia). Using neural networks as our primary
+learning model, we explain our model’s perfor-
+mance and discuss hyperparameter tuning. Com-
+paring the results of our model to SVMs, ran-
+dom forests, and logistic regression, we ﬁnd that
+our neural network outperforms the other three
+models with a binary classiﬁcation accuracy of
+91.9%. For the multi-class classiﬁcation task, we
+achieve an accuracy of 75.7%. The use of GPUs
+accelerates the neural network training process
+up to an order of magnitude over CPUs.
+
+1. Introduction
+The human heart is controlled by an electrical system
+which stimulates blood movement via contractions. Car-
+diac dysrhythmia (or arrhythmia) occurs when the electri-
+cal activity of the heart is irregular. Effects of arrhythmia
+range from discomfort to cardiac arrest. Although most
+arrhythmias are harmless, Arrhythmia is still responsible
+for about 500,000 deaths in the US, annually. Early detec-
+tion and treatment of arrhythmia can reduce the number of
+deaths by 25% (Hoefman et al., 2010).
+Identifying patterns in arrhythmia has been studied for sev-
+eral years and many statistical approaches have been at-
+tempted. These approaches can be grouped into two cate-
+gories: (i) statistical learning based on explicit feature ex-
+traction and (ii) recognizing patterns from the raw time se-
+ries data.
+Most attempts fall into the ﬁrst category of extracting fea-
+tures using human intuition. Many studies use classical ma-
+chine learning algorithms such as support vector machines
+
+This document is part of a term project for CS 229 Machine Learn-
+ing, Stanford University (Autumn 2014) and was created on De-
+cember 13, 2014.
+
+Figure 1. Proposed Neural Network Classiﬁer. The original ECG
+record and hand-crafted features are used as inputs.
+
+(Song et al., 2005). The second category of approaches
+are centered around time series analysis. Time series ap-
+proaches use wavelet transforms and attempt to minimize
+the noise present in the data (Thakor & Zhu, 1991). Some
+models note the periodic interval between the QRS com-
+plex and PR/QT intervals (see Figure 1). Autoregressive
+neural networks have also been proposed for forecasting
+time series data (Zhang, 2001).
+In this work, we are concerned with two problems. First,
+we want to classify a record into binary classes (normal or
+abnormal). Second, we want to classify a record into mul-
+tiple classes, depending on the speciﬁc case of arrhythmia
+present (multi-class classiﬁcation). We construct a neural
+network topology using signiﬁcant hyperparameter tuning
+and leverage the parallel computing power of GPUs to ac-
+celerate the training process.
+
+2. Dataset and Feature Extraction
+We use the arrhythmia dataset found at the UCI Machine
+Learning Repository (Bache & Lichman, 2013; Guvenir,
+1997). It consists of 452 records with 279 attributes per
+record. Each record is assigned to 1 of 16 classes: a class
+label of 1 indicates normal ECG patterns while a class label
+between 2 to 16 indicates “abnormal ECG patterns” or ar-
+rhythmia of varying types. The dataset’s class distribution
+is shown in Figure 3.
+In our experiment, we use principal component analysis to
+extract features from the dataset and is detailed in Section
+4.1. Using these principal components, we train several
+models and compare their results.
+
+QRSSTTUPPR IntervalQRS IntervalQT IntervalLayer 1Layer 2Layer 3Layer 4x1x2x3x4−0.07−0.06−0.05−0.04−0.03−0.2−0.100.10.2−0.3−0.2−0.100.10.2Class=1Class=2ECG SignalAdditionalFeaturesPCACardiac Dysrhythmia Detection with GPU-Accelerated Neural Networks
+
+Albert Haque
+Computer Science Department, Stanford University
+
+AHAQUE@CS.STANFORD.EDU
+
+Abstract
+
+Cardiac dysrhythmia is responsible for over half
+a million deaths in the United States annually. In
+this work, we evaluate the performance of neu-
+ral networks on classifying electrocardiogram
+(ECG) sequences as normal or abnormal (ar-
+rhythmia). Using neural networks as our primary
+learning model, we explain our model’s perfor-
+mance and discuss hyperparameter tuning. Com-
+paring the results of our model to SVMs, ran-
+dom forests, and logistic regression, we ﬁnd that
+our neural network outperforms the other three
+models with a binary classiﬁcation accuracy of
+91.9%. For the multi-class classiﬁcation task, we
+achieve an accuracy of 75.7%. The use of GPUs
+accelerates the neural network training process
+up to an order of magnitude over CPUs.
+
+1. Introduction
+The human heart is controlled by an electrical system
+which stimulates blood movement via contractions. Car-
+diac dysrhythmia (or arrhythmia) occurs when the electri-
+cal activity of the heart is irregular. Effects of arrhythmia
+range from discomfort to cardiac arrest. Although most
+arrhythmias are harmless, Arrhythmia is still responsible
+for about 500,000 deaths in the US, annually. Early detec-
+tion and treatment of arrhythmia can reduce the number of
+deaths by 25% (Hoefman et al., 2010).
+Identifying patterns in arrhythmia has been studied for sev-
+eral years and many statistical approaches have been at-
+tempted. These approaches can be grouped into two cate-
+gories: (i) statistical learning based on explicit feature ex-
+traction and (ii) recognizing patterns from the raw time se-
+ries data.
+Most attempts fall into the ﬁrst category of extracting fea-
+tures using human intuition. Many studies use classical ma-
+chine learning algorithms such as support vector machines
+
+This document is part of a term project for CS 229 Machine Learn-
+ing, Stanford University (Autumn 2014) and was created on De-
+cember 13, 2014.
+
+Figure 1. Proposed Neural Network Classiﬁer. The original ECG
+record and hand-crafted features are used as inputs.
+
+(Song et al., 2005). The second category of approaches
+are centered around time series analysis. Time series ap-
+proaches use wavelet transforms and attempt to minimize
+the noise present in the data (Thakor & Zhu, 1991). Some
+models note the periodic interval between the QRS com-
+plex and PR/QT intervals (see Figure 1). Autoregressive
+neural networks have also been proposed for forecasting
+time series data (Zhang, 2001).
+In this work, we are concerned with two problems. First,
+we want to classify a record into binary classes (normal or
+abnormal). Second, we want to classify a record into mul-
+tiple classes, depending on the speciﬁc case of arrhythmia
+present (multi-class classiﬁcation). We construct a neural
+network topology using signiﬁcant hyperparameter tuning
+and leverage the parallel computing power of GPUs to ac-
+celerate the training process.
+
+2. Dataset and Feature Extraction
+We use the arrhythmia dataset found at the UCI Machine
+Learning Repository (Bache & Lichman, 2013; Guvenir,
+1997). It consists of 452 records with 279 attributes per
+record. Each record is assigned to 1 of 16 classes: a class
+label of 1 indicates normal ECG patterns while a class label
+between 2 to 16 indicates “abnormal ECG patterns” or ar-
+rhythmia of varying types. The dataset’s class distribution
+is shown in Figure 3.
+In our experiment, we use principal component analysis to
+extract features from the dataset and is detailed in Section
+4.1. Using these principal components, we train several
+models and compare their results.
+
+QRSSTTUPPR IntervalQRS IntervalQT IntervalLayer 1Layer 2Layer 3Layer 4x1x2x3x4−0.07−0.06−0.05−0.04−0.03−0.2−0.100.10.2−0.3−0.2−0.100.10.2Class=1Class=2ECG SignalAdditionalFeaturesPCACardiac Dysrhythmia Detection with GPU-Accelerated Neural Networks
+
+Figure 2. Regularized cost function for multi-layer neural networks. Let Θ((cid:96)) contain the network parameters for layer (cid:96), hΘ(x) ∈ RK
+be the output probabilities where K is the number of classes, (hΘ(x))i denotes the ith output, L denotes the number of layers and s(cid:96)
+denotes the number of neurons in layer (cid:96).
+
+J(Θ) = − 1
+m
+
+k log(hΘ(x(i))k + (1 − y(i)
+y(i)
+
+k ) log(1 − (hΘ(x(i))k))
+
+(cid:34) m(cid:88)
+
+K(cid:88)
+
+i=1
+
+k=1
+
+(cid:35)
+
+L−1(cid:88)
+
+s(cid:96)(cid:88)
+
+s(cid:96)+1(cid:88)
+
+(cid:96)=1
+
+i=1
+
+j=1
+
++
+
+λ
+2m
+
+(Θ((cid:96))
+
+ij )2
+
+Figure 3. Class Distribution
+
+Figure 4. Number of Neurons vs MSE
+
+3. Models
+We compare our neural network model to three commonly
+used approaches: (i) support vector machines, (ii) logistic
+regression, and (iii) random forests. For support vector ma-
+chines and logistic regression, we use a one-vs-all classiﬁer
+for the multi-class classiﬁcation problem.
+
+3.1. Neural Networks
+
+We employ a multi-layer neural network for both binary
+and multi-class classiﬁcation. The output of each neuron is
+the sigmoid function:
+
+ x0
+
+x1
+:
+xn
+
+ , θ =
+
+ θ0
+
+θ1
+:
+θn
+
+ (1)
+
+hθ(x) =
+
+1
+
+1 + e−θT x
+
+, x =
+
+We train the network using back propagation and stochastic
+gradient descent to minimize the cost function in Figure 2.
+Due to the large number of hyperparameters, a signiﬁcant
+portion of this project was devoted to exploring the effect
+of hidden layer size, depth, learning rate, and regularization
+parameters.
+Perhaps the most important hyperparameter, we analyze the
+effect of the number of neurons on performance. Figure 4
+shows the effect of the number of neurons on mean squared
+error (MSE). As the number of neurons grows, the per-
+formance decreases. This is apparent for both the binary
+and multi-class case. Based on these results, we use 100
+neurons at each layer. Although the analysis is not shown,
+deeper networks do not necessarily produce better results.
+Most often, performance suffered as the number of hidden
+layers increased. Based on this analysis, we select two hid-
+den layers for our network topology.
+
+(a) PCA
+Figure 5. Hyperparameter Tuning Results
+
+(b) Regularization
+
+Instead of using features from the raw dataset, we use prin-
+cipal components as inputs into our neural network. As
+shown in Figure 5(a), we analyze the number of princi-
+pal components versus the classiﬁcation accuracy. Too few
+(less than 50) or too many (greater than 200) principal com-
+ponents result in poor performance across all models (only
+NN results are shown). Based on these results, we use 100
+principal components for our ﬁnal model.
+The regularization parameter λ attempts to prevent overﬁt-
+ting by reducing the magnitude of parameters in Θ. Fixing
+all other parameters, we vary λ for various values (see Fig-
+ure 5(b)), and set λ = 0.01.
+In summary, we use the following hyperparameters:
+
+1. Regularization parameter, λ = 0.01
+2. Two hidden layers L = 2
+3. One hundred neurons at each layer H1 = H2 = 100
+4. First 100 principal components are used as features
+
+3.2. Support Vector Machines
+
+Due to its popularity in practice, we evaluate the perfor-
+mance of SVMs on our dataset. The SVM attempts to ﬁnd
+
+0246810121416050100150200250Number of InstancesClass Label05001000150020000.020.040.060.080.10.12Mean Squared Error (MSE)Number of Layer 1 Neurons  Binary ClassiferMulti−class Classifier01002003000.500.600.700.800.901.00Principal ComponentsAccuracy  Binary (Test)Multi (Test)10−410−21000.700.800.901.00Regularization ParameterAccuracy  Multi (Train)Multi (Test)Cardiac Dysrhythmia Detection with GPU-Accelerated Neural Networks
+
+Albert Haque
+Computer Science Department, Stanford University
+
+AHAQUE@CS.STANFORD.EDU
+
+Abstract
+
+Cardiac dysrhythmia is responsible for over half
+a million deaths in the United States annually. In
+this work, we evaluate the performance of neu-
+ral networks on classifying electrocardiogram
+(ECG) sequences as normal or abnormal (ar-
+rhythmia). Using neural networks as our primary
+learning model, we explain our model’s perfor-
+mance and discuss hyperparameter tuning. Com-
+paring the results of our model to SVMs, ran-
+dom forests, and logistic regression, we ﬁnd that
+our neural network outperforms the other three
+models with a binary classiﬁcation accuracy of
+91.9%. For the multi-class classiﬁcation task, we
+achieve an accuracy of 75.7%. The use of GPUs
+accelerates the neural network training process
+up to an order of magnitude over CPUs.
+
+1. Introduction
+The human heart is controlled by an electrical system
+which stimulates blood movement via contractions. Car-
+diac dysrhythmia (or arrhythmia) occurs when the electri-
+cal activity of the heart is irregular. Effects of arrhythmia
+range from discomfort to cardiac arrest. Although most
+arrhythmias are harmless, Arrhythmia is still responsible
+for about 500,000 deaths in the US, annually. Early detec-
+tion and treatment of arrhythmia can reduce the number of
+deaths by 25% (Hoefman et al., 2010).
+Identifying patterns in arrhythmia has been studied for sev-
+eral years and many statistical approaches have been at-
+tempted. These approaches can be grouped into two cate-
+gories: (i) statistical learning based on explicit feature ex-
+traction and (ii) recognizing patterns from the raw time se-
+ries data.
+Most attempts fall into the ﬁrst category of extracting fea-
+tures using human intuition. Many studies use classical ma-
+chine learning algorithms such as support vector machines
+
+This document is part of a term project for CS 229 Machine Learn-
+ing, Stanford University (Autumn 2014) and was created on De-
+cember 13, 2014.
+
+Figure 1. Proposed Neural Network Classiﬁer. The original ECG
+record and hand-crafted features are used as inputs.
+
+(Song et al., 2005). The second category of approaches
+are centered around time series analysis. Time series ap-
+proaches use wavelet transforms and attempt to minimize
+the noise present in the data (Thakor & Zhu, 1991). Some
+models note the periodic interval between the QRS com-
+plex and PR/QT intervals (see Figure 1). Autoregressive
+neural networks have also been proposed for forecasting
+time series data (Zhang, 2001).
+In this work, we are concerned with two problems. First,
+we want to classify a record into binary classes (normal or
+abnormal). Second, we want to classify a record into mul-
+tiple classes, depending on the speciﬁc case of arrhythmia
+present (multi-class classiﬁcation). We construct a neural
+network topology using signiﬁcant hyperparameter tuning
+and leverage the parallel computing power of GPUs to ac-
+celerate the training process.
+
+2. Dataset and Feature Extraction
+We use the arrhythmia dataset found at the UCI Machine
+Learning Repository (Bache & Lichman, 2013; Guvenir,
+1997). It consists of 452 records with 279 attributes per
+record. Each record is assigned to 1 of 16 classes: a class
+label of 1 indicates normal ECG patterns while a class label
+between 2 to 16 indicates “abnormal ECG patterns” or ar-
+rhythmia of varying types. The dataset’s class distribution
+is shown in Figure 3.
+In our experiment, we use principal component analysis to
+extract features from the dataset and is detailed in Section
+4.1. Using these principal components, we train several
+models and compare their results.
+
+QRSSTTUPPR IntervalQRS IntervalQT IntervalLayer 1Layer 2Layer 3Layer 4x1x2x3x4−0.07−0.06−0.05−0.04−0.03−0.2−0.100.10.2−0.3−0.2−0.100.10.2Class=1Class=2ECG SignalAdditionalFeaturesPCACardiac Dysrhythmia Detection with GPU-Accelerated Neural Networks
+
+Figure 2. Regularized cost function for multi-layer neural networks. Let Θ((cid:96)) contain the network parameters for layer (cid:96), hΘ(x) ∈ RK
+be the output probabilities where K is the number of classes, (hΘ(x))i denotes the ith output, L denotes the number of layers and s(cid:96)
+denotes the number of neurons in layer (cid:96).
+
+J(Θ) = − 1
+m
+
+k log(hΘ(x(i))k + (1 − y(i)
+y(i)
+
+k ) log(1 − (hΘ(x(i))k))
+
+(cid:34) m(cid:88)
+
+K(cid:88)
+
+i=1
+
+k=1
+
+(cid:35)
+
+L−1(cid:88)
+
+s(cid:96)(cid:88)
+
+s(cid:96)+1(cid:88)
+
+(cid:96)=1
+
+i=1
+
+j=1
+
++
+
+λ
+2m
+
+(Θ((cid:96))
+
+ij )2
+
+Figure 3. Class Distribution
+
+Figure 4. Number of Neurons vs MSE
+
+3. Models
+We compare our neural network model to three commonly
+used approaches: (i) support vector machines, (ii) logistic
+regression, and (iii) random forests. For support vector ma-
+chines and logistic regression, we use a one-vs-all classiﬁer
+for the multi-class classiﬁcation problem.
+
+3.1. Neural Networks
+
+We employ a multi-layer neural network for both binary
+and multi-class classiﬁcation. The output of each neuron is
+the sigmoid function:
+
+ x0
+
+x1
+:
+xn
+
+ , θ =
+
+ θ0
+
+θ1
+:
+θn
+
+ (1)
+
+hθ(x) =
+
+1
+
+1 + e−θT x
+
+, x =
+
+We train the network using back propagation and stochastic
+gradient descent to minimize the cost function in Figure 2.
+Due to the large number of hyperparameters, a signiﬁcant
+portion of this project was devoted to exploring the effect
+of hidden layer size, depth, learning rate, and regularization
+parameters.
+Perhaps the most important hyperparameter, we analyze the
+effect of the number of neurons on performance. Figure 4
+shows the effect of the number of neurons on mean squared
+error (MSE). As the number of neurons grows, the per-
+formance decreases. This is apparent for both the binary
+and multi-class case. Based on these results, we use 100
+neurons at each layer. Although the analysis is not shown,
+deeper networks do not necessarily produce better results.
+Most often, performance suffered as the number of hidden
+layers increased. Based on this analysis, we select two hid-
+den layers for our network topology.
+
+(a) PCA
+Figure 5. Hyperparameter Tuning Results
+
+(b) Regularization
+
+Instead of using features from the raw dataset, we use prin-
+cipal components as inputs into our neural network. As
+shown in Figure 5(a), we analyze the number of princi-
+pal components versus the classiﬁcation accuracy. Too few
+(less than 50) or too many (greater than 200) principal com-
+ponents result in poor performance across all models (only
+NN results are shown). Based on these results, we use 100
+principal components for our ﬁnal model.
+The regularization parameter λ attempts to prevent overﬁt-
+ting by reducing the magnitude of parameters in Θ. Fixing
+all other parameters, we vary λ for various values (see Fig-
+ure 5(b)), and set λ = 0.01.
+In summary, we use the following hyperparameters:
+
+1. Regularization parameter, λ = 0.01
+2. Two hidden layers L = 2
+3. One hundred neurons at each layer H1 = H2 = 100
+4. First 100 principal components are used as features
+
+3.2. Support Vector Machines
+
+Due to its popularity in practice, we evaluate the perfor-
+mance of SVMs on our dataset. The SVM attempts to ﬁnd
+
+0246810121416050100150200250Number of InstancesClass Label05001000150020000.020.040.060.080.10.12Mean Squared Error (MSE)Number of Layer 1 Neurons  Binary ClassiferMulti−class Classifier01002003000.500.600.700.800.901.00Principal ComponentsAccuracy  Binary (Test)Multi (Test)10−410−21000.700.800.901.00Regularization ParameterAccuracy  Multi (Train)Multi (Test)Cardiac Dysrhythmia Detection with GPU-Accelerated Neural Networks
+
+the maximum-margin hyperplane that separates the dataset
+in a higher dimensional feature space. Finding this optimal
+margin reduces to solving the following convex optimiza-
+tion problem:
+
+Before we began training of our models, we performed a
+singular value decomposition over the dataset, extracted the
+ﬁrst 100 principal components, and used these as input fea-
+tures int our models.
+
+min
+γ,w,b
+
+1
+2
+
+||w||2+C
+
+ξi
+
+(2)
+
+4.1. Results
+
+m(cid:88)
+
+i=1
+
+Subject to the constraints:
+
+s.t. y(i)(wT x(i) + b) ≥ 1 − ξi, i = 1, ..., m (3)
+(4)
+
+ξi ≥ 0, i = 1, ..., m
+
+Where the ξi above allows for “slack” in the event the
+dataset is not linearly separable.
+
+3.3. Logistic Regression
+
+Closely related to our neural network, logistic regression
+aims to minimize the cost function:
+
+(cid:16)
+
+hθ(x(i)) − y(i)(cid:17)
+
+m(cid:88)
+
+i=1
+
+J(θ) =
+
+1
+2
+
+(5)
+
+where h(x) = θT x and θ is deﬁned in (1). To learn the
+parameters θ, we minimize J(θ) using stochastic gradient
+descent.
+
+3.4. Random Forests
+
+Random forests apply the technique of bootstrap aggregat-
+ing (i.e. bagging) to learn a model. B decision trees are
+created where each decision tree is trained on a random
+sample of the training data. Equation (6) shows how y is
+computed for an unseen example in a regression problem.
+
+B(cid:88)
+
+b=1
+
+ˆy =
+
+1
+B
+
+ˆyb(x)
+
+(6)
+
+where ˆyb is the prediction for decision tree b. For classi-
+ﬁcation problems, the majority vote of all B trees is taken
+(instead of the average) to output the predicted label.
+
+4. Experiment
+We separated the dataset into a training set consisting of
+316 records and a hold-out test set containing 135 randomly
+selected records. Both Matlab and Python were used for
+preprocessing, training, and testing.
+Our dataset consists of 452 records. Of these, 32 records
+are incomplete and missing at least one feature (excluding
+the “vector angle to J feature”). Because we do not want
+to discard these records, we instead impute the values by
+using the feature’s mean value as this tends to improve per-
+formance (Jerez, 2010).
+
+Surprisingly, our neural network outperforms the SVM,
+random forest, and logistic regression model in the binary
+classiﬁcation problem (see Table 1). In the multi-class case,
+our neural network still outperforms SVMs and logistic re-
+gression with a test accuracy of 75.7%.
+
+Table 1. Classiﬁcation Accuracy
+
+Binary
+
+Multi-Class
+
+Model
+Neural Network
+SVM
+Random Forest
+Logistic Regr.
+
+Test
+
+Training
+
+Training
+Test
+100.0% 91.9% 100.0% 75.7%
+92.4% 87.5%
+96.6% 65.1%
+99.7% 72.0%
+97.0% 76.0%
+100.0% 77.6% 100.0% 69.0%
+
+Because the cost of false diagnoses can be expensive, in
+monetary terms, we wanted to see our model’s false posi-
+tive rate. Figure 8 shows our model’s ROC curves. On the
+test set, our network is able to achieve a true positive rate of
+0.8 with a false positive rate of about 0.2. After that, higher
+false positive rates provide marginal gains in true positive
+detections.
+
+5. Discussion
+As indicated by the training accuracies, the neural network,
+random forest, and logistic regression tend to ﬁt (or closely
+ﬁt) the training data perfectly. However, we know these
+models are not memorizing the input data since the test ac-
+curacies are above 70% and 65% in the binary and multi-
+class case, respectively.
+We wanted to further analyze the performance of our neural
+network by looking at the convergence rate. Figure 6 shows
+the mean squared error as a function of number of iterations
+for different training sizes.
+
+(a) Binary Task
+
+(b) Multi-Class Task
+
+Figure 6. Convergence Rate of the Neural Network Model (Train-
+ing). Because the neural network was trained on 1,000 iterations,
+only the ﬁrst few iterations are shown above.
+
+0102030400.020.040.060.080.10.12Mean Squared Error (MSE)Iteration  5010015020025030001020300.10.20.30.40.50.6Mean Squared Error (MSE)Iteration  50100150200250300Cardiac Dysrhythmia Detection with GPU-Accelerated Neural Networks
+
+Albert Haque
+Computer Science Department, Stanford University
+
+AHAQUE@CS.STANFORD.EDU
+
+Abstract
+
+Cardiac dysrhythmia is responsible for over half
+a million deaths in the United States annually. In
+this work, we evaluate the performance of neu-
+ral networks on classifying electrocardiogram
+(ECG) sequences as normal or abnormal (ar-
+rhythmia). Using neural networks as our primary
+learning model, we explain our model’s perfor-
+mance and discuss hyperparameter tuning. Com-
+paring the results of our model to SVMs, ran-
+dom forests, and logistic regression, we ﬁnd that
+our neural network outperforms the other three
+models with a binary classiﬁcation accuracy of
+91.9%. For the multi-class classiﬁcation task, we
+achieve an accuracy of 75.7%. The use of GPUs
+accelerates the neural network training process
+up to an order of magnitude over CPUs.
+
+1. Introduction
+The human heart is controlled by an electrical system
+which stimulates blood movement via contractions. Car-
+diac dysrhythmia (or arrhythmia) occurs when the electri-
+cal activity of the heart is irregular. Effects of arrhythmia
+range from discomfort to cardiac arrest. Although most
+arrhythmias are harmless, Arrhythmia is still responsible
+for about 500,000 deaths in the US, annually. Early detec-
+tion and treatment of arrhythmia can reduce the number of
+deaths by 25% (Hoefman et al., 2010).
+Identifying patterns in arrhythmia has been studied for sev-
+eral years and many statistical approaches have been at-
+tempted. These approaches can be grouped into two cate-
+gories: (i) statistical learning based on explicit feature ex-
+traction and (ii) recognizing patterns from the raw time se-
+ries data.
+Most attempts fall into the ﬁrst category of extracting fea-
+tures using human intuition. Many studies use classical ma-
+chine learning algorithms such as support vector machines
+
+This document is part of a term project for CS 229 Machine Learn-
+ing, Stanford University (Autumn 2014) and was created on De-
+cember 13, 2014.
+
+Figure 1. Proposed Neural Network Classiﬁer. The original ECG
+record and hand-crafted features are used as inputs.
+
+(Song et al., 2005). The second category of approaches
+are centered around time series analysis. Time series ap-
+proaches use wavelet transforms and attempt to minimize
+the noise present in the data (Thakor & Zhu, 1991). Some
+models note the periodic interval between the QRS com-
+plex and PR/QT intervals (see Figure 1). Autoregressive
+neural networks have also been proposed for forecasting
+time series data (Zhang, 2001).
+In this work, we are concerned with two problems. First,
+we want to classify a record into binary classes (normal or
+abnormal). Second, we want to classify a record into mul-
+tiple classes, depending on the speciﬁc case of arrhythmia
+present (multi-class classiﬁcation). We construct a neural
+network topology using signiﬁcant hyperparameter tuning
+and leverage the parallel computing power of GPUs to ac-
+celerate the training process.
+
+2. Dataset and Feature Extraction
+We use the arrhythmia dataset found at the UCI Machine
+Learning Repository (Bache & Lichman, 2013; Guvenir,
+1997). It consists of 452 records with 279 attributes per
+record. Each record is assigned to 1 of 16 classes: a class
+label of 1 indicates normal ECG patterns while a class label
+between 2 to 16 indicates “abnormal ECG patterns” or ar-
+rhythmia of varying types. The dataset’s class distribution
+is shown in Figure 3.
+In our experiment, we use principal component analysis to
+extract features from the dataset and is detailed in Section
+4.1. Using these principal components, we train several
+models and compare their results.
+
+QRSSTTUPPR IntervalQRS IntervalQT IntervalLayer 1Layer 2Layer 3Layer 4x1x2x3x4−0.07−0.06−0.05−0.04−0.03−0.2−0.100.10.2−0.3−0.2−0.100.10.2Class=1Class=2ECG SignalAdditionalFeaturesPCACardiac Dysrhythmia Detection with GPU-Accelerated Neural Networks
+
+Figure 2. Regularized cost function for multi-layer neural networks. Let Θ((cid:96)) contain the network parameters for layer (cid:96), hΘ(x) ∈ RK
+be the output probabilities where K is the number of classes, (hΘ(x))i denotes the ith output, L denotes the number of layers and s(cid:96)
+denotes the number of neurons in layer (cid:96).
+
+J(Θ) = − 1
+m
+
+k log(hΘ(x(i))k + (1 − y(i)
+y(i)
+
+k ) log(1 − (hΘ(x(i))k))
+
+(cid:34) m(cid:88)
+
+K(cid:88)
+
+i=1
+
+k=1
+
+(cid:35)
+
+L−1(cid:88)
+
+s(cid:96)(cid:88)
+
+s(cid:96)+1(cid:88)
+
+(cid:96)=1
+
+i=1
+
+j=1
+
++
+
+λ
+2m
+
+(Θ((cid:96))
+
+ij )2
+
+Figure 3. Class Distribution
+
+Figure 4. Number of Neurons vs MSE
+
+3. Models
+We compare our neural network model to three commonly
+used approaches: (i) support vector machines, (ii) logistic
+regression, and (iii) random forests. For support vector ma-
+chines and logistic regression, we use a one-vs-all classiﬁer
+for the multi-class classiﬁcation problem.
+
+3.1. Neural Networks
+
+We employ a multi-layer neural network for both binary
+and multi-class classiﬁcation. The output of each neuron is
+the sigmoid function:
+
+ x0
+
+x1
+:
+xn
+
+ , θ =
+
+ θ0
+
+θ1
+:
+θn
+
+ (1)
+
+hθ(x) =
+
+1
+
+1 + e−θT x
+
+, x =
+
+We train the network using back propagation and stochastic
+gradient descent to minimize the cost function in Figure 2.
+Due to the large number of hyperparameters, a signiﬁcant
+portion of this project was devoted to exploring the effect
+of hidden layer size, depth, learning rate, and regularization
+parameters.
+Perhaps the most important hyperparameter, we analyze the
+effect of the number of neurons on performance. Figure 4
+shows the effect of the number of neurons on mean squared
+error (MSE). As the number of neurons grows, the per-
+formance decreases. This is apparent for both the binary
+and multi-class case. Based on these results, we use 100
+neurons at each layer. Although the analysis is not shown,
+deeper networks do not necessarily produce better results.
+Most often, performance suffered as the number of hidden
+layers increased. Based on this analysis, we select two hid-
+den layers for our network topology.
+
+(a) PCA
+Figure 5. Hyperparameter Tuning Results
+
+(b) Regularization
+
+Instead of using features from the raw dataset, we use prin-
+cipal components as inputs into our neural network. As
+shown in Figure 5(a), we analyze the number of princi-
+pal components versus the classiﬁcation accuracy. Too few
+(less than 50) or too many (greater than 200) principal com-
+ponents result in poor performance across all models (only
+NN results are shown). Based on these results, we use 100
+principal components for our ﬁnal model.
+The regularization parameter λ attempts to prevent overﬁt-
+ting by reducing the magnitude of parameters in Θ. Fixing
+all other parameters, we vary λ for various values (see Fig-
+ure 5(b)), and set λ = 0.01.
+In summary, we use the following hyperparameters:
+
+1. Regularization parameter, λ = 0.01
+2. Two hidden layers L = 2
+3. One hundred neurons at each layer H1 = H2 = 100
+4. First 100 principal components are used as features
+
+3.2. Support Vector Machines
+
+Due to its popularity in practice, we evaluate the perfor-
+mance of SVMs on our dataset. The SVM attempts to ﬁnd
+
+0246810121416050100150200250Number of InstancesClass Label05001000150020000.020.040.060.080.10.12Mean Squared Error (MSE)Number of Layer 1 Neurons  Binary ClassiferMulti−class Classifier01002003000.500.600.700.800.901.00Principal ComponentsAccuracy  Binary (Test)Multi (Test)10−410−21000.700.800.901.00Regularization ParameterAccuracy  Multi (Train)Multi (Test)Cardiac Dysrhythmia Detection with GPU-Accelerated Neural Networks
+
+the maximum-margin hyperplane that separates the dataset
+in a higher dimensional feature space. Finding this optimal
+margin reduces to solving the following convex optimiza-
+tion problem:
+
+Before we began training of our models, we performed a
+singular value decomposition over the dataset, extracted the
+ﬁrst 100 principal components, and used these as input fea-
+tures int our models.
+
+min
+γ,w,b
+
+1
+2
+
+||w||2+C
+
+ξi
+
+(2)
+
+4.1. Results
+
+m(cid:88)
+
+i=1
+
+Subject to the constraints:
+
+s.t. y(i)(wT x(i) + b) ≥ 1 − ξi, i = 1, ..., m (3)
+(4)
+
+ξi ≥ 0, i = 1, ..., m
+
+Where the ξi above allows for “slack” in the event the
+dataset is not linearly separable.
+
+3.3. Logistic Regression
+
+Closely related to our neural network, logistic regression
+aims to minimize the cost function:
+
+(cid:16)
+
+hθ(x(i)) − y(i)(cid:17)
+
+m(cid:88)
+
+i=1
+
+J(θ) =
+
+1
+2
+
+(5)
+
+where h(x) = θT x and θ is deﬁned in (1). To learn the
+parameters θ, we minimize J(θ) using stochastic gradient
+descent.
+
+3.4. Random Forests
+
+Random forests apply the technique of bootstrap aggregat-
+ing (i.e. bagging) to learn a model. B decision trees are
+created where each decision tree is trained on a random
+sample of the training data. Equation (6) shows how y is
+computed for an unseen example in a regression problem.
+
+B(cid:88)
+
+b=1
+
+ˆy =
+
+1
+B
+
+ˆyb(x)
+
+(6)
+
+where ˆyb is the prediction for decision tree b. For classi-
+ﬁcation problems, the majority vote of all B trees is taken
+(instead of the average) to output the predicted label.
+
+4. Experiment
+We separated the dataset into a training set consisting of
+316 records and a hold-out test set containing 135 randomly
+selected records. Both Matlab and Python were used for
+preprocessing, training, and testing.
+Our dataset consists of 452 records. Of these, 32 records
+are incomplete and missing at least one feature (excluding
+the “vector angle to J feature”). Because we do not want
+to discard these records, we instead impute the values by
+using the feature’s mean value as this tends to improve per-
+formance (Jerez, 2010).
+
+Surprisingly, our neural network outperforms the SVM,
+random forest, and logistic regression model in the binary
+classiﬁcation problem (see Table 1). In the multi-class case,
+our neural network still outperforms SVMs and logistic re-
+gression with a test accuracy of 75.7%.
+
+Table 1. Classiﬁcation Accuracy
+
+Binary
+
+Multi-Class
+
+Model
+Neural Network
+SVM
+Random Forest
+Logistic Regr.
+
+Test
+
+Training
+
+Training
+Test
+100.0% 91.9% 100.0% 75.7%
+92.4% 87.5%
+96.6% 65.1%
+99.7% 72.0%
+97.0% 76.0%
+100.0% 77.6% 100.0% 69.0%
+
+Because the cost of false diagnoses can be expensive, in
+monetary terms, we wanted to see our model’s false posi-
+tive rate. Figure 8 shows our model’s ROC curves. On the
+test set, our network is able to achieve a true positive rate of
+0.8 with a false positive rate of about 0.2. After that, higher
+false positive rates provide marginal gains in true positive
+detections.
+
+5. Discussion
+As indicated by the training accuracies, the neural network,
+random forest, and logistic regression tend to ﬁt (or closely
+ﬁt) the training data perfectly. However, we know these
+models are not memorizing the input data since the test ac-
+curacies are above 70% and 65% in the binary and multi-
+class case, respectively.
+We wanted to further analyze the performance of our neural
+network by looking at the convergence rate. Figure 6 shows
+the mean squared error as a function of number of iterations
+for different training sizes.
+
+(a) Binary Task
+
+(b) Multi-Class Task
+
+Figure 6. Convergence Rate of the Neural Network Model (Train-
+ing). Because the neural network was trained on 1,000 iterations,
+only the ﬁrst few iterations are shown above.
+
+0102030400.020.040.060.080.10.12Mean Squared Error (MSE)Iteration  5010015020025030001020300.10.20.30.40.50.6Mean Squared Error (MSE)Iteration  50100150200250300Cardiac Dysrhythmia Detection with GPU-Accelerated Neural Networks
+
+Figure 7. CPU vs GPU Runtime
+
+As previously mentioned, we used both CPUs and GPUs
+for training our neural network. SVMs, logistic regres-
+sion, and random forests were trained using CPUs only.
+Due to the large number of cores available on GPUs, GPUs
+are able to quickly train neural networks – especially those
+with a large number of neurons. We used a GeForce GTX
+750 Ti GPU with 640 CUDA cores clocked at 1.2 GHz with
+2 GiB of GDDR5 memory. The CPU used was an Intel i7-
+4930K 6 core processor clocked at 3.4 GHz and 32 GiB of
+DDR3 memory.
+The plot shown in Figure 7 show the results of our multi-
+class classiﬁcation task by training on a neural network
+with two hidden layers containing 100 neurons each. The
+training phase consisted of 1,000 iterations. For GPUs, the
+bottleneck is the data transfer to and from the device. Once
+the training data has been transferred to the GPU, the com-
+putation is very fast. Because our training data is so small
+(on the order of a few MiB), the GPU runtime does not
+experience long initial or post-processing delays. For net-
+works with more hidden nodes, we can expect the GPU
+vs CPU runtime margin to increase (Juang et al., 2011;
+Steinkrau et al., 2005).
+
+5.1. Error Analysis
+
+To visualize the results from all models, we generated con-
+fusion matrices depicted as heat maps in Figure 9. Both
+logistic regression and neural networks achieved a training
+accuracy of 100%. This is denoted by values present only
+on the diagonal. For SVMs and random forests, we see
+incorrect classiﬁcations present on the off-diagonal entries.
+Looking at the test set, we see that SVMs tend to incor-
+rectly categorize normal heartbeats (label=1) with labels
+2-16. This results in a high false positive rate. Our neu-
+ral network has few errors on the test as stated in Table
+1; this is conﬁrmed in the confusion matrix above as most
+true/predicted labelings lie along the diagonal.
+Confusion matrices are a good indicator of false positive
+and false negative rates. Depending on the application, one
+can be more expensive (in monetary terms) than the other.
+To analyze these rates, we plotted receiver operating char-
+acteristic (ROC) curves for the binary classiﬁcation case
+
+Figure 8. ROC Curves for the Binary Classiﬁcation Task. Class 1
+corresponds to the normal ECG case and class 2 corresponds to
+arrhythmia is present.
+
+in Figure 8. We do not plot the multi-class case as some
+classes contain one or two training examples and this skews
+the ROC curves for these labels.
+Figure 8 shows a perfect ROC curve for the training phase,
+as expected. Looking at the test ROC curve, if we are will-
+ing to tolerate a false positive rate of about 0.1, we are able
+to achieve a true positive rate of 0.9. In this particular ap-
+plication (in the domain of medical practice and arrhythmia
+detection), early detection has the potential to save lives.
+As a result, the cost of a false negative is greater than the
+cost of a false positive. If a patient is diagnosed as arrhyth-
+mia present (predicts positive), we can perform further tests
+to correctly label this patient.
+
+6. Conclusion
+Due to the time-series nature of ECG data, future work
+can explore recurrent and autoregressive neural networks
+(Zhang, 2001). These networks are well suited for predict-
+ing future time series and can be applied to ECG signals.
+Additionally, as with any learning problem, more (train-
+ing) data would beneﬁt our research. A longer-term project
+would aim to utilize smart health sensors (FitBit, Jawbone,
+Microsoft Band, etc.) for real-time cardiac monitoring.
+In this work, we used principal component analysis to
+transform the original 279 features from the dataset. We
+then analyzed the effect of number of principal compo-
+nents, hyperparameter tuning, and the runtime effect of
+GPUs. Results show that our neural network outperforms
+other methods on the binary classiﬁcation task. For multi-
+class Arrhythmia classiﬁcation, our neural network per-
+forms well and is beaten only by random forests. Future
+work can explore the use of ECG time series data and let
+the neural network extract features from the raw time series
+data on its own.
+As previously mentioned, the cost of false negatives is very
+high. Building a classiﬁer to minimize the false negative
+rate can bring many beneﬁts to the medical and healthcare
+industry. This work allowed us to deeply analyze learning
+
+BinaryMulti−Class01020304050Classification TaskTraining Time (seconds)  GPU@1.2GHz (640 cores)CPU@3.4GHz (6 cores)00.5100.20.40.60.81False Positive RateTrue Positive RateTraining ROC  Class 1Class 200.5100.20.40.60.81False Positive RateTrue Positive RateTest ROCClass 1Class 2Cardiac Dysrhythmia Detection with GPU-Accelerated Neural Networks
+
+Albert Haque
+Computer Science Department, Stanford University
+
+AHAQUE@CS.STANFORD.EDU
+
+Abstract
+
+Cardiac dysrhythmia is responsible for over half
+a million deaths in the United States annually. In
+this work, we evaluate the performance of neu-
+ral networks on classifying electrocardiogram
+(ECG) sequences as normal or abnormal (ar-
+rhythmia). Using neural networks as our primary
+learning model, we explain our model’s perfor-
+mance and discuss hyperparameter tuning. Com-
+paring the results of our model to SVMs, ran-
+dom forests, and logistic regression, we ﬁnd that
+our neural network outperforms the other three
+models with a binary classiﬁcation accuracy of
+91.9%. For the multi-class classiﬁcation task, we
+achieve an accuracy of 75.7%. The use of GPUs
+accelerates the neural network training process
+up to an order of magnitude over CPUs.
+
+1. Introduction
+The human heart is controlled by an electrical system
+which stimulates blood movement via contractions. Car-
+diac dysrhythmia (or arrhythmia) occurs when the electri-
+cal activity of the heart is irregular. Effects of arrhythmia
+range from discomfort to cardiac arrest. Although most
+arrhythmias are harmless, Arrhythmia is still responsible
+for about 500,000 deaths in the US, annually. Early detec-
+tion and treatment of arrhythmia can reduce the number of
+deaths by 25% (Hoefman et al., 2010).
+Identifying patterns in arrhythmia has been studied for sev-
+eral years and many statistical approaches have been at-
+tempted. These approaches can be grouped into two cate-
+gories: (i) statistical learning based on explicit feature ex-
+traction and (ii) recognizing patterns from the raw time se-
+ries data.
+Most attempts fall into the ﬁrst category of extracting fea-
+tures using human intuition. Many studies use classical ma-
+chine learning algorithms such as support vector machines
+
+This document is part of a term project for CS 229 Machine Learn-
+ing, Stanford University (Autumn 2014) and was created on De-
+cember 13, 2014.
+
+Figure 1. Proposed Neural Network Classiﬁer. The original ECG
+record and hand-crafted features are used as inputs.
+
+(Song et al., 2005). The second category of approaches
+are centered around time series analysis. Time series ap-
+proaches use wavelet transforms and attempt to minimize
+the noise present in the data (Thakor & Zhu, 1991). Some
+models note the periodic interval between the QRS com-
+plex and PR/QT intervals (see Figure 1). Autoregressive
+neural networks have also been proposed for forecasting
+time series data (Zhang, 2001).
+In this work, we are concerned with two problems. First,
+we want to classify a record into binary classes (normal or
+abnormal). Second, we want to classify a record into mul-
+tiple classes, depending on the speciﬁc case of arrhythmia
+present (multi-class classiﬁcation). We construct a neural
+network topology using signiﬁcant hyperparameter tuning
+and leverage the parallel computing power of GPUs to ac-
+celerate the training process.
+
+2. Dataset and Feature Extraction
+We use the arrhythmia dataset found at the UCI Machine
+Learning Repository (Bache & Lichman, 2013; Guvenir,
+1997). It consists of 452 records with 279 attributes per
+record. Each record is assigned to 1 of 16 classes: a class
+label of 1 indicates normal ECG patterns while a class label
+between 2 to 16 indicates “abnormal ECG patterns” or ar-
+rhythmia of varying types. The dataset’s class distribution
+is shown in Figure 3.
+In our experiment, we use principal component analysis to
+extract features from the dataset and is detailed in Section
+4.1. Using these principal components, we train several
+models and compare their results.
+
+QRSSTTUPPR IntervalQRS IntervalQT IntervalLayer 1Layer 2Layer 3Layer 4x1x2x3x4−0.07−0.06−0.05−0.04−0.03−0.2−0.100.10.2−0.3−0.2−0.100.10.2Class=1Class=2ECG SignalAdditionalFeaturesPCACardiac Dysrhythmia Detection with GPU-Accelerated Neural Networks
+
+Figure 2. Regularized cost function for multi-layer neural networks. Let Θ((cid:96)) contain the network parameters for layer (cid:96), hΘ(x) ∈ RK
+be the output probabilities where K is the number of classes, (hΘ(x))i denotes the ith output, L denotes the number of layers and s(cid:96)
+denotes the number of neurons in layer (cid:96).
+
+J(Θ) = − 1
+m
+
+k log(hΘ(x(i))k + (1 − y(i)
+y(i)
+
+k ) log(1 − (hΘ(x(i))k))
+
+(cid:34) m(cid:88)
+
+K(cid:88)
+
+i=1
+
+k=1
+
+(cid:35)
+
+L−1(cid:88)
+
+s(cid:96)(cid:88)
+
+s(cid:96)+1(cid:88)
+
+(cid:96)=1
+
+i=1
+
+j=1
+
++
+
+λ
+2m
+
+(Θ((cid:96))
+
+ij )2
+
+Figure 3. Class Distribution
+
+Figure 4. Number of Neurons vs MSE
+
+3. Models
+We compare our neural network model to three commonly
+used approaches: (i) support vector machines, (ii) logistic
+regression, and (iii) random forests. For support vector ma-
+chines and logistic regression, we use a one-vs-all classiﬁer
+for the multi-class classiﬁcation problem.
+
+3.1. Neural Networks
+
+We employ a multi-layer neural network for both binary
+and multi-class classiﬁcation. The output of each neuron is
+the sigmoid function:
+
+ x0
+
+x1
+:
+xn
+
+ , θ =
+
+ θ0
+
+θ1
+:
+θn
+
+ (1)
+
+hθ(x) =
+
+1
+
+1 + e−θT x
+
+, x =
+
+We train the network using back propagation and stochastic
+gradient descent to minimize the cost function in Figure 2.
+Due to the large number of hyperparameters, a signiﬁcant
+portion of this project was devoted to exploring the effect
+of hidden layer size, depth, learning rate, and regularization
+parameters.
+Perhaps the most important hyperparameter, we analyze the
+effect of the number of neurons on performance. Figure 4
+shows the effect of the number of neurons on mean squared
+error (MSE). As the number of neurons grows, the per-
+formance decreases. This is apparent for both the binary
+and multi-class case. Based on these results, we use 100
+neurons at each layer. Although the analysis is not shown,
+deeper networks do not necessarily produce better results.
+Most often, performance suffered as the number of hidden
+layers increased. Based on this analysis, we select two hid-
+den layers for our network topology.
+
+(a) PCA
+Figure 5. Hyperparameter Tuning Results
+
+(b) Regularization
+
+Instead of using features from the raw dataset, we use prin-
+cipal components as inputs into our neural network. As
+shown in Figure 5(a), we analyze the number of princi-
+pal components versus the classiﬁcation accuracy. Too few
+(less than 50) or too many (greater than 200) principal com-
+ponents result in poor performance across all models (only
+NN results are shown). Based on these results, we use 100
+principal components for our ﬁnal model.
+The regularization parameter λ attempts to prevent overﬁt-
+ting by reducing the magnitude of parameters in Θ. Fixing
+all other parameters, we vary λ for various values (see Fig-
+ure 5(b)), and set λ = 0.01.
+In summary, we use the following hyperparameters:
+
+1. Regularization parameter, λ = 0.01
+2. Two hidden layers L = 2
+3. One hundred neurons at each layer H1 = H2 = 100
+4. First 100 principal components are used as features
+
+3.2. Support Vector Machines
+
+Due to its popularity in practice, we evaluate the perfor-
+mance of SVMs on our dataset. The SVM attempts to ﬁnd
+
+0246810121416050100150200250Number of InstancesClass Label05001000150020000.020.040.060.080.10.12Mean Squared Error (MSE)Number of Layer 1 Neurons  Binary ClassiferMulti−class Classifier01002003000.500.600.700.800.901.00Principal ComponentsAccuracy  Binary (Test)Multi (Test)10−410−21000.700.800.901.00Regularization ParameterAccuracy  Multi (Train)Multi (Test)Cardiac Dysrhythmia Detection with GPU-Accelerated Neural Networks
+
+the maximum-margin hyperplane that separates the dataset
+in a higher dimensional feature space. Finding this optimal
+margin reduces to solving the following convex optimiza-
+tion problem:
+
+Before we began training of our models, we performed a
+singular value decomposition over the dataset, extracted the
+ﬁrst 100 principal components, and used these as input fea-
+tures int our models.
+
+min
+γ,w,b
+
+1
+2
+
+||w||2+C
+
+ξi
+
+(2)
+
+4.1. Results
+
+m(cid:88)
+
+i=1
+
+Subject to the constraints:
+
+s.t. y(i)(wT x(i) + b) ≥ 1 − ξi, i = 1, ..., m (3)
+(4)
+
+ξi ≥ 0, i = 1, ..., m
+
+Where the ξi above allows for “slack” in the event the
+dataset is not linearly separable.
+
+3.3. Logistic Regression
+
+Closely related to our neural network, logistic regression
+aims to minimize the cost function:
+
+(cid:16)
+
+hθ(x(i)) − y(i)(cid:17)
+
+m(cid:88)
+
+i=1
+
+J(θ) =
+
+1
+2
+
+(5)
+
+where h(x) = θT x and θ is deﬁned in (1). To learn the
+parameters θ, we minimize J(θ) using stochastic gradient
+descent.
+
+3.4. Random Forests
+
+Random forests apply the technique of bootstrap aggregat-
+ing (i.e. bagging) to learn a model. B decision trees are
+created where each decision tree is trained on a random
+sample of the training data. Equation (6) shows how y is
+computed for an unseen example in a regression problem.
+
+B(cid:88)
+
+b=1
+
+ˆy =
+
+1
+B
+
+ˆyb(x)
+
+(6)
+
+where ˆyb is the prediction for decision tree b. For classi-
+ﬁcation problems, the majority vote of all B trees is taken
+(instead of the average) to output the predicted label.
+
+4. Experiment
+We separated the dataset into a training set consisting of
+316 records and a hold-out test set containing 135 randomly
+selected records. Both Matlab and Python were used for
+preprocessing, training, and testing.
+Our dataset consists of 452 records. Of these, 32 records
+are incomplete and missing at least one feature (excluding
+the “vector angle to J feature”). Because we do not want
+to discard these records, we instead impute the values by
+using the feature’s mean value as this tends to improve per-
+formance (Jerez, 2010).
+
+Surprisingly, our neural network outperforms the SVM,
+random forest, and logistic regression model in the binary
+classiﬁcation problem (see Table 1). In the multi-class case,
+our neural network still outperforms SVMs and logistic re-
+gression with a test accuracy of 75.7%.
+
+Table 1. Classiﬁcation Accuracy
+
+Binary
+
+Multi-Class
+
+Model
+Neural Network
+SVM
+Random Forest
+Logistic Regr.
+
+Test
+
+Training
+
+Training
+Test
+100.0% 91.9% 100.0% 75.7%
+92.4% 87.5%
+96.6% 65.1%
+99.7% 72.0%
+97.0% 76.0%
+100.0% 77.6% 100.0% 69.0%
+
+Because the cost of false diagnoses can be expensive, in
+monetary terms, we wanted to see our model’s false posi-
+tive rate. Figure 8 shows our model’s ROC curves. On the
+test set, our network is able to achieve a true positive rate of
+0.8 with a false positive rate of about 0.2. After that, higher
+false positive rates provide marginal gains in true positive
+detections.
+
+5. Discussion
+As indicated by the training accuracies, the neural network,
+random forest, and logistic regression tend to ﬁt (or closely
+ﬁt) the training data perfectly. However, we know these
+models are not memorizing the input data since the test ac-
+curacies are above 70% and 65% in the binary and multi-
+class case, respectively.
+We wanted to further analyze the performance of our neural
+network by looking at the convergence rate. Figure 6 shows
+the mean squared error as a function of number of iterations
+for different training sizes.
+
+(a) Binary Task
+
+(b) Multi-Class Task
+
+Figure 6. Convergence Rate of the Neural Network Model (Train-
+ing). Because the neural network was trained on 1,000 iterations,
+only the ﬁrst few iterations are shown above.
+
+0102030400.020.040.060.080.10.12Mean Squared Error (MSE)Iteration  5010015020025030001020300.10.20.30.40.50.6Mean Squared Error (MSE)Iteration  50100150200250300Cardiac Dysrhythmia Detection with GPU-Accelerated Neural Networks
+
+Figure 7. CPU vs GPU Runtime
+
+As previously mentioned, we used both CPUs and GPUs
+for training our neural network. SVMs, logistic regres-
+sion, and random forests were trained using CPUs only.
+Due to the large number of cores available on GPUs, GPUs
+are able to quickly train neural networks – especially those
+with a large number of neurons. We used a GeForce GTX
+750 Ti GPU with 640 CUDA cores clocked at 1.2 GHz with
+2 GiB of GDDR5 memory. The CPU used was an Intel i7-
+4930K 6 core processor clocked at 3.4 GHz and 32 GiB of
+DDR3 memory.
+The plot shown in Figure 7 show the results of our multi-
+class classiﬁcation task by training on a neural network
+with two hidden layers containing 100 neurons each. The
+training phase consisted of 1,000 iterations. For GPUs, the
+bottleneck is the data transfer to and from the device. Once
+the training data has been transferred to the GPU, the com-
+putation is very fast. Because our training data is so small
+(on the order of a few MiB), the GPU runtime does not
+experience long initial or post-processing delays. For net-
+works with more hidden nodes, we can expect the GPU
+vs CPU runtime margin to increase (Juang et al., 2011;
+Steinkrau et al., 2005).
+
+5.1. Error Analysis
+
+To visualize the results from all models, we generated con-
+fusion matrices depicted as heat maps in Figure 9. Both
+logistic regression and neural networks achieved a training
+accuracy of 100%. This is denoted by values present only
+on the diagonal. For SVMs and random forests, we see
+incorrect classiﬁcations present on the off-diagonal entries.
+Looking at the test set, we see that SVMs tend to incor-
+rectly categorize normal heartbeats (label=1) with labels
+2-16. This results in a high false positive rate. Our neu-
+ral network has few errors on the test as stated in Table
+1; this is conﬁrmed in the confusion matrix above as most
+true/predicted labelings lie along the diagonal.
+Confusion matrices are a good indicator of false positive
+and false negative rates. Depending on the application, one
+can be more expensive (in monetary terms) than the other.
+To analyze these rates, we plotted receiver operating char-
+acteristic (ROC) curves for the binary classiﬁcation case
+
+Figure 8. ROC Curves for the Binary Classiﬁcation Task. Class 1
+corresponds to the normal ECG case and class 2 corresponds to
+arrhythmia is present.
+
+in Figure 8. We do not plot the multi-class case as some
+classes contain one or two training examples and this skews
+the ROC curves for these labels.
+Figure 8 shows a perfect ROC curve for the training phase,
+as expected. Looking at the test ROC curve, if we are will-
+ing to tolerate a false positive rate of about 0.1, we are able
+to achieve a true positive rate of 0.9. In this particular ap-
+plication (in the domain of medical practice and arrhythmia
+detection), early detection has the potential to save lives.
+As a result, the cost of a false negative is greater than the
+cost of a false positive. If a patient is diagnosed as arrhyth-
+mia present (predicts positive), we can perform further tests
+to correctly label this patient.
+
+6. Conclusion
+Due to the time-series nature of ECG data, future work
+can explore recurrent and autoregressive neural networks
+(Zhang, 2001). These networks are well suited for predict-
+ing future time series and can be applied to ECG signals.
+Additionally, as with any learning problem, more (train-
+ing) data would beneﬁt our research. A longer-term project
+would aim to utilize smart health sensors (FitBit, Jawbone,
+Microsoft Band, etc.) for real-time cardiac monitoring.
+In this work, we used principal component analysis to
+transform the original 279 features from the dataset. We
+then analyzed the effect of number of principal compo-
+nents, hyperparameter tuning, and the runtime effect of
+GPUs. Results show that our neural network outperforms
+other methods on the binary classiﬁcation task. For multi-
+class Arrhythmia classiﬁcation, our neural network per-
+forms well and is beaten only by random forests. Future
+work can explore the use of ECG time series data and let
+the neural network extract features from the raw time series
+data on its own.
+As previously mentioned, the cost of false negatives is very
+high. Building a classiﬁer to minimize the false negative
+rate can bring many beneﬁts to the medical and healthcare
+industry. This work allowed us to deeply analyze learning
+
+BinaryMulti−Class01020304050Classification TaskTraining Time (seconds)  GPU@1.2GHz (640 cores)CPU@3.4GHz (6 cores)00.5100.20.40.60.81False Positive RateTrue Positive RateTraining ROC  Class 1Class 200.5100.20.40.60.81False Positive RateTrue Positive RateTest ROCClass 1Class 2Cardiac Dysrhythmia Detection with GPU-Accelerated Neural Networks
+
+(a) Confusion Matrices (Training Set)
+
+(b) Confusion Matrices (Test Set)
+
+Figure 9. Confusion matrices for all models for the multi-class classiﬁcation problem. Predicted labels are on the y-axis and true labels
+are on the x axis. Numbers indicate the number of records with a speciﬁc true/predicted labeling. Labels 11, 12, and 13 are not shown
+because these labels do not appear in the dataset.
+
+Song, Mi Hye, Lee, Jeon, Cho, Sung Pil, Lee, Ky-
+oung Joung, and Yoo, Sun Kook. Support vector ma-
+chine based arrhythmia classiﬁcation using reduced fea-
+tures. International Journal of Control Automation and
+Systems, 3(4):571, 2005.
+
+Steinkrau, Dave, Simard, Patrice Y, and Buck, Ian. Using
+gpus for machine learning algorithms. In Proceedings of
+the Eighth International Conference on Document Anal-
+ysis and Recognition, pp. 1115–1119. IEEE Computer
+Society, 2005.
+
+Thakor, Nitish V and Zhu, Yi-Sheng. Applications of
+adaptive ﬁltering to ecg analysis: noise cancellation and
+arrhythmia detection. Biomedical Engineering, IEEE
+Transactions on, 38(8):785–794, 1991.
+
+Zhang, Guoqiang Peter. An investigation of neural net-
+works for linear time-series forecasting. Computers &
+Operations Research, 28(12):1183–1202, 2001.
+
+algorithms using real data. We hope future researchers and
+students can build on this work.
+
+References
+Bache, K. and Lichman, M. UCI machine learning repos-
+itory, 2013. URL http://archive.ics.uci.
+edu/ml.
+
+Guvenir, H Altay et al. A supervised machine learning al-
+gorithm for arrhythmia analysis. In Computers in Cardi-
+ology 1997, pp. 433–436. IEEE, 1997.
+
+Hoefman, Emmy, Bindels, Patrick JE, and van Weert,
+Henk CPM. Efﬁcacy of diagnostic tools for detect-
+ing cardiac arrhythmias: systematic literature search.
+Netherlands Heart Journal, 18(11):543–551, 2010.
+
+Jerez, Jos´e M et al. Missing data imputation using statisti-
+cal and machine learning methods in a real breast cancer
+problem. Artiﬁcial intelligence in medicine, 50(2):105–
+115, 2010.
+
+Juang, Chia-Feng, Chen, Teng-Chang, and Cheng, Wei-
+Yuan. Speedup of implementing fuzzy neural networks
+with high-dimensional inputs through parallel process-
+ing on graphic processing units. Fuzzy Systems, IEEE
+Transactions on, 19(4):717–728, 2011.
+
+1234567891014151612345678910141516167000000000000928000000000002080000000000000120000000000000800000000400001500000001000001000000000000010000000000000700001000000003200000000000002000000000000020200000000000140.00.10.20.30.40.50.60.70.80.91.012345678910141516123456789101415161660000000010000370000000000000100000000000000120000000002000600000000000001900000000000002000000000000010000000000000700000000000003300000000000002000000000000020100000000000150.00.10.20.30.40.50.60.70.80.91.012345678910141516123456789101415161670000000000000370000000000000100000000000000120000000000000800000000000001900000000000002000000000000010000000000000700000000000003300000000000002000000000000020000000000000160.00.10.20.30.40.50.60.70.80.91.01234567891014151612345678910141516167000000000000033000000000000012000000000000090000000000000800000000000001700000000000002000000000000010000000000000500000000000003900000000000003000000000000040000000000000160.00.10.20.30.40.50.60.70.80.91.0SVM (Train)Logistic Regression (Train)Random Forest (Train)Neural Network (Train)12345678910141516123456789101415166560104000200012010001100011040000000000120000000000022001000000003100010001000100000000000010000000000000000010010000200000000150001000010000000011000000100040000100000100.00.10.20.30.40.50.60.70.80.91.0SVM (Test)1234567891014151612345678910141516771000000000003300000000001113000000000020000000010004000000001000600000000000010000000000001000000000000000000002000080000000090002000000000000020000000001051000000000000.00.10.20.30.40.50.60.70.80.91.0Random Forest (Test)12345678910141516123456789101415166660102000300032010001000000050000000000200100000000032000000000003100010001000100000000000010000000000000000010010000200000000140011000000001000011000000100031000200000000.00.10.20.30.40.50.60.70.80.91.0Logistic Regression (Test)1234567891014151612345678910141516756221000100002401100111000001000000000001031000000001000000000000100006000100010000000000001000000000000000000001000000002210190010000000000001100000000000000000000001140.00.10.20.30.40.50.60.70.80.91.0Neural Network (Test)

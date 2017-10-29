@@ -1,0 +1,1767 @@
+Leveraging Document Structure for Better Classiﬁcation of Complex
+
+Legal Documents
+
+Stanford University / 353 Serra Mall, Palo Alto, CA
+
+Alex Ratner
+
+ajratner@stanford.edu
+
+Abstract
+
+Document classiﬁcation is a machine
+learning application that has been as im-
+pactful as it has been successful in a myr-
+iad of domains and applications. How-
+ever, when the documents being classiﬁed
+are large and highly-complex, and when
+the set of potential classes is large as well,
+these models could be improved by incor-
+porating more information about the docu-
+ments’ overall structure. Most approaches
+use bag-of-words type models that discard
+local structure and focus on types of words
+or n-grams used. In this paper, we exam-
+ine several models and attempt to leverage
+both local (e.g. n-gram) and global (e.g.
+structure and organization) document fea-
+tures. We apply these approaches to a new
+dataset of legal documents.
+Introduction
+
+1
+Text classiﬁcation is an important component
+of many modern applications such as informa-
+tion retrieval, information extraction and domain-
+speciﬁc content processing systems. To date,
+many text classiﬁcation systems have achieved
+performance success using simple features that
+mostly or completely ignore word ordering, doc-
+ument structure and organization, and other such
+features, and then use sophisticated generative
+(e.g. LDA) (Blei et. al., 2003) or discriminative
+(e.g. SVM) models to classify documents. Many
+approaches preserve some local structure by look-
+ing at subsequences of words (”ngrams”) or by
+incorporating some dependency or parse tree in-
+formation. Lately, several ”deep learning” mod-
+els have attempted to preserve even more local
+structure by learning high-dimensional represen-
+tations of large variable-length strings using re-
+cursive neural net architectures (Le and Mikolov,
+2014).
+
+We hypothesize that for some very large, com-
+plex document sets with nuanced classiﬁcation
+schemes, even a lot of this local structure might
+be the same across different document classes, and
+some awareness of the overall structure and orga-
+nization of the document might help with the clas-
+siﬁcation task, as previous work leveraging docu-
+ment structure has shown (Chen et. al., 2008).
+
+For this paper, we are speciﬁcally interested in
+classifying legal contract documents. In terms of
+general motivation, the automation of certain le-
+gal processes is a compelling challenge since it
+is widely acknowledged today that access to le-
+gal services and representation is majorly skewed
+towards those with enough money to afford better
+lawyers. In large part, this is due to the high costs
+of manually-performed tasks such as information
+retrieval, extraction, classiﬁcation, and anomaly
+detection, that could be partially or fully auto-
+mated.
+
+In terms of technical motivation, contract docu-
+ments are of interest because they are large, com-
+plex documents that nonetheless often have some
+shared structures such as titles, sections, subsec-
+tions, etc. In our dataset, not only are there many
+different categories but they are often similar (ex:
+”Account Receivables Financing Agreement” vs.
+”Account Receivables Purchase Agreement”), use
+similar words and phrases, etc.
+
+We explore some discriminative algorithms
+with some simple feature extraction and feature
+space reduction techniques, then move on to a cus-
+tom generative model which attempts to more ex-
+
+Leveraging Document Structure for Better Classiﬁcation of Complex
+
+Legal Documents
+
+Stanford University / 353 Serra Mall, Palo Alto, CA
+
+Alex Ratner
+
+ajratner@stanford.edu
+
+Abstract
+
+Document classiﬁcation is a machine
+learning application that has been as im-
+pactful as it has been successful in a myr-
+iad of domains and applications. How-
+ever, when the documents being classiﬁed
+are large and highly-complex, and when
+the set of potential classes is large as well,
+these models could be improved by incor-
+porating more information about the docu-
+ments’ overall structure. Most approaches
+use bag-of-words type models that discard
+local structure and focus on types of words
+or n-grams used. In this paper, we exam-
+ine several models and attempt to leverage
+both local (e.g. n-gram) and global (e.g.
+structure and organization) document fea-
+tures. We apply these approaches to a new
+dataset of legal documents.
+Introduction
+
+1
+Text classiﬁcation is an important component
+of many modern applications such as informa-
+tion retrieval, information extraction and domain-
+speciﬁc content processing systems. To date,
+many text classiﬁcation systems have achieved
+performance success using simple features that
+mostly or completely ignore word ordering, doc-
+ument structure and organization, and other such
+features, and then use sophisticated generative
+(e.g. LDA) (Blei et. al., 2003) or discriminative
+(e.g. SVM) models to classify documents. Many
+approaches preserve some local structure by look-
+ing at subsequences of words (”ngrams”) or by
+incorporating some dependency or parse tree in-
+formation. Lately, several ”deep learning” mod-
+els have attempted to preserve even more local
+structure by learning high-dimensional represen-
+tations of large variable-length strings using re-
+cursive neural net architectures (Le and Mikolov,
+2014).
+
+We hypothesize that for some very large, com-
+plex document sets with nuanced classiﬁcation
+schemes, even a lot of this local structure might
+be the same across different document classes, and
+some awareness of the overall structure and orga-
+nization of the document might help with the clas-
+siﬁcation task, as previous work leveraging docu-
+ment structure has shown (Chen et. al., 2008).
+
+For this paper, we are speciﬁcally interested in
+classifying legal contract documents. In terms of
+general motivation, the automation of certain le-
+gal processes is a compelling challenge since it
+is widely acknowledged today that access to le-
+gal services and representation is majorly skewed
+towards those with enough money to afford better
+lawyers. In large part, this is due to the high costs
+of manually-performed tasks such as information
+retrieval, extraction, classiﬁcation, and anomaly
+detection, that could be partially or fully auto-
+mated.
+
+In terms of technical motivation, contract docu-
+ments are of interest because they are large, com-
+plex documents that nonetheless often have some
+shared structures such as titles, sections, subsec-
+tions, etc. In our dataset, not only are there many
+different categories but they are often similar (ex:
+”Account Receivables Financing Agreement” vs.
+”Account Receivables Purchase Agreement”), use
+similar words and phrases, etc.
+
+We explore some discriminative algorithms
+with some simple feature extraction and feature
+space reduction techniques, then move on to a cus-
+tom generative model which attempts to more ex-
+
+plicitly model the document structure we observe.
+
+ment d, and αi,d being the TF-IDF weight,
+
+2 Dataset
+
+αi,d =
+
+We collected our dataset from OneCLE.com, an
+aggregator site that collects publicly-disclosed le-
+gal contract documents from the SEC and cate-
+gorizes them manually. We began by crawling
+onecle.com1 and scraping 27,979 contract docu-
+ments in 326 categories ranging from ”Arbitra-
+tion Agreement” to ”Manufacturing Contract”.2.
+In most cases, we restrict our consideration to cat-
+egories with > 50 documents, which results in
+a reduced dataset of 13,844 documents. Addi-
+tionally, in most cases we further randomly sub-
+sample to 10,000 documents for slightly more bal-
+anced classes. See Results and Discussion.
+
+3 Features and Preprocessing
+
+In order to capture some of the document orga-
+nizational structure that we wished to leverage,
+we used a small set of heuristic rules to extract
+individual sections and their titles, and the over-
+all document title. As will be discussed further,
+the dataset was extremely noisy with regard to
+structure- at least 7 different word document-to-
+html processes appeared to have been used- so we
+limited our parsing of structure to these high-level
+components.
+
+Once the documents were parsed into high-
+level structural components, we preprocessed fur-
+ther using minimum word-length thresholding
+(min=3), minimum and maximum corpus fre-
+quency thresholding (we kept words w that ap-
+peared in more than 3 but less that 0.8 ∗ |D| of
+the documents D), Porter stemming (a form of
+sufﬁx-removal that results in normalized forms of
+words), and removal of certain non-content words
+(’stop-word’ removal).
+
+For our discriminative algorithms (Logistic re-
+gression and SVM), we then transformed each
+component into a vector of TF-IDF weighted in-
+dicator features; in other words, given a training
+set vocabulary V = {w1, ..., w|V |} from N doc-
+uments, we represented each text component as a
+length-|V | vector (cid:126)x(d) where x(d)
+i = αi,d ∗ f (i, d),
+with f (i, d) being the count of word wi in docu-
+
+1Permissible according to their robots.txt ﬁle
+2Permissible as these are unmodiﬁed versions of the
+
+public-domain documents provided by the SEC
+
+(cid:18)
+
+(cid:18)
+
+0.5 ∗ f (i, d)
+
+0.5 +
+
+max({f (j, d) : wj ∈ d})
+
+(cid:19)
+
+∗ log
+
+N
+
+|{d ∈ D : wi ∈ d}|
+
+(cid:19)
+
+Even with these preprocessing steps, we still
+ended up with |V | ≈ 40, 000 3, meaning our fea-
+ture vectors were this length as well. We tried
+three types of feature dimensionality reduction:
+χ2 test thresholding (select the K best features ac-
+cording to this statistic of informativeness); princi-
+ple component analysis (PCA); and latent seman-
+tic analysis (LSA; similar to PCA, this is the term
+for truncated SVD used on feature vectors such as
+ours). Detailed review of these methods is not in-
+cluded as they uniformly appeared to dramatically
+lower classiﬁer performance in testing, and were
+thus not utilized.
+
+Finally, we handled structure in the following
+model-speciﬁc ways: for Multinomial NB, no in-
+formation about document structure was kept; for
+logistic regression and SVM, we used separate vo-
+cabularies and feature vectors for the body text
+and titles respectively, and then concatenated these
+vectors; for Cross-section Multinomial NB, we
+represented structure as described in the following
+section.
+
+4 Models
+4.1 Logistic Regression
+Our baseline discriminative model was L2-norm
+logistic regression, which minimizes the following
+cost function:
+
+J(w, c) =
+
+wT w + C
+
+1
+2
+
+log(exp(−yi(X T
+
+i w + c)) + 1)
+
+n(cid:88)
+
+i=1
+
+where C is a hyper parameter determining the
+balance between ﬁtting the model and penalizing
+overﬁtting with the L2-norm.
+
+4.2 SVM
+As reviewed in class, an SVM minimizes the fol-
+lowing cost function:
+
+J(w, bγ) =
+
+wT w + C
+
+1
+2
+
+n(cid:88)
+
+i=1
+
+γi
+
+3Approximate due to the random sub-sampling done to
+balance class membership sizes, noted in the previous section
+
+Leveraging Document Structure for Better Classiﬁcation of Complex
+
+Legal Documents
+
+Stanford University / 353 Serra Mall, Palo Alto, CA
+
+Alex Ratner
+
+ajratner@stanford.edu
+
+Abstract
+
+Document classiﬁcation is a machine
+learning application that has been as im-
+pactful as it has been successful in a myr-
+iad of domains and applications. How-
+ever, when the documents being classiﬁed
+are large and highly-complex, and when
+the set of potential classes is large as well,
+these models could be improved by incor-
+porating more information about the docu-
+ments’ overall structure. Most approaches
+use bag-of-words type models that discard
+local structure and focus on types of words
+or n-grams used. In this paper, we exam-
+ine several models and attempt to leverage
+both local (e.g. n-gram) and global (e.g.
+structure and organization) document fea-
+tures. We apply these approaches to a new
+dataset of legal documents.
+Introduction
+
+1
+Text classiﬁcation is an important component
+of many modern applications such as informa-
+tion retrieval, information extraction and domain-
+speciﬁc content processing systems. To date,
+many text classiﬁcation systems have achieved
+performance success using simple features that
+mostly or completely ignore word ordering, doc-
+ument structure and organization, and other such
+features, and then use sophisticated generative
+(e.g. LDA) (Blei et. al., 2003) or discriminative
+(e.g. SVM) models to classify documents. Many
+approaches preserve some local structure by look-
+ing at subsequences of words (”ngrams”) or by
+incorporating some dependency or parse tree in-
+formation. Lately, several ”deep learning” mod-
+els have attempted to preserve even more local
+structure by learning high-dimensional represen-
+tations of large variable-length strings using re-
+cursive neural net architectures (Le and Mikolov,
+2014).
+
+We hypothesize that for some very large, com-
+plex document sets with nuanced classiﬁcation
+schemes, even a lot of this local structure might
+be the same across different document classes, and
+some awareness of the overall structure and orga-
+nization of the document might help with the clas-
+siﬁcation task, as previous work leveraging docu-
+ment structure has shown (Chen et. al., 2008).
+
+For this paper, we are speciﬁcally interested in
+classifying legal contract documents. In terms of
+general motivation, the automation of certain le-
+gal processes is a compelling challenge since it
+is widely acknowledged today that access to le-
+gal services and representation is majorly skewed
+towards those with enough money to afford better
+lawyers. In large part, this is due to the high costs
+of manually-performed tasks such as information
+retrieval, extraction, classiﬁcation, and anomaly
+detection, that could be partially or fully auto-
+mated.
+
+In terms of technical motivation, contract docu-
+ments are of interest because they are large, com-
+plex documents that nonetheless often have some
+shared structures such as titles, sections, subsec-
+tions, etc. In our dataset, not only are there many
+different categories but they are often similar (ex:
+”Account Receivables Financing Agreement” vs.
+”Account Receivables Purchase Agreement”), use
+similar words and phrases, etc.
+
+We explore some discriminative algorithms
+with some simple feature extraction and feature
+space reduction techniques, then move on to a cus-
+tom generative model which attempts to more ex-
+
+plicitly model the document structure we observe.
+
+ment d, and αi,d being the TF-IDF weight,
+
+2 Dataset
+
+αi,d =
+
+We collected our dataset from OneCLE.com, an
+aggregator site that collects publicly-disclosed le-
+gal contract documents from the SEC and cate-
+gorizes them manually. We began by crawling
+onecle.com1 and scraping 27,979 contract docu-
+ments in 326 categories ranging from ”Arbitra-
+tion Agreement” to ”Manufacturing Contract”.2.
+In most cases, we restrict our consideration to cat-
+egories with > 50 documents, which results in
+a reduced dataset of 13,844 documents. Addi-
+tionally, in most cases we further randomly sub-
+sample to 10,000 documents for slightly more bal-
+anced classes. See Results and Discussion.
+
+3 Features and Preprocessing
+
+In order to capture some of the document orga-
+nizational structure that we wished to leverage,
+we used a small set of heuristic rules to extract
+individual sections and their titles, and the over-
+all document title. As will be discussed further,
+the dataset was extremely noisy with regard to
+structure- at least 7 different word document-to-
+html processes appeared to have been used- so we
+limited our parsing of structure to these high-level
+components.
+
+Once the documents were parsed into high-
+level structural components, we preprocessed fur-
+ther using minimum word-length thresholding
+(min=3), minimum and maximum corpus fre-
+quency thresholding (we kept words w that ap-
+peared in more than 3 but less that 0.8 ∗ |D| of
+the documents D), Porter stemming (a form of
+sufﬁx-removal that results in normalized forms of
+words), and removal of certain non-content words
+(’stop-word’ removal).
+
+For our discriminative algorithms (Logistic re-
+gression and SVM), we then transformed each
+component into a vector of TF-IDF weighted in-
+dicator features; in other words, given a training
+set vocabulary V = {w1, ..., w|V |} from N doc-
+uments, we represented each text component as a
+length-|V | vector (cid:126)x(d) where x(d)
+i = αi,d ∗ f (i, d),
+with f (i, d) being the count of word wi in docu-
+
+1Permissible according to their robots.txt ﬁle
+2Permissible as these are unmodiﬁed versions of the
+
+public-domain documents provided by the SEC
+
+(cid:18)
+
+(cid:18)
+
+0.5 ∗ f (i, d)
+
+0.5 +
+
+max({f (j, d) : wj ∈ d})
+
+(cid:19)
+
+∗ log
+
+N
+
+|{d ∈ D : wi ∈ d}|
+
+(cid:19)
+
+Even with these preprocessing steps, we still
+ended up with |V | ≈ 40, 000 3, meaning our fea-
+ture vectors were this length as well. We tried
+three types of feature dimensionality reduction:
+χ2 test thresholding (select the K best features ac-
+cording to this statistic of informativeness); princi-
+ple component analysis (PCA); and latent seman-
+tic analysis (LSA; similar to PCA, this is the term
+for truncated SVD used on feature vectors such as
+ours). Detailed review of these methods is not in-
+cluded as they uniformly appeared to dramatically
+lower classiﬁer performance in testing, and were
+thus not utilized.
+
+Finally, we handled structure in the following
+model-speciﬁc ways: for Multinomial NB, no in-
+formation about document structure was kept; for
+logistic regression and SVM, we used separate vo-
+cabularies and feature vectors for the body text
+and titles respectively, and then concatenated these
+vectors; for Cross-section Multinomial NB, we
+represented structure as described in the following
+section.
+
+4 Models
+4.1 Logistic Regression
+Our baseline discriminative model was L2-norm
+logistic regression, which minimizes the following
+cost function:
+
+J(w, c) =
+
+wT w + C
+
+1
+2
+
+log(exp(−yi(X T
+
+i w + c)) + 1)
+
+n(cid:88)
+
+i=1
+
+where C is a hyper parameter determining the
+balance between ﬁtting the model and penalizing
+overﬁtting with the L2-norm.
+
+4.2 SVM
+As reviewed in class, an SVM minimizes the fol-
+lowing cost function:
+
+J(w, bγ) =
+
+wT w + C
+
+1
+2
+
+n(cid:88)
+
+i=1
+
+γi
+
+3Approximate due to the random sub-sampling done to
+balance class membership sizes, noted in the previous section
+
+subject to:
+
+yi(wT xi + b) ≥ 1 − γi
+
+γi ≥ 0∀i
+
+In the dual form of the problem, we can write the
+optimization problem in terms of < x, x(cid:48) > and
+then replace these with arbitrary (Mercer) kernel
+functions φ(x, x(cid:48)). We use two different kernel
+functions, a linear one- φ(x, x(cid:48)) =< x, x(cid:48) >- and
+a radial basis function (RBF) kernel- φ(x, x(cid:48)) =
+exp(|x − x(cid:48)|2).
+
+ument is p(y)(cid:81)n
+
+4.3 Multinomial Naive Bayes
+Multinomial Naive Bayes is a generative model
+which uses the ”Naive Bayes” approximation to
+assume independence between every pair of fea-
+tures. Thus we can model the probability of a doc-
+i=1 p(xi|y), where x1, ..., xn are
+the words in the document of class y, and where
+our model is parameterized by θi|y = p(xi|y) and
+φy = p(y), and where we use Laplace smooth-
+ing to redistribute some probability mass from ob-
+served word statistics to allow for words in the test
+set that were not seen in the training set.
+
+We implement Multinomial NB in two ways-
+ﬁrst using MLE to ﬁnd the optimal parameters,
+and then using Gibbs sampling (see next sub-
+section), mostly in order to set a relative baseline
+for the other Gibbs sampling model used.
+
+4.4 Cross-section Multinomial Naive Bayes
+Our ﬁnal model is a potentially novel4 attempt
+to more explicitly account for document struc-
+ture, which we term the ”Cross-section” version
+of Multinomial NB. Speciﬁcally, we hypothesize
+that in each section of a contract, there is some lan-
+guage that is very speciﬁc to that contract and its
+contract class as a whole, and some language that
+is more speciﬁc to a certain type of section class
+used across multiple types of contracts. For exam-
+ple, multiple types of contracts might have a sec-
+tion having to do with limiting liabilities; we hy-
+pothesize that this section might have some words
+strongly related to the contract type, and some
+words related more to the general concept of liabil-
+ities. Moreover, we hypothesize that the sections
+of the contract might be a good set of segmenta-
+tions to reﬂect these factors.
+
+4In a small, application-speciﬁc way... we know there are
+
+lots of plate models out there!
+
+We use a plate diagram to illustrate the model
+
+proposed:
+
+This model deﬁnes the following generative pro-
+cess for creating a contract, given J contract
+classes and K section classes to choose from:
+
+is
+
+sampled:
+
+ηc ∼
+
+• A contract class
+M ultinomial(θc)
+• For each section:
+
+– A section class is sampled:
+
+ηs ∼
+
+M ultinomial(θs)
+
+– A Bernoulli parameter is sampled: ω ∼
+
+Beta(π)
+
+– For each word:
+
+Bernoulli(ω)
+
+∗ A binary value is sampled: δ ∼
+∗ If δ = 0, a word is sampled con-
+ditional on the contract class, w ∼
+M ultinomial(θwc)
+∗ If δ = 1, a word is sampled con-
+ditional on the section class, w ∼
+M ultinomial(θws)
+
+The Multinomial parameters θ all have corre-
+sponding Dirichlet priors, however for simplicity
+we use symmetric and uniform (= 1) priors so this
+essentially works out to Laplace smoothing.
+
+We then use Gibbs sampling, which roughly is
+the technique of sampling all the involved param-
+eters and labels one at a time, conditioned on all
+the other parameters/values as set in the previous
+sampling iteration. We calculate the conditional
+distributions required for sampling; for example,
+for sampling a new document class for document
+i, the probability of a certain contract class c con-
+
+Leveraging Document Structure for Better Classiﬁcation of Complex
+
+Legal Documents
+
+Stanford University / 353 Serra Mall, Palo Alto, CA
+
+Alex Ratner
+
+ajratner@stanford.edu
+
+Abstract
+
+Document classiﬁcation is a machine
+learning application that has been as im-
+pactful as it has been successful in a myr-
+iad of domains and applications. How-
+ever, when the documents being classiﬁed
+are large and highly-complex, and when
+the set of potential classes is large as well,
+these models could be improved by incor-
+porating more information about the docu-
+ments’ overall structure. Most approaches
+use bag-of-words type models that discard
+local structure and focus on types of words
+or n-grams used. In this paper, we exam-
+ine several models and attempt to leverage
+both local (e.g. n-gram) and global (e.g.
+structure and organization) document fea-
+tures. We apply these approaches to a new
+dataset of legal documents.
+Introduction
+
+1
+Text classiﬁcation is an important component
+of many modern applications such as informa-
+tion retrieval, information extraction and domain-
+speciﬁc content processing systems. To date,
+many text classiﬁcation systems have achieved
+performance success using simple features that
+mostly or completely ignore word ordering, doc-
+ument structure and organization, and other such
+features, and then use sophisticated generative
+(e.g. LDA) (Blei et. al., 2003) or discriminative
+(e.g. SVM) models to classify documents. Many
+approaches preserve some local structure by look-
+ing at subsequences of words (”ngrams”) or by
+incorporating some dependency or parse tree in-
+formation. Lately, several ”deep learning” mod-
+els have attempted to preserve even more local
+structure by learning high-dimensional represen-
+tations of large variable-length strings using re-
+cursive neural net architectures (Le and Mikolov,
+2014).
+
+We hypothesize that for some very large, com-
+plex document sets with nuanced classiﬁcation
+schemes, even a lot of this local structure might
+be the same across different document classes, and
+some awareness of the overall structure and orga-
+nization of the document might help with the clas-
+siﬁcation task, as previous work leveraging docu-
+ment structure has shown (Chen et. al., 2008).
+
+For this paper, we are speciﬁcally interested in
+classifying legal contract documents. In terms of
+general motivation, the automation of certain le-
+gal processes is a compelling challenge since it
+is widely acknowledged today that access to le-
+gal services and representation is majorly skewed
+towards those with enough money to afford better
+lawyers. In large part, this is due to the high costs
+of manually-performed tasks such as information
+retrieval, extraction, classiﬁcation, and anomaly
+detection, that could be partially or fully auto-
+mated.
+
+In terms of technical motivation, contract docu-
+ments are of interest because they are large, com-
+plex documents that nonetheless often have some
+shared structures such as titles, sections, subsec-
+tions, etc. In our dataset, not only are there many
+different categories but they are often similar (ex:
+”Account Receivables Financing Agreement” vs.
+”Account Receivables Purchase Agreement”), use
+similar words and phrases, etc.
+
+We explore some discriminative algorithms
+with some simple feature extraction and feature
+space reduction techniques, then move on to a cus-
+tom generative model which attempts to more ex-
+
+plicitly model the document structure we observe.
+
+ment d, and αi,d being the TF-IDF weight,
+
+2 Dataset
+
+αi,d =
+
+We collected our dataset from OneCLE.com, an
+aggregator site that collects publicly-disclosed le-
+gal contract documents from the SEC and cate-
+gorizes them manually. We began by crawling
+onecle.com1 and scraping 27,979 contract docu-
+ments in 326 categories ranging from ”Arbitra-
+tion Agreement” to ”Manufacturing Contract”.2.
+In most cases, we restrict our consideration to cat-
+egories with > 50 documents, which results in
+a reduced dataset of 13,844 documents. Addi-
+tionally, in most cases we further randomly sub-
+sample to 10,000 documents for slightly more bal-
+anced classes. See Results and Discussion.
+
+3 Features and Preprocessing
+
+In order to capture some of the document orga-
+nizational structure that we wished to leverage,
+we used a small set of heuristic rules to extract
+individual sections and their titles, and the over-
+all document title. As will be discussed further,
+the dataset was extremely noisy with regard to
+structure- at least 7 different word document-to-
+html processes appeared to have been used- so we
+limited our parsing of structure to these high-level
+components.
+
+Once the documents were parsed into high-
+level structural components, we preprocessed fur-
+ther using minimum word-length thresholding
+(min=3), minimum and maximum corpus fre-
+quency thresholding (we kept words w that ap-
+peared in more than 3 but less that 0.8 ∗ |D| of
+the documents D), Porter stemming (a form of
+sufﬁx-removal that results in normalized forms of
+words), and removal of certain non-content words
+(’stop-word’ removal).
+
+For our discriminative algorithms (Logistic re-
+gression and SVM), we then transformed each
+component into a vector of TF-IDF weighted in-
+dicator features; in other words, given a training
+set vocabulary V = {w1, ..., w|V |} from N doc-
+uments, we represented each text component as a
+length-|V | vector (cid:126)x(d) where x(d)
+i = αi,d ∗ f (i, d),
+with f (i, d) being the count of word wi in docu-
+
+1Permissible according to their robots.txt ﬁle
+2Permissible as these are unmodiﬁed versions of the
+
+public-domain documents provided by the SEC
+
+(cid:18)
+
+(cid:18)
+
+0.5 ∗ f (i, d)
+
+0.5 +
+
+max({f (j, d) : wj ∈ d})
+
+(cid:19)
+
+∗ log
+
+N
+
+|{d ∈ D : wi ∈ d}|
+
+(cid:19)
+
+Even with these preprocessing steps, we still
+ended up with |V | ≈ 40, 000 3, meaning our fea-
+ture vectors were this length as well. We tried
+three types of feature dimensionality reduction:
+χ2 test thresholding (select the K best features ac-
+cording to this statistic of informativeness); princi-
+ple component analysis (PCA); and latent seman-
+tic analysis (LSA; similar to PCA, this is the term
+for truncated SVD used on feature vectors such as
+ours). Detailed review of these methods is not in-
+cluded as they uniformly appeared to dramatically
+lower classiﬁer performance in testing, and were
+thus not utilized.
+
+Finally, we handled structure in the following
+model-speciﬁc ways: for Multinomial NB, no in-
+formation about document structure was kept; for
+logistic regression and SVM, we used separate vo-
+cabularies and feature vectors for the body text
+and titles respectively, and then concatenated these
+vectors; for Cross-section Multinomial NB, we
+represented structure as described in the following
+section.
+
+4 Models
+4.1 Logistic Regression
+Our baseline discriminative model was L2-norm
+logistic regression, which minimizes the following
+cost function:
+
+J(w, c) =
+
+wT w + C
+
+1
+2
+
+log(exp(−yi(X T
+
+i w + c)) + 1)
+
+n(cid:88)
+
+i=1
+
+where C is a hyper parameter determining the
+balance between ﬁtting the model and penalizing
+overﬁtting with the L2-norm.
+
+4.2 SVM
+As reviewed in class, an SVM minimizes the fol-
+lowing cost function:
+
+J(w, bγ) =
+
+wT w + C
+
+1
+2
+
+n(cid:88)
+
+i=1
+
+γi
+
+3Approximate due to the random sub-sampling done to
+balance class membership sizes, noted in the previous section
+
+subject to:
+
+yi(wT xi + b) ≥ 1 − γi
+
+γi ≥ 0∀i
+
+In the dual form of the problem, we can write the
+optimization problem in terms of < x, x(cid:48) > and
+then replace these with arbitrary (Mercer) kernel
+functions φ(x, x(cid:48)). We use two different kernel
+functions, a linear one- φ(x, x(cid:48)) =< x, x(cid:48) >- and
+a radial basis function (RBF) kernel- φ(x, x(cid:48)) =
+exp(|x − x(cid:48)|2).
+
+ument is p(y)(cid:81)n
+
+4.3 Multinomial Naive Bayes
+Multinomial Naive Bayes is a generative model
+which uses the ”Naive Bayes” approximation to
+assume independence between every pair of fea-
+tures. Thus we can model the probability of a doc-
+i=1 p(xi|y), where x1, ..., xn are
+the words in the document of class y, and where
+our model is parameterized by θi|y = p(xi|y) and
+φy = p(y), and where we use Laplace smooth-
+ing to redistribute some probability mass from ob-
+served word statistics to allow for words in the test
+set that were not seen in the training set.
+
+We implement Multinomial NB in two ways-
+ﬁrst using MLE to ﬁnd the optimal parameters,
+and then using Gibbs sampling (see next sub-
+section), mostly in order to set a relative baseline
+for the other Gibbs sampling model used.
+
+4.4 Cross-section Multinomial Naive Bayes
+Our ﬁnal model is a potentially novel4 attempt
+to more explicitly account for document struc-
+ture, which we term the ”Cross-section” version
+of Multinomial NB. Speciﬁcally, we hypothesize
+that in each section of a contract, there is some lan-
+guage that is very speciﬁc to that contract and its
+contract class as a whole, and some language that
+is more speciﬁc to a certain type of section class
+used across multiple types of contracts. For exam-
+ple, multiple types of contracts might have a sec-
+tion having to do with limiting liabilities; we hy-
+pothesize that this section might have some words
+strongly related to the contract type, and some
+words related more to the general concept of liabil-
+ities. Moreover, we hypothesize that the sections
+of the contract might be a good set of segmenta-
+tions to reﬂect these factors.
+
+4In a small, application-speciﬁc way... we know there are
+
+lots of plate models out there!
+
+We use a plate diagram to illustrate the model
+
+proposed:
+
+This model deﬁnes the following generative pro-
+cess for creating a contract, given J contract
+classes and K section classes to choose from:
+
+is
+
+sampled:
+
+ηc ∼
+
+• A contract class
+M ultinomial(θc)
+• For each section:
+
+– A section class is sampled:
+
+ηs ∼
+
+M ultinomial(θs)
+
+– A Bernoulli parameter is sampled: ω ∼
+
+Beta(π)
+
+– For each word:
+
+Bernoulli(ω)
+
+∗ A binary value is sampled: δ ∼
+∗ If δ = 0, a word is sampled con-
+ditional on the contract class, w ∼
+M ultinomial(θwc)
+∗ If δ = 1, a word is sampled con-
+ditional on the section class, w ∼
+M ultinomial(θws)
+
+The Multinomial parameters θ all have corre-
+sponding Dirichlet priors, however for simplicity
+we use symmetric and uniform (= 1) priors so this
+essentially works out to Laplace smoothing.
+
+We then use Gibbs sampling, which roughly is
+the technique of sampling all the involved param-
+eters and labels one at a time, conditioned on all
+the other parameters/values as set in the previous
+sampling iteration. We calculate the conditional
+distributions required for sampling; for example,
+for sampling a new document class for document
+i, the probability of a certain contract class c con-
+
+ditioned on the other parameters is:
+
+P (c| (cid:126)C(−i), (cid:126)S, θc, θs, (cid:126)ω, θwc, θws, ...)
+P (c) ∗ P ( (cid:126)C(−i), (cid:126)S, θc, θs, (cid:126)ω, θwc, θws, ...|c)
+
+P ( (cid:126)C(−i), (cid:126)S, θc, θs, (cid:126)ω, θwc, θws, ...)
+
+=
+
+explore the hyper parameter space. We did exam-
+ine the optimum number of section classes to set,
+plotted below6.
+
+Since we are calculating these probabilities for the
+classes c in order to sample from a Multinomial,
+we can disregard the denominator which has no
+dependence on c:
+P (c| (cid:126)C(−i), (cid:126)S, θc, θs, (cid:126)ω, θwc, θws, ...)
+∝ P (c) ∗ P ( (cid:126)C(−i), (cid:126)S, θc, θs, (cid:126)ω, θwc, θws, ...|c)
+∝
+
+(cid:19) nsections,i(cid:89)
+
+P (sj|c)
+
+Ndocs + nclasses
+
+(cid:18) count(c) + 1
+nwords,i,j(cid:89)
+(cid:18) count(c) + 1
+nwords,i,j(cid:89)
+
+(cid:104)
+
+i=1
+
+Ndocs + nclasses
+
+∗
+
+=
+
+∗
+
+j=1
+
+(cid:19) nsections,i(cid:89)
+
+j=1
+
+[δijP (wij|c) + (1 − δij)P (wij|s)]
+
+θs
+sj|c
+
+(cid:105)
+
+δijθwc
+
+wij|c + (1 − δij)θws
+wij|s
+
+We also observed that the system seemed to con-
+verge to a steady state local optima very quickly,
+perhaps much faster than we would want for ideal
+performance; an illustrative trial is plotted below:
+
+i=1
+
+And similarly for the other conditional distribu-
+tions needed for the sampling iterations.
+
+5 Results
+We use stratiﬁed 5-fold cross validation5 on a
+randomly-subsampled down set of 10,000 doc-
+uments in order to balance class membership
+counts, selecting from 77 classes which had at
+least 50 documents.
+
+Model
+Logistic Regression
+SVM (linear kernel)
+SVM (RBF kernel)
+Multinomial NB (MLE)
+Multinomial NB (Gibbs)
+Cross-section NB
+
+Test Acc. Train Acc.
+
+82.5% 95.9%
+82.0% 98.5%
+25.0% 27.8%
+70.4% 90.3%
+60.5% N/A
+62.5% N/A
+
+For our Gibbs sampling models, we used a cus-
+tom implementation in python. We used burn-in
+and thinning to reduce spurious effects from the
+initial state space exploration and to avoid auto-
+correlation respectively. Nevertheless, our imple-
+mentation was somewhat limited in terms of com-
+putational resources, which limited our ability to
+5Stratiﬁed meaning that we keep the proportions of
+
+classes constant in each fold
+
+6 Discussion
+
+In this paper we attempted to (a) explore the range
+of practical options for dealing with a classiﬁca-
+tion task of interest, and (b) investigate some ways
+to leverage document structure for better classiﬁ-
+cation. Speciﬁcally, we attempted to learn classiﬁ-
+cation models for long, complex documents, with
+a high number (77+) of total classes.
+
+One initial ﬁnding of interest was that simple
+attempts at feature dimensionality reduction had
+terrible effects on performance; perhaps because a
+large volume of speciﬁc words were actually very
+relevant to contract class distinctions. Addition-
+
+6Although caution should be used when viewing this plot
+
+due to the high variance in our method
+
+Leveraging Document Structure for Better Classiﬁcation of Complex
+
+Legal Documents
+
+Stanford University / 353 Serra Mall, Palo Alto, CA
+
+Alex Ratner
+
+ajratner@stanford.edu
+
+Abstract
+
+Document classiﬁcation is a machine
+learning application that has been as im-
+pactful as it has been successful in a myr-
+iad of domains and applications. How-
+ever, when the documents being classiﬁed
+are large and highly-complex, and when
+the set of potential classes is large as well,
+these models could be improved by incor-
+porating more information about the docu-
+ments’ overall structure. Most approaches
+use bag-of-words type models that discard
+local structure and focus on types of words
+or n-grams used. In this paper, we exam-
+ine several models and attempt to leverage
+both local (e.g. n-gram) and global (e.g.
+structure and organization) document fea-
+tures. We apply these approaches to a new
+dataset of legal documents.
+Introduction
+
+1
+Text classiﬁcation is an important component
+of many modern applications such as informa-
+tion retrieval, information extraction and domain-
+speciﬁc content processing systems. To date,
+many text classiﬁcation systems have achieved
+performance success using simple features that
+mostly or completely ignore word ordering, doc-
+ument structure and organization, and other such
+features, and then use sophisticated generative
+(e.g. LDA) (Blei et. al., 2003) or discriminative
+(e.g. SVM) models to classify documents. Many
+approaches preserve some local structure by look-
+ing at subsequences of words (”ngrams”) or by
+incorporating some dependency or parse tree in-
+formation. Lately, several ”deep learning” mod-
+els have attempted to preserve even more local
+structure by learning high-dimensional represen-
+tations of large variable-length strings using re-
+cursive neural net architectures (Le and Mikolov,
+2014).
+
+We hypothesize that for some very large, com-
+plex document sets with nuanced classiﬁcation
+schemes, even a lot of this local structure might
+be the same across different document classes, and
+some awareness of the overall structure and orga-
+nization of the document might help with the clas-
+siﬁcation task, as previous work leveraging docu-
+ment structure has shown (Chen et. al., 2008).
+
+For this paper, we are speciﬁcally interested in
+classifying legal contract documents. In terms of
+general motivation, the automation of certain le-
+gal processes is a compelling challenge since it
+is widely acknowledged today that access to le-
+gal services and representation is majorly skewed
+towards those with enough money to afford better
+lawyers. In large part, this is due to the high costs
+of manually-performed tasks such as information
+retrieval, extraction, classiﬁcation, and anomaly
+detection, that could be partially or fully auto-
+mated.
+
+In terms of technical motivation, contract docu-
+ments are of interest because they are large, com-
+plex documents that nonetheless often have some
+shared structures such as titles, sections, subsec-
+tions, etc. In our dataset, not only are there many
+different categories but they are often similar (ex:
+”Account Receivables Financing Agreement” vs.
+”Account Receivables Purchase Agreement”), use
+similar words and phrases, etc.
+
+We explore some discriminative algorithms
+with some simple feature extraction and feature
+space reduction techniques, then move on to a cus-
+tom generative model which attempts to more ex-
+
+plicitly model the document structure we observe.
+
+ment d, and αi,d being the TF-IDF weight,
+
+2 Dataset
+
+αi,d =
+
+We collected our dataset from OneCLE.com, an
+aggregator site that collects publicly-disclosed le-
+gal contract documents from the SEC and cate-
+gorizes them manually. We began by crawling
+onecle.com1 and scraping 27,979 contract docu-
+ments in 326 categories ranging from ”Arbitra-
+tion Agreement” to ”Manufacturing Contract”.2.
+In most cases, we restrict our consideration to cat-
+egories with > 50 documents, which results in
+a reduced dataset of 13,844 documents. Addi-
+tionally, in most cases we further randomly sub-
+sample to 10,000 documents for slightly more bal-
+anced classes. See Results and Discussion.
+
+3 Features and Preprocessing
+
+In order to capture some of the document orga-
+nizational structure that we wished to leverage,
+we used a small set of heuristic rules to extract
+individual sections and their titles, and the over-
+all document title. As will be discussed further,
+the dataset was extremely noisy with regard to
+structure- at least 7 different word document-to-
+html processes appeared to have been used- so we
+limited our parsing of structure to these high-level
+components.
+
+Once the documents were parsed into high-
+level structural components, we preprocessed fur-
+ther using minimum word-length thresholding
+(min=3), minimum and maximum corpus fre-
+quency thresholding (we kept words w that ap-
+peared in more than 3 but less that 0.8 ∗ |D| of
+the documents D), Porter stemming (a form of
+sufﬁx-removal that results in normalized forms of
+words), and removal of certain non-content words
+(’stop-word’ removal).
+
+For our discriminative algorithms (Logistic re-
+gression and SVM), we then transformed each
+component into a vector of TF-IDF weighted in-
+dicator features; in other words, given a training
+set vocabulary V = {w1, ..., w|V |} from N doc-
+uments, we represented each text component as a
+length-|V | vector (cid:126)x(d) where x(d)
+i = αi,d ∗ f (i, d),
+with f (i, d) being the count of word wi in docu-
+
+1Permissible according to their robots.txt ﬁle
+2Permissible as these are unmodiﬁed versions of the
+
+public-domain documents provided by the SEC
+
+(cid:18)
+
+(cid:18)
+
+0.5 ∗ f (i, d)
+
+0.5 +
+
+max({f (j, d) : wj ∈ d})
+
+(cid:19)
+
+∗ log
+
+N
+
+|{d ∈ D : wi ∈ d}|
+
+(cid:19)
+
+Even with these preprocessing steps, we still
+ended up with |V | ≈ 40, 000 3, meaning our fea-
+ture vectors were this length as well. We tried
+three types of feature dimensionality reduction:
+χ2 test thresholding (select the K best features ac-
+cording to this statistic of informativeness); princi-
+ple component analysis (PCA); and latent seman-
+tic analysis (LSA; similar to PCA, this is the term
+for truncated SVD used on feature vectors such as
+ours). Detailed review of these methods is not in-
+cluded as they uniformly appeared to dramatically
+lower classiﬁer performance in testing, and were
+thus not utilized.
+
+Finally, we handled structure in the following
+model-speciﬁc ways: for Multinomial NB, no in-
+formation about document structure was kept; for
+logistic regression and SVM, we used separate vo-
+cabularies and feature vectors for the body text
+and titles respectively, and then concatenated these
+vectors; for Cross-section Multinomial NB, we
+represented structure as described in the following
+section.
+
+4 Models
+4.1 Logistic Regression
+Our baseline discriminative model was L2-norm
+logistic regression, which minimizes the following
+cost function:
+
+J(w, c) =
+
+wT w + C
+
+1
+2
+
+log(exp(−yi(X T
+
+i w + c)) + 1)
+
+n(cid:88)
+
+i=1
+
+where C is a hyper parameter determining the
+balance between ﬁtting the model and penalizing
+overﬁtting with the L2-norm.
+
+4.2 SVM
+As reviewed in class, an SVM minimizes the fol-
+lowing cost function:
+
+J(w, bγ) =
+
+wT w + C
+
+1
+2
+
+n(cid:88)
+
+i=1
+
+γi
+
+3Approximate due to the random sub-sampling done to
+balance class membership sizes, noted in the previous section
+
+subject to:
+
+yi(wT xi + b) ≥ 1 − γi
+
+γi ≥ 0∀i
+
+In the dual form of the problem, we can write the
+optimization problem in terms of < x, x(cid:48) > and
+then replace these with arbitrary (Mercer) kernel
+functions φ(x, x(cid:48)). We use two different kernel
+functions, a linear one- φ(x, x(cid:48)) =< x, x(cid:48) >- and
+a radial basis function (RBF) kernel- φ(x, x(cid:48)) =
+exp(|x − x(cid:48)|2).
+
+ument is p(y)(cid:81)n
+
+4.3 Multinomial Naive Bayes
+Multinomial Naive Bayes is a generative model
+which uses the ”Naive Bayes” approximation to
+assume independence between every pair of fea-
+tures. Thus we can model the probability of a doc-
+i=1 p(xi|y), where x1, ..., xn are
+the words in the document of class y, and where
+our model is parameterized by θi|y = p(xi|y) and
+φy = p(y), and where we use Laplace smooth-
+ing to redistribute some probability mass from ob-
+served word statistics to allow for words in the test
+set that were not seen in the training set.
+
+We implement Multinomial NB in two ways-
+ﬁrst using MLE to ﬁnd the optimal parameters,
+and then using Gibbs sampling (see next sub-
+section), mostly in order to set a relative baseline
+for the other Gibbs sampling model used.
+
+4.4 Cross-section Multinomial Naive Bayes
+Our ﬁnal model is a potentially novel4 attempt
+to more explicitly account for document struc-
+ture, which we term the ”Cross-section” version
+of Multinomial NB. Speciﬁcally, we hypothesize
+that in each section of a contract, there is some lan-
+guage that is very speciﬁc to that contract and its
+contract class as a whole, and some language that
+is more speciﬁc to a certain type of section class
+used across multiple types of contracts. For exam-
+ple, multiple types of contracts might have a sec-
+tion having to do with limiting liabilities; we hy-
+pothesize that this section might have some words
+strongly related to the contract type, and some
+words related more to the general concept of liabil-
+ities. Moreover, we hypothesize that the sections
+of the contract might be a good set of segmenta-
+tions to reﬂect these factors.
+
+4In a small, application-speciﬁc way... we know there are
+
+lots of plate models out there!
+
+We use a plate diagram to illustrate the model
+
+proposed:
+
+This model deﬁnes the following generative pro-
+cess for creating a contract, given J contract
+classes and K section classes to choose from:
+
+is
+
+sampled:
+
+ηc ∼
+
+• A contract class
+M ultinomial(θc)
+• For each section:
+
+– A section class is sampled:
+
+ηs ∼
+
+M ultinomial(θs)
+
+– A Bernoulli parameter is sampled: ω ∼
+
+Beta(π)
+
+– For each word:
+
+Bernoulli(ω)
+
+∗ A binary value is sampled: δ ∼
+∗ If δ = 0, a word is sampled con-
+ditional on the contract class, w ∼
+M ultinomial(θwc)
+∗ If δ = 1, a word is sampled con-
+ditional on the section class, w ∼
+M ultinomial(θws)
+
+The Multinomial parameters θ all have corre-
+sponding Dirichlet priors, however for simplicity
+we use symmetric and uniform (= 1) priors so this
+essentially works out to Laplace smoothing.
+
+We then use Gibbs sampling, which roughly is
+the technique of sampling all the involved param-
+eters and labels one at a time, conditioned on all
+the other parameters/values as set in the previous
+sampling iteration. We calculate the conditional
+distributions required for sampling; for example,
+for sampling a new document class for document
+i, the probability of a certain contract class c con-
+
+ditioned on the other parameters is:
+
+P (c| (cid:126)C(−i), (cid:126)S, θc, θs, (cid:126)ω, θwc, θws, ...)
+P (c) ∗ P ( (cid:126)C(−i), (cid:126)S, θc, θs, (cid:126)ω, θwc, θws, ...|c)
+
+P ( (cid:126)C(−i), (cid:126)S, θc, θs, (cid:126)ω, θwc, θws, ...)
+
+=
+
+explore the hyper parameter space. We did exam-
+ine the optimum number of section classes to set,
+plotted below6.
+
+Since we are calculating these probabilities for the
+classes c in order to sample from a Multinomial,
+we can disregard the denominator which has no
+dependence on c:
+P (c| (cid:126)C(−i), (cid:126)S, θc, θs, (cid:126)ω, θwc, θws, ...)
+∝ P (c) ∗ P ( (cid:126)C(−i), (cid:126)S, θc, θs, (cid:126)ω, θwc, θws, ...|c)
+∝
+
+(cid:19) nsections,i(cid:89)
+
+P (sj|c)
+
+Ndocs + nclasses
+
+(cid:18) count(c) + 1
+nwords,i,j(cid:89)
+(cid:18) count(c) + 1
+nwords,i,j(cid:89)
+
+(cid:104)
+
+i=1
+
+Ndocs + nclasses
+
+∗
+
+=
+
+∗
+
+j=1
+
+(cid:19) nsections,i(cid:89)
+
+j=1
+
+[δijP (wij|c) + (1 − δij)P (wij|s)]
+
+θs
+sj|c
+
+(cid:105)
+
+δijθwc
+
+wij|c + (1 − δij)θws
+wij|s
+
+We also observed that the system seemed to con-
+verge to a steady state local optima very quickly,
+perhaps much faster than we would want for ideal
+performance; an illustrative trial is plotted below:
+
+i=1
+
+And similarly for the other conditional distribu-
+tions needed for the sampling iterations.
+
+5 Results
+We use stratiﬁed 5-fold cross validation5 on a
+randomly-subsampled down set of 10,000 doc-
+uments in order to balance class membership
+counts, selecting from 77 classes which had at
+least 50 documents.
+
+Model
+Logistic Regression
+SVM (linear kernel)
+SVM (RBF kernel)
+Multinomial NB (MLE)
+Multinomial NB (Gibbs)
+Cross-section NB
+
+Test Acc. Train Acc.
+
+82.5% 95.9%
+82.0% 98.5%
+25.0% 27.8%
+70.4% 90.3%
+60.5% N/A
+62.5% N/A
+
+For our Gibbs sampling models, we used a cus-
+tom implementation in python. We used burn-in
+and thinning to reduce spurious effects from the
+initial state space exploration and to avoid auto-
+correlation respectively. Nevertheless, our imple-
+mentation was somewhat limited in terms of com-
+putational resources, which limited our ability to
+5Stratiﬁed meaning that we keep the proportions of
+
+classes constant in each fold
+
+6 Discussion
+
+In this paper we attempted to (a) explore the range
+of practical options for dealing with a classiﬁca-
+tion task of interest, and (b) investigate some ways
+to leverage document structure for better classiﬁ-
+cation. Speciﬁcally, we attempted to learn classiﬁ-
+cation models for long, complex documents, with
+a high number (77+) of total classes.
+
+One initial ﬁnding of interest was that simple
+attempts at feature dimensionality reduction had
+terrible effects on performance; perhaps because a
+large volume of speciﬁc words were actually very
+relevant to contract class distinctions. Addition-
+
+6Although caution should be used when viewing this plot
+
+due to the high variance in our method
+
+ally, we note that the SVM with RBF kernel per-
+formed extremely badly; this is especially interest-
+ing compared to the very high performance of the
+SVM with linear kernel. We predict that perfor-
+mance could be improved with more careful cali-
+bration of the RBF hyper-parameters, however this
+disparity is still interesting for what it might apply
+about RBF kernel performance in a very high di-
+mensional, sparse feature space in a classiﬁcation
+problem with a large number of classes.
+
+With respect to the generative models explored,
+we see that not only did generative MLE ap-
+proaches tend to do worse than the discriminative
+algorithms, but that Gibbs sampling methods did
+signiﬁcantly worse still. It is widely known that
+there is some ’black magic’ in the implementation
+of Gibbs sampling methods, so perhaps- due in
+part to our computation-limited implementation-
+we simple did not explore the conﬁguration /
+hyper-parameter space thoroughly enough (for ex-
+ample, we only used symmetric uniform Dirichlet
+priors). Another factor was the fast rate of con-
+vergence to steady-state observed; we hypothesize
+that if we could get the sampler to explore the
+state space more then performance would be much
+higher. Multiple random initialization runs might
+be a tack for this, given a faster sampler implemen-
+tation. In general, we observed that the sampler
+was highly sensitive to initialization methodology
+as well.
+
+Finally,
+
+though we observe that our Cross-
+section model performed slightly better than basic
+Multinomial NB, we do not know if this is a statis-
+tically signiﬁcant difference given the variance in
+our method. Additionally, there are several ways
+that our Cross-section model could effectively re-
+duce to the basic Multinomial NB case, for exam-
+ple if the Bernoulli priors become very low, which
+we would still need to investigate more carefully.
+However, we do think the relatively decent per-
+formance of the newly-proposed model indicates
+that similar methods might warrant further explo-
+ration, for several reasons. First of all, the doc-
+uments collected were extremely messy, and ex-
+traction of structure was far more difﬁcult than an-
+ticipated. With a better collection of documents,
+structure could be both more accurately repre-
+sented and more deeply leveraged. Second of all,
+the parameters of this model were pushing the lim-
+its of the simple implementation used; with a bet-
+ter sampler, we could much more effectively ex-
+
+plore this model and more complex ones.
+
+7 Conclusion
+In this paper we explore several methods for au-
+tomatically classifying complex legal documents
+of a large number of classes. We compare dis-
+criminative and generative approaches,
+includ-
+ing a novel generative model for capturing cross-
+correlations in the document substructure. We
+ﬁnd however that simple discriminative models-
+such as an SVM with linear kernel and logistic
+regression- still attain the best performance; how-
+ever we think further exploration is warranted with
+some of the generative approaches which explic-
+itly model document structure.
+
+8 Future Work
+In the future, we would like to pursue three ma-
+jor directions: (1) Explore generative models fur-
+ther like the ones proposed which explicitly model
+document structure, however using better qual-
+ity source documents and a faster Gibbs sampler;
+(2) Explore deep learning approaches, using word
+embeddings and recursive auto encoders mapped
+onto document structure; and (3), explore the fail-
+ure of SVM with RBF kernel and dimensionality
+reduction methods that we observed.
+
+References
+Pedregosa et al. 2011. Scikit-learn: Machine Learning
+in Python. Journal of Machine Learning Research 2
+(2011) 2825-2830.
+
+Philip Resnick, Eric Hardisty.
+pling for
+the Uninitiated.
+http://www.umiacs.umd.edu/
+TR-153.pdf Accesed 12/12/2014.
+
+2010. Gibbs Sam-
+Technical Report,
+resnik/pubs/LAMP-
+
+Pengtao Xie, Eric Xing. 2013. Integrating Document
+
+Modeling and Text Clustering. CUAI, 2013.
+
+David Blei, Andrew Ng and Michael I. Jordan. 2003.
+Journal of Machine
+
+Latent Dirichlet Allocation.
+Learning Research 3 (2003) 993-1022.
+
+Quoc Le and Tomas Mikolov. 2014. Distributed Rep-
+resentations of Sentences and Documents. Proceed-
+ings of the 31st International Conference on Ma-
+chine Learning, 2014. JMLR: W&CP volume 32.
+
+Harr Chen, S.R.K. Branavan, Regina Barzilay and
+David R. Karger. 2009. Content Modeling Using
+Journal of Artiﬁcial Intelli-
+Latent Permutations.
+gence Research, 2009c.
+
+

@@ -1,0 +1,1663 @@
+CS229 Project Report
+
+Ofﬂine Music Recommendation
+
+Emilien Dupont, Isabelle Rao, William Zhang
+
+{edupont, isarao,
+
+wzhang4}@stanford.edu
+
+Abstract— The goal of this project was to recommend
+songs to users based solely on their listening histories,
+with no information about the music. We applied various
+Collaborative Filtering methods to achieve this: user-user
+neighborhood models,
+item-item neighborhood models
+and latent factor models. We achieved the best results
+with item-item cosine similarity. The code for this project
+can be found here.
+
+I. INTRODUCTION
+
+Companies like Spotify and Pandora recom-
+mend songs to their users based on user listening
+histories and on meta-data about the music. In
+this project we attempt to make recommendations
+based solely on user history, using the Million
+Song Dataset [5]. This dataset is comprised of a
+large number of user listening histories used for
+training. Separate from this is a test set comprised
+of users whose listening histories did not appear
+in the training set. It is split into two parts: a
+visible one, consisting of half of each unseen user’s
+history; and a “hidden” one, consisting of the true,
+other half of the same users’ listening histories.
+Using various collaborative ﬁltering methods, we
+attempt to predict the hidden half, given the visible
+half.
+
+II. RELATED WORK
+
+The methods and procedures in our recommen-
+dation system are used widely, not only in music,
+but in various other areas such as movies, news and
+e-commerce. Companies like Facebook, Twitter
+and LinkedIn also use such methods to recommend
+friends/followers/connections [4]. As such, there is
+a large amount of literature relating to this subject.
+Perhaps most famously, Netﬂix [1] challenged
+competitors to come up with an algorithm to
+
+recommend movies to their users based on their
+viewing history. The winning entry used a com-
+bination of various methods, but one of the most
+succesful algorithms was based on Latent Factor
+Models, which we will explore in this project.
+As another famous example, Amazon uses both
+item-item and user-user correlations to recommend
+products to customers [6]. We will attempt
+to
+emulate this approach using cosine similarity.
+As mentioned by Hu et al. [3], one of the most
+common approaches to collaborative ﬁltering is
+that of neighborhood models (see below for more
+explanation). The underlying assumption is that
+users with similar ratings on some items will
+have similar ratings on the others (an analogous
+assumption is made for items that share similar
+ratings for many users). Another set of methods
+that has shown promise recently relies on low-
+rank matrix factorization, which seeks to uncover
+the most important factors governing song choices.
+These two approaches are the ones we will be
+focusing on in the rest of this paper.
+
+III. DATASET & FEATURES
+
+The data is in the form of (user, song, play
+
+count) triplets. For example:
+• (Isabelle, Hey Jude, 6)
+• (Isabelle, Shake it Off, 12)
+• (William, Whole Lotta Love, 15)
+• (Emilien, Shake it Off, 9)
+
+The training set contains 48 million such triplets,
+corresponding to 1.2 million users and 380K
+songs. The test set consists of 100K users and
+157K songs. There are a few interesting statistics
+we can note about the data:
+
+• There are 780 songs in the test set which do
+not appear in the training, so we will never
+be able to predict those
+
+CS229 Project Report
+
+Ofﬂine Music Recommendation
+
+Emilien Dupont, Isabelle Rao, William Zhang
+
+{edupont, isarao,
+
+wzhang4}@stanford.edu
+
+Abstract— The goal of this project was to recommend
+songs to users based solely on their listening histories,
+with no information about the music. We applied various
+Collaborative Filtering methods to achieve this: user-user
+neighborhood models,
+item-item neighborhood models
+and latent factor models. We achieved the best results
+with item-item cosine similarity. The code for this project
+can be found here.
+
+I. INTRODUCTION
+
+Companies like Spotify and Pandora recom-
+mend songs to their users based on user listening
+histories and on meta-data about the music. In
+this project we attempt to make recommendations
+based solely on user history, using the Million
+Song Dataset [5]. This dataset is comprised of a
+large number of user listening histories used for
+training. Separate from this is a test set comprised
+of users whose listening histories did not appear
+in the training set. It is split into two parts: a
+visible one, consisting of half of each unseen user’s
+history; and a “hidden” one, consisting of the true,
+other half of the same users’ listening histories.
+Using various collaborative ﬁltering methods, we
+attempt to predict the hidden half, given the visible
+half.
+
+II. RELATED WORK
+
+The methods and procedures in our recommen-
+dation system are used widely, not only in music,
+but in various other areas such as movies, news and
+e-commerce. Companies like Facebook, Twitter
+and LinkedIn also use such methods to recommend
+friends/followers/connections [4]. As such, there is
+a large amount of literature relating to this subject.
+Perhaps most famously, Netﬂix [1] challenged
+competitors to come up with an algorithm to
+
+recommend movies to their users based on their
+viewing history. The winning entry used a com-
+bination of various methods, but one of the most
+succesful algorithms was based on Latent Factor
+Models, which we will explore in this project.
+As another famous example, Amazon uses both
+item-item and user-user correlations to recommend
+products to customers [6]. We will attempt
+to
+emulate this approach using cosine similarity.
+As mentioned by Hu et al. [3], one of the most
+common approaches to collaborative ﬁltering is
+that of neighborhood models (see below for more
+explanation). The underlying assumption is that
+users with similar ratings on some items will
+have similar ratings on the others (an analogous
+assumption is made for items that share similar
+ratings for many users). Another set of methods
+that has shown promise recently relies on low-
+rank matrix factorization, which seeks to uncover
+the most important factors governing song choices.
+These two approaches are the ones we will be
+focusing on in the rest of this paper.
+
+III. DATASET & FEATURES
+
+The data is in the form of (user, song, play
+
+count) triplets. For example:
+• (Isabelle, Hey Jude, 6)
+• (Isabelle, Shake it Off, 12)
+• (William, Whole Lotta Love, 15)
+• (Emilien, Shake it Off, 9)
+
+The training set contains 48 million such triplets,
+corresponding to 1.2 million users and 380K
+songs. The test set consists of 100K users and
+157K songs. There are a few interesting statistics
+we can note about the data:
+
+• There are 780 songs in the test set which do
+not appear in the training, so we will never
+be able to predict those
+
+• The average number of play counts for a user
+
+• The average number of unique songs for each
+
+is 142
+
+user is 50
+
+If we let U denote the number of users and I the
+number of items (or songs), then we can store the
+data as a U × I matrix of play counts with entries
+Cu,i = number of times u has listened to song i
+A. Count to Rating
+
+One of the main challenges for this project was
+that we wanted to apply methods for
+the fact
+explicit feedback (e.g. a IMDb user’s rating for
+a movie is explicit), whereas our data was implicit
+in the form of song counts. Most collaborative
+ﬁltering methods rely on each entry of the user-
+item matrix being a “rating” (e.g. 1-5 stars). We
+have therefore experimented with several different
+ways of deﬁning a “rating” R(u,i) of user u on
+item i from play counts:
+
+(cid:40)
+
+• R(u,i) = C(u,i) (counts)
+• R(u,i) =
+
+(binary counts)
+
+if C(u,i) > 0
+otherwise
+
+1
+0
+maxiC(u,i) (max normalized)
+
+• R(u,i) = C(u,i)
+We have experimented with using these ratings
+as features and our results are shown in the
+sections below.
+
+Fig. 1. Number of distinct songs listened to by all the users, as a
+function of number of users in the dataset.
+
+Finally, we should note that when the data is
+initially loaded in, a lot of new songs (as shown
+in ﬁgure 1). Once a few users have been loaded in,
+you will start to see more songs you have already
+
+seen. In order to make accurate predictions we
+need to have encountered a signiﬁcant amount of
+the songs in the training set, which means we need
+to train on a large number of triplets.
+
+IV. METHODS
+
+We used two different types of Collaborative
+Filtering methods: Neighborhood Models and La-
+tent Factor Models.
+
+A. Baseline Model
+
+As a baseline, we recommended the 500 most
+
+popular songs to every user.
+
+B. Neighborhood Model
+
+We implemented two types of neighborhood
+models. The assumption behind neighborhood
+models is that if two users u and v are similar
+(in a sense that will be made precise), then user
+u will like songs in user v’s listening history. We
+use Cosine Similarity (as seen for instance in [2])
+to deﬁne the similarity between 2 users:
+
+similarity(u,v) =
+
+uT v
+(cid:107)u(cid:107)(cid:107)v(cid:107)
+
+where u is the row corresponding to user u in
+the rating matrix. Item-item similarity is deﬁned
+in a similar way
+
+similarity(i, j) =
+
+iT j
+(cid:107)i(cid:107)(cid:107) j(cid:107)
+
+where i is now a column of the rating matrix. In-
+tuitively, two users are similar if they have listened
+to a lot of the same songs (the dot product will be
+over a lot of the same song indices). Similarly, two
+songs are similar if they have been listened to by
+many of the same users. Now given our similarity
+matrix, how do we make recommendations? To do
+this, we deﬁne a score function which represents
+our guess of how much a user u will enjoy a song
+i. Let U(i) be the set of users who have listened
+to song i. Then we deﬁne [4]
+
+Score(u,i) = ∑
+v∈U(i)
+
+f (similarity(u,v))
+
+where f (x) is some scoring function. A similar
+deﬁnition can be given in terms of item-item
+
+CS229 Project Report
+
+Ofﬂine Music Recommendation
+
+Emilien Dupont, Isabelle Rao, William Zhang
+
+{edupont, isarao,
+
+wzhang4}@stanford.edu
+
+Abstract— The goal of this project was to recommend
+songs to users based solely on their listening histories,
+with no information about the music. We applied various
+Collaborative Filtering methods to achieve this: user-user
+neighborhood models,
+item-item neighborhood models
+and latent factor models. We achieved the best results
+with item-item cosine similarity. The code for this project
+can be found here.
+
+I. INTRODUCTION
+
+Companies like Spotify and Pandora recom-
+mend songs to their users based on user listening
+histories and on meta-data about the music. In
+this project we attempt to make recommendations
+based solely on user history, using the Million
+Song Dataset [5]. This dataset is comprised of a
+large number of user listening histories used for
+training. Separate from this is a test set comprised
+of users whose listening histories did not appear
+in the training set. It is split into two parts: a
+visible one, consisting of half of each unseen user’s
+history; and a “hidden” one, consisting of the true,
+other half of the same users’ listening histories.
+Using various collaborative ﬁltering methods, we
+attempt to predict the hidden half, given the visible
+half.
+
+II. RELATED WORK
+
+The methods and procedures in our recommen-
+dation system are used widely, not only in music,
+but in various other areas such as movies, news and
+e-commerce. Companies like Facebook, Twitter
+and LinkedIn also use such methods to recommend
+friends/followers/connections [4]. As such, there is
+a large amount of literature relating to this subject.
+Perhaps most famously, Netﬂix [1] challenged
+competitors to come up with an algorithm to
+
+recommend movies to their users based on their
+viewing history. The winning entry used a com-
+bination of various methods, but one of the most
+succesful algorithms was based on Latent Factor
+Models, which we will explore in this project.
+As another famous example, Amazon uses both
+item-item and user-user correlations to recommend
+products to customers [6]. We will attempt
+to
+emulate this approach using cosine similarity.
+As mentioned by Hu et al. [3], one of the most
+common approaches to collaborative ﬁltering is
+that of neighborhood models (see below for more
+explanation). The underlying assumption is that
+users with similar ratings on some items will
+have similar ratings on the others (an analogous
+assumption is made for items that share similar
+ratings for many users). Another set of methods
+that has shown promise recently relies on low-
+rank matrix factorization, which seeks to uncover
+the most important factors governing song choices.
+These two approaches are the ones we will be
+focusing on in the rest of this paper.
+
+III. DATASET & FEATURES
+
+The data is in the form of (user, song, play
+
+count) triplets. For example:
+• (Isabelle, Hey Jude, 6)
+• (Isabelle, Shake it Off, 12)
+• (William, Whole Lotta Love, 15)
+• (Emilien, Shake it Off, 9)
+
+The training set contains 48 million such triplets,
+corresponding to 1.2 million users and 380K
+songs. The test set consists of 100K users and
+157K songs. There are a few interesting statistics
+we can note about the data:
+
+• There are 780 songs in the test set which do
+not appear in the training, so we will never
+be able to predict those
+
+• The average number of play counts for a user
+
+• The average number of unique songs for each
+
+is 142
+
+user is 50
+
+If we let U denote the number of users and I the
+number of items (or songs), then we can store the
+data as a U × I matrix of play counts with entries
+Cu,i = number of times u has listened to song i
+A. Count to Rating
+
+One of the main challenges for this project was
+that we wanted to apply methods for
+the fact
+explicit feedback (e.g. a IMDb user’s rating for
+a movie is explicit), whereas our data was implicit
+in the form of song counts. Most collaborative
+ﬁltering methods rely on each entry of the user-
+item matrix being a “rating” (e.g. 1-5 stars). We
+have therefore experimented with several different
+ways of deﬁning a “rating” R(u,i) of user u on
+item i from play counts:
+
+(cid:40)
+
+• R(u,i) = C(u,i) (counts)
+• R(u,i) =
+
+(binary counts)
+
+if C(u,i) > 0
+otherwise
+
+1
+0
+maxiC(u,i) (max normalized)
+
+• R(u,i) = C(u,i)
+We have experimented with using these ratings
+as features and our results are shown in the
+sections below.
+
+Fig. 1. Number of distinct songs listened to by all the users, as a
+function of number of users in the dataset.
+
+Finally, we should note that when the data is
+initially loaded in, a lot of new songs (as shown
+in ﬁgure 1). Once a few users have been loaded in,
+you will start to see more songs you have already
+
+seen. In order to make accurate predictions we
+need to have encountered a signiﬁcant amount of
+the songs in the training set, which means we need
+to train on a large number of triplets.
+
+IV. METHODS
+
+We used two different types of Collaborative
+Filtering methods: Neighborhood Models and La-
+tent Factor Models.
+
+A. Baseline Model
+
+As a baseline, we recommended the 500 most
+
+popular songs to every user.
+
+B. Neighborhood Model
+
+We implemented two types of neighborhood
+models. The assumption behind neighborhood
+models is that if two users u and v are similar
+(in a sense that will be made precise), then user
+u will like songs in user v’s listening history. We
+use Cosine Similarity (as seen for instance in [2])
+to deﬁne the similarity between 2 users:
+
+similarity(u,v) =
+
+uT v
+(cid:107)u(cid:107)(cid:107)v(cid:107)
+
+where u is the row corresponding to user u in
+the rating matrix. Item-item similarity is deﬁned
+in a similar way
+
+similarity(i, j) =
+
+iT j
+(cid:107)i(cid:107)(cid:107) j(cid:107)
+
+where i is now a column of the rating matrix. In-
+tuitively, two users are similar if they have listened
+to a lot of the same songs (the dot product will be
+over a lot of the same song indices). Similarly, two
+songs are similar if they have been listened to by
+many of the same users. Now given our similarity
+matrix, how do we make recommendations? To do
+this, we deﬁne a score function which represents
+our guess of how much a user u will enjoy a song
+i. Let U(i) be the set of users who have listened
+to song i. Then we deﬁne [4]
+
+Score(u,i) = ∑
+v∈U(i)
+
+f (similarity(u,v))
+
+where f (x) is some scoring function. A similar
+deﬁnition can be given in terms of item-item
+
+similarities. To make a recommendation for a user
+u, we then simply pick the k songs with the highest
+score and recommend those.
+C. Latent Factor Model
+
+Latent factor models are another approach we
+considered during the course of
+this project.
+Speciﬁcally, we considered an approach inspired
+by the Singular Value Decomposition. The idea is
+to approximate the ratings matrix R as the product
+of two rank k matrices: R ≈ X TY , where X is a
+k × U matrix and Y is a k × I matrix. The hope
+is to be able to respectively summarize each user
+and item by the k-dimensional vectors xu and yi,
+where the k components capture the salient latent
+factors behind the ratings matrix. Intuitively, we
+would like the product X TY to be as close to R
+as possible (minimize for instance the Frobenius
+norm of their difference). However, this is likely
+to overﬁt the data on the observed ratings. One
+way to avoid this is to include regularization terms,
+and the optimization problem can thus be formally
+stated as below:
+X,Y ∑
+min
+Gradient descent can be used to optimize the
+objective function; however, it is non-convex be-
+cause of the dot product xT
+u yi, and it turns out that
+gradient descend is often slow, requiring several
+iterations. Another optimization routine is Alter-
+nating Least Squares, which, as its name suggests,
+alternatingly treats X and Y as constants and
+optimizes for the other variable (see Algorithm 1).
+
+u yi)2 + λx(cid:107)xu(cid:107)2 + λy(cid:107)yi(cid:107)2
+
+(ru,i − xT
+
+ru,i∈observed
+
+Algorithm 1 Alternating Least Squares
+Initialize X,Y (using SVD, for example)
+Repeat until convergence:
+
+• for u = 1...U do
+
+xu ←
+
+∑
+ru,i∈ru∗
+• for i = 1...I do
+
+(cid:32)
+
+(cid:32)
+
+yiyT
+
+i + λxIk
+
+(cid:33)−1
+
+(cid:33)−1
+
+∑
+ru,i∈ru∗
+
+ru,iyi
+
+∑
+ru,i∈r∗i
+
+ru,ixu
+
+yi ←
+
+∑
+ru,i∈r∗i
+
+xuxT
+
+u + λyIk
+
+V. RESULTS & DISCUSSION
+
+A. Evaluation metric: Mean Average Precision
+
+Before discussing results we need to deﬁne our
+evaluation metric. The predictions are evaluated by
+means of the mean average precision, as described
+in the AdMIRe’12 paper [5]. Deﬁne the feedback
+matrix M ∈ {0,1}U×I, where Mu,i = 1 if song i
+appears in user u’s unseen listening history, 0 oth-
+erwise, and yu a prediction for user u ∈ {1, ...,U},
+where yu( j) = i indicates that song i is ranked at
+position j for user u. It’s assumed that yu omits
+items already known to be played by u. Three steps
+are necessary to compute the MAP:
+
+• For any k, deﬁne the precision-at-k Pk as the
+proportion of correct recommendations within
+the top-k of the predicted ranking:
+
+Pk(u,y) =
+
+1
+k
+
+k
+
+∑
+
+j=1
+
+Mu,y( j)
+
+• The next step is to take the average of the
+
+previously computed precisions:
+
+AP(u,y) =
+
+1
+nu
+
+τ
+∑
+
+k=1
+
+Pk(u,y)× Mu,yu(k)
+
+where τ is a threshold that represents how
+many of the top predictions in yu to include,
+and nu is the minimum of the number of
+hidden songs in a test user’s history, and τ.
+• The ﬁnal step is to average the previous
+
+quantity over all m users:
+1
+m ∑
+
+MAP =
+
+u
+
+AP(u,yu)
+
+B. Results and analysis
+
+In all of the announced results that follow,
+we determined the parameters using k-fold cross-
+validation, where k = 5, on a subset of the data
+that spanned 10k users in the training set and 1k
+users in the test set (chosen randomly). In ﬁgure
+2 we show the MAP for our various algorithms
+on a set of 50K training users and 5K test users
+(corresponding to 208K songs and 2.5 million
+triplets) . We used (mostly) binary ratings for the
+song counts (1 if song has been listened to and 0
+otherwise). As can be seen, the item-item Cosine
+similarity model performs the best, while user-user
+
+CS229 Project Report
+
+Ofﬂine Music Recommendation
+
+Emilien Dupont, Isabelle Rao, William Zhang
+
+{edupont, isarao,
+
+wzhang4}@stanford.edu
+
+Abstract— The goal of this project was to recommend
+songs to users based solely on their listening histories,
+with no information about the music. We applied various
+Collaborative Filtering methods to achieve this: user-user
+neighborhood models,
+item-item neighborhood models
+and latent factor models. We achieved the best results
+with item-item cosine similarity. The code for this project
+can be found here.
+
+I. INTRODUCTION
+
+Companies like Spotify and Pandora recom-
+mend songs to their users based on user listening
+histories and on meta-data about the music. In
+this project we attempt to make recommendations
+based solely on user history, using the Million
+Song Dataset [5]. This dataset is comprised of a
+large number of user listening histories used for
+training. Separate from this is a test set comprised
+of users whose listening histories did not appear
+in the training set. It is split into two parts: a
+visible one, consisting of half of each unseen user’s
+history; and a “hidden” one, consisting of the true,
+other half of the same users’ listening histories.
+Using various collaborative ﬁltering methods, we
+attempt to predict the hidden half, given the visible
+half.
+
+II. RELATED WORK
+
+The methods and procedures in our recommen-
+dation system are used widely, not only in music,
+but in various other areas such as movies, news and
+e-commerce. Companies like Facebook, Twitter
+and LinkedIn also use such methods to recommend
+friends/followers/connections [4]. As such, there is
+a large amount of literature relating to this subject.
+Perhaps most famously, Netﬂix [1] challenged
+competitors to come up with an algorithm to
+
+recommend movies to their users based on their
+viewing history. The winning entry used a com-
+bination of various methods, but one of the most
+succesful algorithms was based on Latent Factor
+Models, which we will explore in this project.
+As another famous example, Amazon uses both
+item-item and user-user correlations to recommend
+products to customers [6]. We will attempt
+to
+emulate this approach using cosine similarity.
+As mentioned by Hu et al. [3], one of the most
+common approaches to collaborative ﬁltering is
+that of neighborhood models (see below for more
+explanation). The underlying assumption is that
+users with similar ratings on some items will
+have similar ratings on the others (an analogous
+assumption is made for items that share similar
+ratings for many users). Another set of methods
+that has shown promise recently relies on low-
+rank matrix factorization, which seeks to uncover
+the most important factors governing song choices.
+These two approaches are the ones we will be
+focusing on in the rest of this paper.
+
+III. DATASET & FEATURES
+
+The data is in the form of (user, song, play
+
+count) triplets. For example:
+• (Isabelle, Hey Jude, 6)
+• (Isabelle, Shake it Off, 12)
+• (William, Whole Lotta Love, 15)
+• (Emilien, Shake it Off, 9)
+
+The training set contains 48 million such triplets,
+corresponding to 1.2 million users and 380K
+songs. The test set consists of 100K users and
+157K songs. There are a few interesting statistics
+we can note about the data:
+
+• There are 780 songs in the test set which do
+not appear in the training, so we will never
+be able to predict those
+
+• The average number of play counts for a user
+
+• The average number of unique songs for each
+
+is 142
+
+user is 50
+
+If we let U denote the number of users and I the
+number of items (or songs), then we can store the
+data as a U × I matrix of play counts with entries
+Cu,i = number of times u has listened to song i
+A. Count to Rating
+
+One of the main challenges for this project was
+that we wanted to apply methods for
+the fact
+explicit feedback (e.g. a IMDb user’s rating for
+a movie is explicit), whereas our data was implicit
+in the form of song counts. Most collaborative
+ﬁltering methods rely on each entry of the user-
+item matrix being a “rating” (e.g. 1-5 stars). We
+have therefore experimented with several different
+ways of deﬁning a “rating” R(u,i) of user u on
+item i from play counts:
+
+(cid:40)
+
+• R(u,i) = C(u,i) (counts)
+• R(u,i) =
+
+(binary counts)
+
+if C(u,i) > 0
+otherwise
+
+1
+0
+maxiC(u,i) (max normalized)
+
+• R(u,i) = C(u,i)
+We have experimented with using these ratings
+as features and our results are shown in the
+sections below.
+
+Fig. 1. Number of distinct songs listened to by all the users, as a
+function of number of users in the dataset.
+
+Finally, we should note that when the data is
+initially loaded in, a lot of new songs (as shown
+in ﬁgure 1). Once a few users have been loaded in,
+you will start to see more songs you have already
+
+seen. In order to make accurate predictions we
+need to have encountered a signiﬁcant amount of
+the songs in the training set, which means we need
+to train on a large number of triplets.
+
+IV. METHODS
+
+We used two different types of Collaborative
+Filtering methods: Neighborhood Models and La-
+tent Factor Models.
+
+A. Baseline Model
+
+As a baseline, we recommended the 500 most
+
+popular songs to every user.
+
+B. Neighborhood Model
+
+We implemented two types of neighborhood
+models. The assumption behind neighborhood
+models is that if two users u and v are similar
+(in a sense that will be made precise), then user
+u will like songs in user v’s listening history. We
+use Cosine Similarity (as seen for instance in [2])
+to deﬁne the similarity between 2 users:
+
+similarity(u,v) =
+
+uT v
+(cid:107)u(cid:107)(cid:107)v(cid:107)
+
+where u is the row corresponding to user u in
+the rating matrix. Item-item similarity is deﬁned
+in a similar way
+
+similarity(i, j) =
+
+iT j
+(cid:107)i(cid:107)(cid:107) j(cid:107)
+
+where i is now a column of the rating matrix. In-
+tuitively, two users are similar if they have listened
+to a lot of the same songs (the dot product will be
+over a lot of the same song indices). Similarly, two
+songs are similar if they have been listened to by
+many of the same users. Now given our similarity
+matrix, how do we make recommendations? To do
+this, we deﬁne a score function which represents
+our guess of how much a user u will enjoy a song
+i. Let U(i) be the set of users who have listened
+to song i. Then we deﬁne [4]
+
+Score(u,i) = ∑
+v∈U(i)
+
+f (similarity(u,v))
+
+where f (x) is some scoring function. A similar
+deﬁnition can be given in terms of item-item
+
+similarities. To make a recommendation for a user
+u, we then simply pick the k songs with the highest
+score and recommend those.
+C. Latent Factor Model
+
+Latent factor models are another approach we
+considered during the course of
+this project.
+Speciﬁcally, we considered an approach inspired
+by the Singular Value Decomposition. The idea is
+to approximate the ratings matrix R as the product
+of two rank k matrices: R ≈ X TY , where X is a
+k × U matrix and Y is a k × I matrix. The hope
+is to be able to respectively summarize each user
+and item by the k-dimensional vectors xu and yi,
+where the k components capture the salient latent
+factors behind the ratings matrix. Intuitively, we
+would like the product X TY to be as close to R
+as possible (minimize for instance the Frobenius
+norm of their difference). However, this is likely
+to overﬁt the data on the observed ratings. One
+way to avoid this is to include regularization terms,
+and the optimization problem can thus be formally
+stated as below:
+X,Y ∑
+min
+Gradient descent can be used to optimize the
+objective function; however, it is non-convex be-
+cause of the dot product xT
+u yi, and it turns out that
+gradient descend is often slow, requiring several
+iterations. Another optimization routine is Alter-
+nating Least Squares, which, as its name suggests,
+alternatingly treats X and Y as constants and
+optimizes for the other variable (see Algorithm 1).
+
+u yi)2 + λx(cid:107)xu(cid:107)2 + λy(cid:107)yi(cid:107)2
+
+(ru,i − xT
+
+ru,i∈observed
+
+Algorithm 1 Alternating Least Squares
+Initialize X,Y (using SVD, for example)
+Repeat until convergence:
+
+• for u = 1...U do
+
+xu ←
+
+∑
+ru,i∈ru∗
+• for i = 1...I do
+
+(cid:32)
+
+(cid:32)
+
+yiyT
+
+i + λxIk
+
+(cid:33)−1
+
+(cid:33)−1
+
+∑
+ru,i∈ru∗
+
+ru,iyi
+
+∑
+ru,i∈r∗i
+
+ru,ixu
+
+yi ←
+
+∑
+ru,i∈r∗i
+
+xuxT
+
+u + λyIk
+
+V. RESULTS & DISCUSSION
+
+A. Evaluation metric: Mean Average Precision
+
+Before discussing results we need to deﬁne our
+evaluation metric. The predictions are evaluated by
+means of the mean average precision, as described
+in the AdMIRe’12 paper [5]. Deﬁne the feedback
+matrix M ∈ {0,1}U×I, where Mu,i = 1 if song i
+appears in user u’s unseen listening history, 0 oth-
+erwise, and yu a prediction for user u ∈ {1, ...,U},
+where yu( j) = i indicates that song i is ranked at
+position j for user u. It’s assumed that yu omits
+items already known to be played by u. Three steps
+are necessary to compute the MAP:
+
+• For any k, deﬁne the precision-at-k Pk as the
+proportion of correct recommendations within
+the top-k of the predicted ranking:
+
+Pk(u,y) =
+
+1
+k
+
+k
+
+∑
+
+j=1
+
+Mu,y( j)
+
+• The next step is to take the average of the
+
+previously computed precisions:
+
+AP(u,y) =
+
+1
+nu
+
+τ
+∑
+
+k=1
+
+Pk(u,y)× Mu,yu(k)
+
+where τ is a threshold that represents how
+many of the top predictions in yu to include,
+and nu is the minimum of the number of
+hidden songs in a test user’s history, and τ.
+• The ﬁnal step is to average the previous
+
+quantity over all m users:
+1
+m ∑
+
+MAP =
+
+u
+
+AP(u,yu)
+
+B. Results and analysis
+
+In all of the announced results that follow,
+we determined the parameters using k-fold cross-
+validation, where k = 5, on a subset of the data
+that spanned 10k users in the training set and 1k
+users in the test set (chosen randomly). In ﬁgure
+2 we show the MAP for our various algorithms
+on a set of 50K training users and 5K test users
+(corresponding to 208K songs and 2.5 million
+triplets) . We used (mostly) binary ratings for the
+song counts (1 if song has been listened to and 0
+otherwise). As can be seen, the item-item Cosine
+similarity model performs the best, while user-user
+
+Fig. 2.
+5K test training. Best mAP is 4.76%.
+
+Performance of various methods on a 50K user training,
+
+Fig. 4. Performance vs number of factors on 10K training users,
+1K test users
+
+similarity gives similar results. While outperform-
+ing the baseline, the Latent Factor Model did not
+perform as well as the other two models.
+
+C. Tuning the models
+
+1) Cosine similarity: For the similarity models,
+we experimented with tuning a parameter α in the
+range [0,1] on the similarity measure
+
+similarity(u,v) =
+
+uT v
+
+(cid:107)u(cid:107)2α(cid:107)v(cid:107)2(1−α)
+
+Results are shown in ﬁgure 3.
+
+The optimal values of the regularization param-
+eters depended on the size of the datasets. For
+10k training user, the regularization parameter was
+chosen to be 21 (which is also the value used in
+ﬁgure 4). As can be seen, increasing the number
+of factors improves the performance of the Latent
+Factor Model. This is to be expected as we will
+capture more ”information” about each user and
+item with larger vectors. However, when using a
+very large number of factors (55 on the plot) the
+performance starts to dip, a likely indication of
+overﬁtting.
+
+D. Different types of ratings
+
+Fig. 3. Performance of user-user collaborative ﬁltering on a 20K
+user training, 2K test training for various values of α
+
+As can be seen, the best choice for α is approx-
+imately 0.7. The “standard” choice for α = 0.5
+gives very similar results, but we do obtain slight
+improvements (order of 0.1% in MAP).
+
+2) Latent Factor Model: For the Latent Factor
+Model, there were several parameters we could
+tune: the number of factors k and the regularization
+parameters λx and λy.
+
+Fig. 5. Performance of various rating types on 50K training users,
+5K test users for user-user cosine similarity.
+
+We also experimented with using different count
+to rating functions as described earlier. Surpris-
+ingly, the best results were obtained when we used
+binary ratings, i.e. R(u,i) = 1 if user u has listened
+to song i and 0 otherwise. This means we throw
+away all information about how many times the
+
+CS229 Project Report
+
+Ofﬂine Music Recommendation
+
+Emilien Dupont, Isabelle Rao, William Zhang
+
+{edupont, isarao,
+
+wzhang4}@stanford.edu
+
+Abstract— The goal of this project was to recommend
+songs to users based solely on their listening histories,
+with no information about the music. We applied various
+Collaborative Filtering methods to achieve this: user-user
+neighborhood models,
+item-item neighborhood models
+and latent factor models. We achieved the best results
+with item-item cosine similarity. The code for this project
+can be found here.
+
+I. INTRODUCTION
+
+Companies like Spotify and Pandora recom-
+mend songs to their users based on user listening
+histories and on meta-data about the music. In
+this project we attempt to make recommendations
+based solely on user history, using the Million
+Song Dataset [5]. This dataset is comprised of a
+large number of user listening histories used for
+training. Separate from this is a test set comprised
+of users whose listening histories did not appear
+in the training set. It is split into two parts: a
+visible one, consisting of half of each unseen user’s
+history; and a “hidden” one, consisting of the true,
+other half of the same users’ listening histories.
+Using various collaborative ﬁltering methods, we
+attempt to predict the hidden half, given the visible
+half.
+
+II. RELATED WORK
+
+The methods and procedures in our recommen-
+dation system are used widely, not only in music,
+but in various other areas such as movies, news and
+e-commerce. Companies like Facebook, Twitter
+and LinkedIn also use such methods to recommend
+friends/followers/connections [4]. As such, there is
+a large amount of literature relating to this subject.
+Perhaps most famously, Netﬂix [1] challenged
+competitors to come up with an algorithm to
+
+recommend movies to their users based on their
+viewing history. The winning entry used a com-
+bination of various methods, but one of the most
+succesful algorithms was based on Latent Factor
+Models, which we will explore in this project.
+As another famous example, Amazon uses both
+item-item and user-user correlations to recommend
+products to customers [6]. We will attempt
+to
+emulate this approach using cosine similarity.
+As mentioned by Hu et al. [3], one of the most
+common approaches to collaborative ﬁltering is
+that of neighborhood models (see below for more
+explanation). The underlying assumption is that
+users with similar ratings on some items will
+have similar ratings on the others (an analogous
+assumption is made for items that share similar
+ratings for many users). Another set of methods
+that has shown promise recently relies on low-
+rank matrix factorization, which seeks to uncover
+the most important factors governing song choices.
+These two approaches are the ones we will be
+focusing on in the rest of this paper.
+
+III. DATASET & FEATURES
+
+The data is in the form of (user, song, play
+
+count) triplets. For example:
+• (Isabelle, Hey Jude, 6)
+• (Isabelle, Shake it Off, 12)
+• (William, Whole Lotta Love, 15)
+• (Emilien, Shake it Off, 9)
+
+The training set contains 48 million such triplets,
+corresponding to 1.2 million users and 380K
+songs. The test set consists of 100K users and
+157K songs. There are a few interesting statistics
+we can note about the data:
+
+• There are 780 songs in the test set which do
+not appear in the training, so we will never
+be able to predict those
+
+• The average number of play counts for a user
+
+• The average number of unique songs for each
+
+is 142
+
+user is 50
+
+If we let U denote the number of users and I the
+number of items (or songs), then we can store the
+data as a U × I matrix of play counts with entries
+Cu,i = number of times u has listened to song i
+A. Count to Rating
+
+One of the main challenges for this project was
+that we wanted to apply methods for
+the fact
+explicit feedback (e.g. a IMDb user’s rating for
+a movie is explicit), whereas our data was implicit
+in the form of song counts. Most collaborative
+ﬁltering methods rely on each entry of the user-
+item matrix being a “rating” (e.g. 1-5 stars). We
+have therefore experimented with several different
+ways of deﬁning a “rating” R(u,i) of user u on
+item i from play counts:
+
+(cid:40)
+
+• R(u,i) = C(u,i) (counts)
+• R(u,i) =
+
+(binary counts)
+
+if C(u,i) > 0
+otherwise
+
+1
+0
+maxiC(u,i) (max normalized)
+
+• R(u,i) = C(u,i)
+We have experimented with using these ratings
+as features and our results are shown in the
+sections below.
+
+Fig. 1. Number of distinct songs listened to by all the users, as a
+function of number of users in the dataset.
+
+Finally, we should note that when the data is
+initially loaded in, a lot of new songs (as shown
+in ﬁgure 1). Once a few users have been loaded in,
+you will start to see more songs you have already
+
+seen. In order to make accurate predictions we
+need to have encountered a signiﬁcant amount of
+the songs in the training set, which means we need
+to train on a large number of triplets.
+
+IV. METHODS
+
+We used two different types of Collaborative
+Filtering methods: Neighborhood Models and La-
+tent Factor Models.
+
+A. Baseline Model
+
+As a baseline, we recommended the 500 most
+
+popular songs to every user.
+
+B. Neighborhood Model
+
+We implemented two types of neighborhood
+models. The assumption behind neighborhood
+models is that if two users u and v are similar
+(in a sense that will be made precise), then user
+u will like songs in user v’s listening history. We
+use Cosine Similarity (as seen for instance in [2])
+to deﬁne the similarity between 2 users:
+
+similarity(u,v) =
+
+uT v
+(cid:107)u(cid:107)(cid:107)v(cid:107)
+
+where u is the row corresponding to user u in
+the rating matrix. Item-item similarity is deﬁned
+in a similar way
+
+similarity(i, j) =
+
+iT j
+(cid:107)i(cid:107)(cid:107) j(cid:107)
+
+where i is now a column of the rating matrix. In-
+tuitively, two users are similar if they have listened
+to a lot of the same songs (the dot product will be
+over a lot of the same song indices). Similarly, two
+songs are similar if they have been listened to by
+many of the same users. Now given our similarity
+matrix, how do we make recommendations? To do
+this, we deﬁne a score function which represents
+our guess of how much a user u will enjoy a song
+i. Let U(i) be the set of users who have listened
+to song i. Then we deﬁne [4]
+
+Score(u,i) = ∑
+v∈U(i)
+
+f (similarity(u,v))
+
+where f (x) is some scoring function. A similar
+deﬁnition can be given in terms of item-item
+
+similarities. To make a recommendation for a user
+u, we then simply pick the k songs with the highest
+score and recommend those.
+C. Latent Factor Model
+
+Latent factor models are another approach we
+considered during the course of
+this project.
+Speciﬁcally, we considered an approach inspired
+by the Singular Value Decomposition. The idea is
+to approximate the ratings matrix R as the product
+of two rank k matrices: R ≈ X TY , where X is a
+k × U matrix and Y is a k × I matrix. The hope
+is to be able to respectively summarize each user
+and item by the k-dimensional vectors xu and yi,
+where the k components capture the salient latent
+factors behind the ratings matrix. Intuitively, we
+would like the product X TY to be as close to R
+as possible (minimize for instance the Frobenius
+norm of their difference). However, this is likely
+to overﬁt the data on the observed ratings. One
+way to avoid this is to include regularization terms,
+and the optimization problem can thus be formally
+stated as below:
+X,Y ∑
+min
+Gradient descent can be used to optimize the
+objective function; however, it is non-convex be-
+cause of the dot product xT
+u yi, and it turns out that
+gradient descend is often slow, requiring several
+iterations. Another optimization routine is Alter-
+nating Least Squares, which, as its name suggests,
+alternatingly treats X and Y as constants and
+optimizes for the other variable (see Algorithm 1).
+
+u yi)2 + λx(cid:107)xu(cid:107)2 + λy(cid:107)yi(cid:107)2
+
+(ru,i − xT
+
+ru,i∈observed
+
+Algorithm 1 Alternating Least Squares
+Initialize X,Y (using SVD, for example)
+Repeat until convergence:
+
+• for u = 1...U do
+
+xu ←
+
+∑
+ru,i∈ru∗
+• for i = 1...I do
+
+(cid:32)
+
+(cid:32)
+
+yiyT
+
+i + λxIk
+
+(cid:33)−1
+
+(cid:33)−1
+
+∑
+ru,i∈ru∗
+
+ru,iyi
+
+∑
+ru,i∈r∗i
+
+ru,ixu
+
+yi ←
+
+∑
+ru,i∈r∗i
+
+xuxT
+
+u + λyIk
+
+V. RESULTS & DISCUSSION
+
+A. Evaluation metric: Mean Average Precision
+
+Before discussing results we need to deﬁne our
+evaluation metric. The predictions are evaluated by
+means of the mean average precision, as described
+in the AdMIRe’12 paper [5]. Deﬁne the feedback
+matrix M ∈ {0,1}U×I, where Mu,i = 1 if song i
+appears in user u’s unseen listening history, 0 oth-
+erwise, and yu a prediction for user u ∈ {1, ...,U},
+where yu( j) = i indicates that song i is ranked at
+position j for user u. It’s assumed that yu omits
+items already known to be played by u. Three steps
+are necessary to compute the MAP:
+
+• For any k, deﬁne the precision-at-k Pk as the
+proportion of correct recommendations within
+the top-k of the predicted ranking:
+
+Pk(u,y) =
+
+1
+k
+
+k
+
+∑
+
+j=1
+
+Mu,y( j)
+
+• The next step is to take the average of the
+
+previously computed precisions:
+
+AP(u,y) =
+
+1
+nu
+
+τ
+∑
+
+k=1
+
+Pk(u,y)× Mu,yu(k)
+
+where τ is a threshold that represents how
+many of the top predictions in yu to include,
+and nu is the minimum of the number of
+hidden songs in a test user’s history, and τ.
+• The ﬁnal step is to average the previous
+
+quantity over all m users:
+1
+m ∑
+
+MAP =
+
+u
+
+AP(u,yu)
+
+B. Results and analysis
+
+In all of the announced results that follow,
+we determined the parameters using k-fold cross-
+validation, where k = 5, on a subset of the data
+that spanned 10k users in the training set and 1k
+users in the test set (chosen randomly). In ﬁgure
+2 we show the MAP for our various algorithms
+on a set of 50K training users and 5K test users
+(corresponding to 208K songs and 2.5 million
+triplets) . We used (mostly) binary ratings for the
+song counts (1 if song has been listened to and 0
+otherwise). As can be seen, the item-item Cosine
+similarity model performs the best, while user-user
+
+Fig. 2.
+5K test training. Best mAP is 4.76%.
+
+Performance of various methods on a 50K user training,
+
+Fig. 4. Performance vs number of factors on 10K training users,
+1K test users
+
+similarity gives similar results. While outperform-
+ing the baseline, the Latent Factor Model did not
+perform as well as the other two models.
+
+C. Tuning the models
+
+1) Cosine similarity: For the similarity models,
+we experimented with tuning a parameter α in the
+range [0,1] on the similarity measure
+
+similarity(u,v) =
+
+uT v
+
+(cid:107)u(cid:107)2α(cid:107)v(cid:107)2(1−α)
+
+Results are shown in ﬁgure 3.
+
+The optimal values of the regularization param-
+eters depended on the size of the datasets. For
+10k training user, the regularization parameter was
+chosen to be 21 (which is also the value used in
+ﬁgure 4). As can be seen, increasing the number
+of factors improves the performance of the Latent
+Factor Model. This is to be expected as we will
+capture more ”information” about each user and
+item with larger vectors. However, when using a
+very large number of factors (55 on the plot) the
+performance starts to dip, a likely indication of
+overﬁtting.
+
+D. Different types of ratings
+
+Fig. 3. Performance of user-user collaborative ﬁltering on a 20K
+user training, 2K test training for various values of α
+
+As can be seen, the best choice for α is approx-
+imately 0.7. The “standard” choice for α = 0.5
+gives very similar results, but we do obtain slight
+improvements (order of 0.1% in MAP).
+
+2) Latent Factor Model: For the Latent Factor
+Model, there were several parameters we could
+tune: the number of factors k and the regularization
+parameters λx and λy.
+
+Fig. 5. Performance of various rating types on 50K training users,
+5K test users for user-user cosine similarity.
+
+We also experimented with using different count
+to rating functions as described earlier. Surpris-
+ingly, the best results were obtained when we used
+binary ratings, i.e. R(u,i) = 1 if user u has listened
+to song i and 0 otherwise. This means we throw
+away all information about how many times the
+
+user has listened to the song. While this could be
+useful information, for our model it creates a large
+unwanted bias towards highly played songs. We
+experimented with using log’s of play counts as
+well to reduce this, but binary ratings still had the
+best performance.
+
+more than 50K users without the computations
+becoming prohibitively slow. We believe one of
+the reasons for not obtaining higher MAP scores
+is related to this, and it would have been very
+interesting to experiment with our models on larger
+matrices.
+
+E. Number of predictions
+
+Fig. 6. MAP @ τ vs number of recommendations τ
+
+Unsurprisingly, increasing the number of predic-
+tions made, increases the MAP. However, there is
+a tradeoff between recommending a large amount
+of songs and having a high MAP: ﬁrstly, it does
+not make sense to recommend 10,000 songs to a
+user, secondly, after some threshold the increase in
+the MAP becomes so small it is almost negligible.
+As can be seen in ﬁgure 6, 500 recommendations
+is a good threshold (which is also the one chosen
+by the initial paper [5])
+
+F. Computational Limitations
+
+As mentioned previously, in order to make ac-
+curate predictions, we need to load in many user
+histories. Indeed, initially we will see a lot of new
+unseen songs and as the number of users increases
+we will see fewer new songs. As can be seen in
+ﬁgure 1, the number of new songs added to the
+count matrix stops increasing signiﬁcantly after we
+load in about 500K users, which corresponds to
+about 350K songs. This means our count matrix
+would be 500K by 350K, which is very large
+(even though we, of course, use sparse matrices).
+Both Cosine Similarity and Latent Factor Models
+are very slow on matrices of this size. As we
+were limited to using a single machine to run
+our algorithms, we could not run our models on
+
+VI. CONCLUSION & FUTURE WORK
+In this project, we studied and compared the
+performance of two types of collaborative ﬁltering
+models using implicit feedback. Both the neigh-
+borhood model and the latent factor model signiﬁ-
+cantly outperformed the baseline of recommending
+the most popular songs to every user.
+The procedure which performed the best was item-
+item cosine similarity for which we obtained a
+MAP of 4.76 %. We used this in combination with
+Binary Ratings for which we also obtained the best
+results.
+The main challenge in getting these procedures
+to yield a satisfactory MAP is that collaborative
+ﬁltering methods have been shown to work well in
+the context of recommendation. However, our task
+was somewhat different: we are trying to predict
+what other songs a user already has listened to. In
+future work, we would like to explore variants of
+the latent factor model, some of which also try to
+include an additional weights matrix representing
+the conﬁdence in observing a certain song for
+a particular user. Furthermore, we believe that
+running our models on larger matrices would have
+yielded a signiﬁcant improvement in performance.
+
+REFERENCES
+
+[1] James Bennett and Stan Lanning. The netﬂix prize.
+
+In
+Proceedings of KDD cup and workshop, volume 2007, page 35,
+2007.
+
+[2] Michael D Ekstrand, John T Riedl, and Joseph A Konstan.
+Collaborative ﬁltering recommender systems. Foundations and
+Trends in Human-Computer Interaction, 4(2):81–173, 2011.
+
+[3] Yifan Hu, Yehuda Koren, and Chris Volinsky. Collaborative
+ﬁltering for implicit feedback datasets. In In IEEE International
+Conference on Data Mining (ICDM 2008, pages 263–272,
+2008.
+
+[4] Paul B Kantor, Lior Rokach, Francesco Ricci, and Bracha
+
+Shapira. Recommender systems handbook. Springer, 2011.
+
+[5] Brian McFee, Thierry Bertin-Mahieux, Daniel PW Ellis, and
+Gert RG Lanckriet. The million song dataset challenge.
+In
+Proceedings of the 21st international conference companion
+on World Wide Web, pages 909–916. ACM, 2012.
+
+[6] J Ben Schafer, Joseph Konstan, and John Riedl. Recommender
+the 1st ACM
+systems in e-commerce.
+conference on Electronic commerce, pages 158–166. ACM,
+1999.
+
+In Proceedings of
+
+

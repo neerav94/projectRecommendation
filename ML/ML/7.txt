@@ -1,0 +1,1972 @@
+CS229 2015
+
+| Group 277
+
+Learning with Diﬀerence of Gaussian Features in the 3D Segmentation of
+
+Glioblastoma Brain Tumors
+
+Zhao Chen (zchen89[at]Stanford.edu), Tianmin Liu (tianminl[at]Stanford.edu),
+
+Darvin Yi (darvinyi[at]Stanford.edu), Project Mentor: Irene Kaplow
+
+Introduction Glioblastoma (GBM) is an espe-
+cially aggressive brain tumor that accounts for over 50%
+of brain tissue tumor cases. [2] GBMs have a high mor-
+tality rate with a one year survival of 50% and a three
+year survival rate of 90%. [2] Much is still being done
+to understand GBM and its two subtypes, high grade
+glioma (HGG) and low grade glioma (LGG), but there is
+still a gold mine of untapped data. Chief amongst these
+is imaging data in the form of magnetic resonance (MR)
+scans. Most methods of analyzing and extracting quanti-
+tative information from these imaging data requires some
+form of segmentation of the GBM, and better yet, clas-
+siﬁcation of the tumor into four sub-categories: necrosis,
+edema, non-enhancing tumor, and enhancing tumor. To
+date, the gold standard of segmentation is still human
+radiologist segmentations. However, with the pure size
+of imaging data being accrued, manual segmentation of
+all images is no longer a sustainable system. We pro-
+pose a statistical learning pipeline that takes diﬀerence of
+gaussian features into a hierarchal neural net to segment
+and classify tumors into their sub-categories. We thus
+take as input a 3D MR image and output one of ﬁve
+labels (normal or one of 4 tumor subtypes) for each voxel
+(the 3D analog of pixel). Our combined median HGG
+and LGG results in a Dice accuracy score of 0.90 for the
+
+whole tumor detection, 0.72 for the tumor core detection,
+and 0.74 for the active tumor detection. We will see that
+this is quite competitive with the leading programs at the
+moment.
+
+Data We used the pre-processed training data pro-
+vided by the MICCAI Brain Tumor Image Segmentation
+(BRATS) challenge. [9] For each patient, four main MR
+modalities were given: (1) T-1 pre-contrast, (2) T-2 post-
+contrast, (3) T-2 Weighted, and (4) FLAIR. The training
+data comes already pre-processed, which involves skull
+stripping [1] and co-registration. Co-registration is cru-
+cial, as it aligns images for all four modalities such that
+the voxel found in the image coordinates [x, y, z] in all
+four modalities will point to the same coordinates in real
+space.
+
+Figure 1a shows an example of a single cross section of
+the four modalities, juxtaposed with the expert segmen-
+tation of the tumor which we will use as ground truth.
+Note that it is co-registration which allows for reliable
+overlay of the four modalities with the expert segmenta-
+tion. Note also that the FLAIR image is somewhat cut
+oﬀ due to the nature of the MR scan. However, big data
+algorithms are generally robust against small artifacts
+like this.
+
+(a) Modalities
+(ul: T1-Pre, ur: T1-post, dl: T2W, dr:
+FLAIR)
+
+Figure 1: Tumor Visualization
+
+(b) 3D Rendering of Tumor
+
+1
+
+CS229 2015
+
+| Group 277
+
+Learning with Diﬀerence of Gaussian Features in the 3D Segmentation of
+
+Glioblastoma Brain Tumors
+
+Zhao Chen (zchen89[at]Stanford.edu), Tianmin Liu (tianminl[at]Stanford.edu),
+
+Darvin Yi (darvinyi[at]Stanford.edu), Project Mentor: Irene Kaplow
+
+Introduction Glioblastoma (GBM) is an espe-
+cially aggressive brain tumor that accounts for over 50%
+of brain tissue tumor cases. [2] GBMs have a high mor-
+tality rate with a one year survival of 50% and a three
+year survival rate of 90%. [2] Much is still being done
+to understand GBM and its two subtypes, high grade
+glioma (HGG) and low grade glioma (LGG), but there is
+still a gold mine of untapped data. Chief amongst these
+is imaging data in the form of magnetic resonance (MR)
+scans. Most methods of analyzing and extracting quanti-
+tative information from these imaging data requires some
+form of segmentation of the GBM, and better yet, clas-
+siﬁcation of the tumor into four sub-categories: necrosis,
+edema, non-enhancing tumor, and enhancing tumor. To
+date, the gold standard of segmentation is still human
+radiologist segmentations. However, with the pure size
+of imaging data being accrued, manual segmentation of
+all images is no longer a sustainable system. We pro-
+pose a statistical learning pipeline that takes diﬀerence of
+gaussian features into a hierarchal neural net to segment
+and classify tumors into their sub-categories. We thus
+take as input a 3D MR image and output one of ﬁve
+labels (normal or one of 4 tumor subtypes) for each voxel
+(the 3D analog of pixel). Our combined median HGG
+and LGG results in a Dice accuracy score of 0.90 for the
+
+whole tumor detection, 0.72 for the tumor core detection,
+and 0.74 for the active tumor detection. We will see that
+this is quite competitive with the leading programs at the
+moment.
+
+Data We used the pre-processed training data pro-
+vided by the MICCAI Brain Tumor Image Segmentation
+(BRATS) challenge. [9] For each patient, four main MR
+modalities were given: (1) T-1 pre-contrast, (2) T-2 post-
+contrast, (3) T-2 Weighted, and (4) FLAIR. The training
+data comes already pre-processed, which involves skull
+stripping [1] and co-registration. Co-registration is cru-
+cial, as it aligns images for all four modalities such that
+the voxel found in the image coordinates [x, y, z] in all
+four modalities will point to the same coordinates in real
+space.
+
+Figure 1a shows an example of a single cross section of
+the four modalities, juxtaposed with the expert segmen-
+tation of the tumor which we will use as ground truth.
+Note that it is co-registration which allows for reliable
+overlay of the four modalities with the expert segmenta-
+tion. Note also that the FLAIR image is somewhat cut
+oﬀ due to the nature of the MR scan. However, big data
+algorithms are generally robust against small artifacts
+like this.
+
+(a) Modalities
+(ul: T1-Pre, ur: T1-post, dl: T2W, dr:
+FLAIR)
+
+Figure 1: Tumor Visualization
+
+(b) 3D Rendering of Tumor
+
+1
+
+Throughout this project, all of the analysis and
+methodology built around the data interprets the data
+as a 3-dimensional object. Each slice gives information
+on MR intensity in [x,y], but the slices themselves rep-
+resent the MR information in z. Thus, the data can be
+imagined as a 3-dimensional cube as seen in ﬁgure 2, and
+we can extend classic 2D imaging techniques to an addi-
+tional dimension to work on our data.
+
+Figure 2: Data Visualization
+
+Feature Extraction The Diﬀerence of Gaus-
+sian (DoG) convolution ﬁlter has been used as a blob de-
+tector for some time in 2D, and it features prominently
+in the Scale Invariant Feature Transform (SIFT) algo-
+rithm. [7] We can see SIFT’s feature detection applied
+to the iconic sunﬂower image and one of our Brain MR
+slices in ﬁgure 3. On the sunﬂower image, we can see that
+the features (based on DoG ﬁlters) ﬁnd almost all circu-
+lar objects in the image. Similarly, on the brain MR slice,
+the most predominant SIFT feature is the tumor, which
+is quite blob like.
+
+Figure 3: SIFT as Evidence of Blob Detection
+
+Our project is in 3D, and so we propose building a
+bank of 3-Dimensional DoG ﬁlters (ﬁgure 5), all of dif-
+ferent scales. By convolving our 3D data with these 3D
+ﬁlters, we will be able to build a blob proﬁle feature vector
+for each pixel of our data. In addition to the robustness of
+DoG ﬁlters as blob detectors, we can also notice two more
+important features: (1) DoG ﬁlters are rotationally sym-
+metric and (2) DoG ﬁlters are eﬃcient for 3D convolution.
+The rotational symmetry reduces system bias by not plac-
+ing special importance on a set of discretized directions.
+This makes DoG ﬁlters more robust than directional ﬁl-
+ters, such as the 3D Gabor ﬁlters which were used in
+ﬁrst iterations of our work. The DoG ﬁlter convolution is
+easy to calculate by separating the Gaussian into each lin-
+ear dimension and performing all calculations in Fourier
+
+2
+
+space. Thus, for our data volume V and our DoG ﬁlter
+f ≡ G1 − G2 (where Var(G1) = σ2
+
+1 and Var(G2) = σ2
+
+2).
+
+V [n, m, l]f [x − n, y − m, z − l]
+
+(V ∗ f )[x, y, z] ≡(cid:88)
+
+(cid:88)
+
+(cid:88)
+
+n
+
+m
+
+l
+
+−1 {ﬀt(V )ﬀt(f )} [x, y, z]
+−1 {ﬀt(V )ﬀt(G1 − G2)} [x, y, z]
+
+=ﬀt
+
+=ﬀt
+
+(1)
+
+where we know ﬀt(Gi) = e− 1
+i (m2+n2+l2). As mentioned,
+we can further simplify the calculation by taking each lin-
+ear dimension separately.
+
+2 σ2
+
+As a ﬁnal point, we note similarities between the DoG
+ﬁlter and the edge-sensitive Laplacian of Gaussian (LoG)
+ﬁlter, [7] as visualized in ﬁgure 4. Thus, our DoG is not
+only a blob detector, but also a makeshift edge detector.
+We will get a high peak at a pixel if it is at the center
+of a blob. However, we will be getting a very low abso-
+lute value if we’re at an edge. Because our segmentation
+program is very interested in ﬁnding accurate edges, this
+edge detection aspect of the DoG ﬁlters is very useful.
+
+We thus associate with each voxel [x, y, z] the follow-
+
+ing set of features:
+
+• ONE Voxel intensity V [x, y, z].
+• ONE Voxel intensity gradient ∇V [x, y, z].
+• EIGHT DoG convolutions. (V ∗ DoG)[x, y, z].
+• EIGHT DoG convolutions in gradient space. (∇V ∗
+
+DoG)[x, y, z].
+
+This gives 18 features per modality, and thus we have 72
+features overall. In addition, because DoG convolutions
+act as edge (i.e.
+inﬂection point) detectors, we can ar-
+gue that they provide information on a function’s second
+derivative. Thus, the above set of features gives us infor-
+mation on all derivatives from 0th to 3rd order.
+
+Algorithm We begin with an overview of our algo-
+rithm. First, we divide our patients into a training and
+test set. For our program, we feed in all four modali-
+ties (T1 pre-contrast, T1 post-contrast, T2 weighted, and
+FLAIR) of our pre-processed data into feature extrac-
+tion. Once we extract our features, we will have a feature
+vector associated with each voxel in our brain. We treat
+each voxel’s feature vectors completely independently.
+Thus, in the hierarchal neural net training phase of our
+program, we will not take into account voxel position or
+neighborhood other than what is already encoded in the
+feature extraction.
+
+Hierarchal Neural Nets
+Once we have extracted
+our features, our learning environment will be a hierar-
+chal neural net. We ﬁrst train a standard feed-forward
+neural net (2 hidden layers, 10 neurons per layer) for
+each of the four tumor subtypes. Neural nets are stan-
+dard in machine learning, and make predictions based on
+
+CS229 2015
+
+| Group 277
+
+Learning with Diﬀerence of Gaussian Features in the 3D Segmentation of
+
+Glioblastoma Brain Tumors
+
+Zhao Chen (zchen89[at]Stanford.edu), Tianmin Liu (tianminl[at]Stanford.edu),
+
+Darvin Yi (darvinyi[at]Stanford.edu), Project Mentor: Irene Kaplow
+
+Introduction Glioblastoma (GBM) is an espe-
+cially aggressive brain tumor that accounts for over 50%
+of brain tissue tumor cases. [2] GBMs have a high mor-
+tality rate with a one year survival of 50% and a three
+year survival rate of 90%. [2] Much is still being done
+to understand GBM and its two subtypes, high grade
+glioma (HGG) and low grade glioma (LGG), but there is
+still a gold mine of untapped data. Chief amongst these
+is imaging data in the form of magnetic resonance (MR)
+scans. Most methods of analyzing and extracting quanti-
+tative information from these imaging data requires some
+form of segmentation of the GBM, and better yet, clas-
+siﬁcation of the tumor into four sub-categories: necrosis,
+edema, non-enhancing tumor, and enhancing tumor. To
+date, the gold standard of segmentation is still human
+radiologist segmentations. However, with the pure size
+of imaging data being accrued, manual segmentation of
+all images is no longer a sustainable system. We pro-
+pose a statistical learning pipeline that takes diﬀerence of
+gaussian features into a hierarchal neural net to segment
+and classify tumors into their sub-categories. We thus
+take as input a 3D MR image and output one of ﬁve
+labels (normal or one of 4 tumor subtypes) for each voxel
+(the 3D analog of pixel). Our combined median HGG
+and LGG results in a Dice accuracy score of 0.90 for the
+
+whole tumor detection, 0.72 for the tumor core detection,
+and 0.74 for the active tumor detection. We will see that
+this is quite competitive with the leading programs at the
+moment.
+
+Data We used the pre-processed training data pro-
+vided by the MICCAI Brain Tumor Image Segmentation
+(BRATS) challenge. [9] For each patient, four main MR
+modalities were given: (1) T-1 pre-contrast, (2) T-2 post-
+contrast, (3) T-2 Weighted, and (4) FLAIR. The training
+data comes already pre-processed, which involves skull
+stripping [1] and co-registration. Co-registration is cru-
+cial, as it aligns images for all four modalities such that
+the voxel found in the image coordinates [x, y, z] in all
+four modalities will point to the same coordinates in real
+space.
+
+Figure 1a shows an example of a single cross section of
+the four modalities, juxtaposed with the expert segmen-
+tation of the tumor which we will use as ground truth.
+Note that it is co-registration which allows for reliable
+overlay of the four modalities with the expert segmenta-
+tion. Note also that the FLAIR image is somewhat cut
+oﬀ due to the nature of the MR scan. However, big data
+algorithms are generally robust against small artifacts
+like this.
+
+(a) Modalities
+(ul: T1-Pre, ur: T1-post, dl: T2W, dr:
+FLAIR)
+
+Figure 1: Tumor Visualization
+
+(b) 3D Rendering of Tumor
+
+1
+
+Throughout this project, all of the analysis and
+methodology built around the data interprets the data
+as a 3-dimensional object. Each slice gives information
+on MR intensity in [x,y], but the slices themselves rep-
+resent the MR information in z. Thus, the data can be
+imagined as a 3-dimensional cube as seen in ﬁgure 2, and
+we can extend classic 2D imaging techniques to an addi-
+tional dimension to work on our data.
+
+Figure 2: Data Visualization
+
+Feature Extraction The Diﬀerence of Gaus-
+sian (DoG) convolution ﬁlter has been used as a blob de-
+tector for some time in 2D, and it features prominently
+in the Scale Invariant Feature Transform (SIFT) algo-
+rithm. [7] We can see SIFT’s feature detection applied
+to the iconic sunﬂower image and one of our Brain MR
+slices in ﬁgure 3. On the sunﬂower image, we can see that
+the features (based on DoG ﬁlters) ﬁnd almost all circu-
+lar objects in the image. Similarly, on the brain MR slice,
+the most predominant SIFT feature is the tumor, which
+is quite blob like.
+
+Figure 3: SIFT as Evidence of Blob Detection
+
+Our project is in 3D, and so we propose building a
+bank of 3-Dimensional DoG ﬁlters (ﬁgure 5), all of dif-
+ferent scales. By convolving our 3D data with these 3D
+ﬁlters, we will be able to build a blob proﬁle feature vector
+for each pixel of our data. In addition to the robustness of
+DoG ﬁlters as blob detectors, we can also notice two more
+important features: (1) DoG ﬁlters are rotationally sym-
+metric and (2) DoG ﬁlters are eﬃcient for 3D convolution.
+The rotational symmetry reduces system bias by not plac-
+ing special importance on a set of discretized directions.
+This makes DoG ﬁlters more robust than directional ﬁl-
+ters, such as the 3D Gabor ﬁlters which were used in
+ﬁrst iterations of our work. The DoG ﬁlter convolution is
+easy to calculate by separating the Gaussian into each lin-
+ear dimension and performing all calculations in Fourier
+
+2
+
+space. Thus, for our data volume V and our DoG ﬁlter
+f ≡ G1 − G2 (where Var(G1) = σ2
+
+1 and Var(G2) = σ2
+
+2).
+
+V [n, m, l]f [x − n, y − m, z − l]
+
+(V ∗ f )[x, y, z] ≡(cid:88)
+
+(cid:88)
+
+(cid:88)
+
+n
+
+m
+
+l
+
+−1 {ﬀt(V )ﬀt(f )} [x, y, z]
+−1 {ﬀt(V )ﬀt(G1 − G2)} [x, y, z]
+
+=ﬀt
+
+=ﬀt
+
+(1)
+
+where we know ﬀt(Gi) = e− 1
+i (m2+n2+l2). As mentioned,
+we can further simplify the calculation by taking each lin-
+ear dimension separately.
+
+2 σ2
+
+As a ﬁnal point, we note similarities between the DoG
+ﬁlter and the edge-sensitive Laplacian of Gaussian (LoG)
+ﬁlter, [7] as visualized in ﬁgure 4. Thus, our DoG is not
+only a blob detector, but also a makeshift edge detector.
+We will get a high peak at a pixel if it is at the center
+of a blob. However, we will be getting a very low abso-
+lute value if we’re at an edge. Because our segmentation
+program is very interested in ﬁnding accurate edges, this
+edge detection aspect of the DoG ﬁlters is very useful.
+
+We thus associate with each voxel [x, y, z] the follow-
+
+ing set of features:
+
+• ONE Voxel intensity V [x, y, z].
+• ONE Voxel intensity gradient ∇V [x, y, z].
+• EIGHT DoG convolutions. (V ∗ DoG)[x, y, z].
+• EIGHT DoG convolutions in gradient space. (∇V ∗
+
+DoG)[x, y, z].
+
+This gives 18 features per modality, and thus we have 72
+features overall. In addition, because DoG convolutions
+act as edge (i.e.
+inﬂection point) detectors, we can ar-
+gue that they provide information on a function’s second
+derivative. Thus, the above set of features gives us infor-
+mation on all derivatives from 0th to 3rd order.
+
+Algorithm We begin with an overview of our algo-
+rithm. First, we divide our patients into a training and
+test set. For our program, we feed in all four modali-
+ties (T1 pre-contrast, T1 post-contrast, T2 weighted, and
+FLAIR) of our pre-processed data into feature extrac-
+tion. Once we extract our features, we will have a feature
+vector associated with each voxel in our brain. We treat
+each voxel’s feature vectors completely independently.
+Thus, in the hierarchal neural net training phase of our
+program, we will not take into account voxel position or
+neighborhood other than what is already encoded in the
+feature extraction.
+
+Hierarchal Neural Nets
+Once we have extracted
+our features, our learning environment will be a hierar-
+chal neural net. We ﬁrst train a standard feed-forward
+neural net (2 hidden layers, 10 neurons per layer) for
+each of the four tumor subtypes. Neural nets are stan-
+dard in machine learning, and make predictions based on
+
+(cid:80) wiZi of the inputs Zi to that neuron. The algorithm
+
+learned features (neurons) which are linear combinations
+
+iteratively ﬁnds the weights wi, and these neurons are
+then activated (ﬁred) when they observe inputs parallel
+to their learned feature directions. NNets are relatively
+low bias and can model complex nonlinear relationships
+(the neuron “ﬁring” potential, which is usually a sigmoid,
+is highly nonlinear) between input features and output.
+This is appropriate here as we do not expect our tumor
+classiﬁcations to be simple linear combinations of our
+DoG convolutions. After all four neural nets are trained,
+we then classify in a cascading fashion as shown in algo-
+rithm 1 on the next page.
+
+Essentially, our classiﬁcation priority in descending or-
+der goes: enhancing, necrosis, non-enhancing, and edema.
+If our neural nets returns positive classiﬁcations for mul-
+tiple tumor subtypes, we classify to the positive subtype
+with the highest priority. This hierarchal design is based
+oﬀ of the hierarchical majority vote used to combine sev-
+eral diﬀerent algorithmic results. [9]
+
+This seemingly arbitrary methodology makes perfect
+sense in the context of our classiﬁcation problem. Tumor
+segmentations are judged generally in terms of three ac-
+curacies: whole tumor accuracy, tumor core accuracy, and
+enhancing tumor accuracy. Thus, because they have their
+own accuracy scores, we must prioritize classiﬁcation of
+the core over the non-core (edema), and then also the
+enhancing core over the other core. The enhancing core
+generally covers a smaller area of the brain, which lends
+even more reason to be more sensitive to its detection.
+
+Results are reported as the standard Dice score cal-
+culated via 10-fold cross validation (see: beginning of
+next section). We do not use cross validation to select
+parameters, deciding to keep our neural net parameters
+set to default values. This is both because the additional
+computation time would be prohibitive, and also because
+our Dice scores (which are also calculated from the cross
+validation) would become biased upwards.
+
+Results and Discussion For the rest of
+the paper, we report accuracies as Dice Coeﬃcients (also
+known as the Sørensen-Dice Index). We can describe this
+index as [12]
+
+Dice Score =
+
+2|Pred ∩ Ref|
+|Pred| + |Ref| ,
+
+(2)
+
+Figure 4: Use of DoG as LoG Proxy
+
+Figure 5: DoG Kernels
+
+where “Pred” is the voxels that return a positive predic-
+tion and “Ref” is the set of voxels which are positive in
+the ground truth (in our case, the expert segmentation).
+We can see that in our case, this is also equal to the har-
+|Pred∩Ref|
+)
+monic mean of the precision (as denoted by
+
+|Pred|
+
+and the recall (as denoted by
+
+|Pred∩Ref|
+
+|Ref|
+
+).
+
+Figure 6: Main Methodology of Learning Pipeline
+
+3
+
+CS229 2015
+
+| Group 277
+
+Learning with Diﬀerence of Gaussian Features in the 3D Segmentation of
+
+Glioblastoma Brain Tumors
+
+Zhao Chen (zchen89[at]Stanford.edu), Tianmin Liu (tianminl[at]Stanford.edu),
+
+Darvin Yi (darvinyi[at]Stanford.edu), Project Mentor: Irene Kaplow
+
+Introduction Glioblastoma (GBM) is an espe-
+cially aggressive brain tumor that accounts for over 50%
+of brain tissue tumor cases. [2] GBMs have a high mor-
+tality rate with a one year survival of 50% and a three
+year survival rate of 90%. [2] Much is still being done
+to understand GBM and its two subtypes, high grade
+glioma (HGG) and low grade glioma (LGG), but there is
+still a gold mine of untapped data. Chief amongst these
+is imaging data in the form of magnetic resonance (MR)
+scans. Most methods of analyzing and extracting quanti-
+tative information from these imaging data requires some
+form of segmentation of the GBM, and better yet, clas-
+siﬁcation of the tumor into four sub-categories: necrosis,
+edema, non-enhancing tumor, and enhancing tumor. To
+date, the gold standard of segmentation is still human
+radiologist segmentations. However, with the pure size
+of imaging data being accrued, manual segmentation of
+all images is no longer a sustainable system. We pro-
+pose a statistical learning pipeline that takes diﬀerence of
+gaussian features into a hierarchal neural net to segment
+and classify tumors into their sub-categories. We thus
+take as input a 3D MR image and output one of ﬁve
+labels (normal or one of 4 tumor subtypes) for each voxel
+(the 3D analog of pixel). Our combined median HGG
+and LGG results in a Dice accuracy score of 0.90 for the
+
+whole tumor detection, 0.72 for the tumor core detection,
+and 0.74 for the active tumor detection. We will see that
+this is quite competitive with the leading programs at the
+moment.
+
+Data We used the pre-processed training data pro-
+vided by the MICCAI Brain Tumor Image Segmentation
+(BRATS) challenge. [9] For each patient, four main MR
+modalities were given: (1) T-1 pre-contrast, (2) T-2 post-
+contrast, (3) T-2 Weighted, and (4) FLAIR. The training
+data comes already pre-processed, which involves skull
+stripping [1] and co-registration. Co-registration is cru-
+cial, as it aligns images for all four modalities such that
+the voxel found in the image coordinates [x, y, z] in all
+four modalities will point to the same coordinates in real
+space.
+
+Figure 1a shows an example of a single cross section of
+the four modalities, juxtaposed with the expert segmen-
+tation of the tumor which we will use as ground truth.
+Note that it is co-registration which allows for reliable
+overlay of the four modalities with the expert segmenta-
+tion. Note also that the FLAIR image is somewhat cut
+oﬀ due to the nature of the MR scan. However, big data
+algorithms are generally robust against small artifacts
+like this.
+
+(a) Modalities
+(ul: T1-Pre, ur: T1-post, dl: T2W, dr:
+FLAIR)
+
+Figure 1: Tumor Visualization
+
+(b) 3D Rendering of Tumor
+
+1
+
+Throughout this project, all of the analysis and
+methodology built around the data interprets the data
+as a 3-dimensional object. Each slice gives information
+on MR intensity in [x,y], but the slices themselves rep-
+resent the MR information in z. Thus, the data can be
+imagined as a 3-dimensional cube as seen in ﬁgure 2, and
+we can extend classic 2D imaging techniques to an addi-
+tional dimension to work on our data.
+
+Figure 2: Data Visualization
+
+Feature Extraction The Diﬀerence of Gaus-
+sian (DoG) convolution ﬁlter has been used as a blob de-
+tector for some time in 2D, and it features prominently
+in the Scale Invariant Feature Transform (SIFT) algo-
+rithm. [7] We can see SIFT’s feature detection applied
+to the iconic sunﬂower image and one of our Brain MR
+slices in ﬁgure 3. On the sunﬂower image, we can see that
+the features (based on DoG ﬁlters) ﬁnd almost all circu-
+lar objects in the image. Similarly, on the brain MR slice,
+the most predominant SIFT feature is the tumor, which
+is quite blob like.
+
+Figure 3: SIFT as Evidence of Blob Detection
+
+Our project is in 3D, and so we propose building a
+bank of 3-Dimensional DoG ﬁlters (ﬁgure 5), all of dif-
+ferent scales. By convolving our 3D data with these 3D
+ﬁlters, we will be able to build a blob proﬁle feature vector
+for each pixel of our data. In addition to the robustness of
+DoG ﬁlters as blob detectors, we can also notice two more
+important features: (1) DoG ﬁlters are rotationally sym-
+metric and (2) DoG ﬁlters are eﬃcient for 3D convolution.
+The rotational symmetry reduces system bias by not plac-
+ing special importance on a set of discretized directions.
+This makes DoG ﬁlters more robust than directional ﬁl-
+ters, such as the 3D Gabor ﬁlters which were used in
+ﬁrst iterations of our work. The DoG ﬁlter convolution is
+easy to calculate by separating the Gaussian into each lin-
+ear dimension and performing all calculations in Fourier
+
+2
+
+space. Thus, for our data volume V and our DoG ﬁlter
+f ≡ G1 − G2 (where Var(G1) = σ2
+
+1 and Var(G2) = σ2
+
+2).
+
+V [n, m, l]f [x − n, y − m, z − l]
+
+(V ∗ f )[x, y, z] ≡(cid:88)
+
+(cid:88)
+
+(cid:88)
+
+n
+
+m
+
+l
+
+−1 {ﬀt(V )ﬀt(f )} [x, y, z]
+−1 {ﬀt(V )ﬀt(G1 − G2)} [x, y, z]
+
+=ﬀt
+
+=ﬀt
+
+(1)
+
+where we know ﬀt(Gi) = e− 1
+i (m2+n2+l2). As mentioned,
+we can further simplify the calculation by taking each lin-
+ear dimension separately.
+
+2 σ2
+
+As a ﬁnal point, we note similarities between the DoG
+ﬁlter and the edge-sensitive Laplacian of Gaussian (LoG)
+ﬁlter, [7] as visualized in ﬁgure 4. Thus, our DoG is not
+only a blob detector, but also a makeshift edge detector.
+We will get a high peak at a pixel if it is at the center
+of a blob. However, we will be getting a very low abso-
+lute value if we’re at an edge. Because our segmentation
+program is very interested in ﬁnding accurate edges, this
+edge detection aspect of the DoG ﬁlters is very useful.
+
+We thus associate with each voxel [x, y, z] the follow-
+
+ing set of features:
+
+• ONE Voxel intensity V [x, y, z].
+• ONE Voxel intensity gradient ∇V [x, y, z].
+• EIGHT DoG convolutions. (V ∗ DoG)[x, y, z].
+• EIGHT DoG convolutions in gradient space. (∇V ∗
+
+DoG)[x, y, z].
+
+This gives 18 features per modality, and thus we have 72
+features overall. In addition, because DoG convolutions
+act as edge (i.e.
+inﬂection point) detectors, we can ar-
+gue that they provide information on a function’s second
+derivative. Thus, the above set of features gives us infor-
+mation on all derivatives from 0th to 3rd order.
+
+Algorithm We begin with an overview of our algo-
+rithm. First, we divide our patients into a training and
+test set. For our program, we feed in all four modali-
+ties (T1 pre-contrast, T1 post-contrast, T2 weighted, and
+FLAIR) of our pre-processed data into feature extrac-
+tion. Once we extract our features, we will have a feature
+vector associated with each voxel in our brain. We treat
+each voxel’s feature vectors completely independently.
+Thus, in the hierarchal neural net training phase of our
+program, we will not take into account voxel position or
+neighborhood other than what is already encoded in the
+feature extraction.
+
+Hierarchal Neural Nets
+Once we have extracted
+our features, our learning environment will be a hierar-
+chal neural net. We ﬁrst train a standard feed-forward
+neural net (2 hidden layers, 10 neurons per layer) for
+each of the four tumor subtypes. Neural nets are stan-
+dard in machine learning, and make predictions based on
+
+(cid:80) wiZi of the inputs Zi to that neuron. The algorithm
+
+learned features (neurons) which are linear combinations
+
+iteratively ﬁnds the weights wi, and these neurons are
+then activated (ﬁred) when they observe inputs parallel
+to their learned feature directions. NNets are relatively
+low bias and can model complex nonlinear relationships
+(the neuron “ﬁring” potential, which is usually a sigmoid,
+is highly nonlinear) between input features and output.
+This is appropriate here as we do not expect our tumor
+classiﬁcations to be simple linear combinations of our
+DoG convolutions. After all four neural nets are trained,
+we then classify in a cascading fashion as shown in algo-
+rithm 1 on the next page.
+
+Essentially, our classiﬁcation priority in descending or-
+der goes: enhancing, necrosis, non-enhancing, and edema.
+If our neural nets returns positive classiﬁcations for mul-
+tiple tumor subtypes, we classify to the positive subtype
+with the highest priority. This hierarchal design is based
+oﬀ of the hierarchical majority vote used to combine sev-
+eral diﬀerent algorithmic results. [9]
+
+This seemingly arbitrary methodology makes perfect
+sense in the context of our classiﬁcation problem. Tumor
+segmentations are judged generally in terms of three ac-
+curacies: whole tumor accuracy, tumor core accuracy, and
+enhancing tumor accuracy. Thus, because they have their
+own accuracy scores, we must prioritize classiﬁcation of
+the core over the non-core (edema), and then also the
+enhancing core over the other core. The enhancing core
+generally covers a smaller area of the brain, which lends
+even more reason to be more sensitive to its detection.
+
+Results are reported as the standard Dice score cal-
+culated via 10-fold cross validation (see: beginning of
+next section). We do not use cross validation to select
+parameters, deciding to keep our neural net parameters
+set to default values. This is both because the additional
+computation time would be prohibitive, and also because
+our Dice scores (which are also calculated from the cross
+validation) would become biased upwards.
+
+Results and Discussion For the rest of
+the paper, we report accuracies as Dice Coeﬃcients (also
+known as the Sørensen-Dice Index). We can describe this
+index as [12]
+
+Dice Score =
+
+2|Pred ∩ Ref|
+|Pred| + |Ref| ,
+
+(2)
+
+Figure 4: Use of DoG as LoG Proxy
+
+Figure 5: DoG Kernels
+
+where “Pred” is the voxels that return a positive predic-
+tion and “Ref” is the set of voxels which are positive in
+the ground truth (in our case, the expert segmentation).
+We can see that in our case, this is also equal to the har-
+|Pred∩Ref|
+)
+monic mean of the precision (as denoted by
+
+|Pred|
+
+and the recall (as denoted by
+
+|Pred∩Ref|
+
+|Ref|
+
+).
+
+Figure 6: Main Methodology of Learning Pipeline
+
+3
+
+Algorithm 1 The hierarchical majority vote. The neural net output (between
+0 and 1) per voxel for each of the four tumor structures (edema, non-enhancing core,
+necrotic core, enhancin core) is indicated by pedm, pnen, pnec, penh, respectively.
+
+label ← “nrm”
+if pedm ≥ 0.5 then (label ← “edm”)
+if pnen ≥ 0.5 then (label ← “nen”)
+if pnec ≥ 0.5 then (label ← “nec”)
+if penh ≥ 0.5 then (label ← “enh”)
+end
+
+#Initialize Normal Tissue.
+#Edema
+#Non-Enhancing Core
+#Necrotic Core
+#Enhancing Core
+
+We ﬁrst tried our pipeline (ﬁgure 6) with diﬀerent al-
+gorithms (LDA/GDA, Decision Tree, Naive Bayes), and
+we see that neural nets perform the best. We further note
+that we only trained on a subset of the data for the results
+in ﬁgure 7, and because neural nets are low bias they also
+have the most potential to improve with more data. In
+contrast, the other higher biased methods have already
+most likely asymptoted to their ﬁnal performance. Thus,
+neural nets is the clear choice for training algorithm.
+
+Figure 7: Comparison of Algorithms
+
+We can see the CV accuracies of segmentation on all
+274 patients in ﬁgure 8. Our median Dice performance on
+whole tumor detection is above 90%! To wit, the inter-
+radiologist repeatability is only 85%, so our accuracy has
+saturated with respect to the ground truth. One particu-
+larly successful segmentation can be seen in 9. A full 3D
+visualization of our tumor segmentation can be found at
+https://youtu.be/kWdE94RvDpQ. The main draw-back
+of our program are outliers. More than half of our seg-
+mentations are wildly successful, but some segmentations
+return sub-50% scores, which you would not typically see
+with a radiologist.
+
+The confusion matrix is:
+
+ (3)
+
+enh
+
+0.0001
+0.0168
+0.0053
+0.0777
+0.8565
+
+
+
+C =
+
+healthy
+0.9921
+0.0585
+0.1606
+0.0600
+0.0210
+
+nec
+
+edm
+0.0002 0.0071
+0.6989 0.0622
+0.0072 0.7772
+0.1600 0.3216
+0.0572 0.0257
+
+neh
+
+0.0005
+0.1637
+0.0497
+0.3807
+0.0396
+
+The matrix was normalized to rowsums (so the diagonal
+represents percent true positives for each class). Thus,
+Cij is the percentage of pixels in class i that were classi-
+ﬁed as class j. The most confused classes are edm (cid:55)→ neh,
+neh (cid:55)→ nec, and nec (cid:55)→ healthy. The ﬁrst two are nat-
+ural results of our hierarchy (neh overwrites edm, neh
+overwrites nec), but the last one is more interesting, and
+can be explained by the fact that nec generally shows up
+as darker on MR scans, but so does healthy tissue.
+
+Our CV mean scores for whole, core, and active tumor
+detection are 87/76/80, respectively. This is very compet-
+itive with previous methods. Some notable ones in 2013
+include ones by Zhao and Subbanna which incorporated
+Markov Random Fields (MRF), achieving Dice accuracies
+
+Figure 8: Histogram of Dice Score Accuracies
+
+4
+
+CS229 2015
+
+| Group 277
+
+Learning with Diﬀerence of Gaussian Features in the 3D Segmentation of
+
+Glioblastoma Brain Tumors
+
+Zhao Chen (zchen89[at]Stanford.edu), Tianmin Liu (tianminl[at]Stanford.edu),
+
+Darvin Yi (darvinyi[at]Stanford.edu), Project Mentor: Irene Kaplow
+
+Introduction Glioblastoma (GBM) is an espe-
+cially aggressive brain tumor that accounts for over 50%
+of brain tissue tumor cases. [2] GBMs have a high mor-
+tality rate with a one year survival of 50% and a three
+year survival rate of 90%. [2] Much is still being done
+to understand GBM and its two subtypes, high grade
+glioma (HGG) and low grade glioma (LGG), but there is
+still a gold mine of untapped data. Chief amongst these
+is imaging data in the form of magnetic resonance (MR)
+scans. Most methods of analyzing and extracting quanti-
+tative information from these imaging data requires some
+form of segmentation of the GBM, and better yet, clas-
+siﬁcation of the tumor into four sub-categories: necrosis,
+edema, non-enhancing tumor, and enhancing tumor. To
+date, the gold standard of segmentation is still human
+radiologist segmentations. However, with the pure size
+of imaging data being accrued, manual segmentation of
+all images is no longer a sustainable system. We pro-
+pose a statistical learning pipeline that takes diﬀerence of
+gaussian features into a hierarchal neural net to segment
+and classify tumors into their sub-categories. We thus
+take as input a 3D MR image and output one of ﬁve
+labels (normal or one of 4 tumor subtypes) for each voxel
+(the 3D analog of pixel). Our combined median HGG
+and LGG results in a Dice accuracy score of 0.90 for the
+
+whole tumor detection, 0.72 for the tumor core detection,
+and 0.74 for the active tumor detection. We will see that
+this is quite competitive with the leading programs at the
+moment.
+
+Data We used the pre-processed training data pro-
+vided by the MICCAI Brain Tumor Image Segmentation
+(BRATS) challenge. [9] For each patient, four main MR
+modalities were given: (1) T-1 pre-contrast, (2) T-2 post-
+contrast, (3) T-2 Weighted, and (4) FLAIR. The training
+data comes already pre-processed, which involves skull
+stripping [1] and co-registration. Co-registration is cru-
+cial, as it aligns images for all four modalities such that
+the voxel found in the image coordinates [x, y, z] in all
+four modalities will point to the same coordinates in real
+space.
+
+Figure 1a shows an example of a single cross section of
+the four modalities, juxtaposed with the expert segmen-
+tation of the tumor which we will use as ground truth.
+Note that it is co-registration which allows for reliable
+overlay of the four modalities with the expert segmenta-
+tion. Note also that the FLAIR image is somewhat cut
+oﬀ due to the nature of the MR scan. However, big data
+algorithms are generally robust against small artifacts
+like this.
+
+(a) Modalities
+(ul: T1-Pre, ur: T1-post, dl: T2W, dr:
+FLAIR)
+
+Figure 1: Tumor Visualization
+
+(b) 3D Rendering of Tumor
+
+1
+
+Throughout this project, all of the analysis and
+methodology built around the data interprets the data
+as a 3-dimensional object. Each slice gives information
+on MR intensity in [x,y], but the slices themselves rep-
+resent the MR information in z. Thus, the data can be
+imagined as a 3-dimensional cube as seen in ﬁgure 2, and
+we can extend classic 2D imaging techniques to an addi-
+tional dimension to work on our data.
+
+Figure 2: Data Visualization
+
+Feature Extraction The Diﬀerence of Gaus-
+sian (DoG) convolution ﬁlter has been used as a blob de-
+tector for some time in 2D, and it features prominently
+in the Scale Invariant Feature Transform (SIFT) algo-
+rithm. [7] We can see SIFT’s feature detection applied
+to the iconic sunﬂower image and one of our Brain MR
+slices in ﬁgure 3. On the sunﬂower image, we can see that
+the features (based on DoG ﬁlters) ﬁnd almost all circu-
+lar objects in the image. Similarly, on the brain MR slice,
+the most predominant SIFT feature is the tumor, which
+is quite blob like.
+
+Figure 3: SIFT as Evidence of Blob Detection
+
+Our project is in 3D, and so we propose building a
+bank of 3-Dimensional DoG ﬁlters (ﬁgure 5), all of dif-
+ferent scales. By convolving our 3D data with these 3D
+ﬁlters, we will be able to build a blob proﬁle feature vector
+for each pixel of our data. In addition to the robustness of
+DoG ﬁlters as blob detectors, we can also notice two more
+important features: (1) DoG ﬁlters are rotationally sym-
+metric and (2) DoG ﬁlters are eﬃcient for 3D convolution.
+The rotational symmetry reduces system bias by not plac-
+ing special importance on a set of discretized directions.
+This makes DoG ﬁlters more robust than directional ﬁl-
+ters, such as the 3D Gabor ﬁlters which were used in
+ﬁrst iterations of our work. The DoG ﬁlter convolution is
+easy to calculate by separating the Gaussian into each lin-
+ear dimension and performing all calculations in Fourier
+
+2
+
+space. Thus, for our data volume V and our DoG ﬁlter
+f ≡ G1 − G2 (where Var(G1) = σ2
+
+1 and Var(G2) = σ2
+
+2).
+
+V [n, m, l]f [x − n, y − m, z − l]
+
+(V ∗ f )[x, y, z] ≡(cid:88)
+
+(cid:88)
+
+(cid:88)
+
+n
+
+m
+
+l
+
+−1 {ﬀt(V )ﬀt(f )} [x, y, z]
+−1 {ﬀt(V )ﬀt(G1 − G2)} [x, y, z]
+
+=ﬀt
+
+=ﬀt
+
+(1)
+
+where we know ﬀt(Gi) = e− 1
+i (m2+n2+l2). As mentioned,
+we can further simplify the calculation by taking each lin-
+ear dimension separately.
+
+2 σ2
+
+As a ﬁnal point, we note similarities between the DoG
+ﬁlter and the edge-sensitive Laplacian of Gaussian (LoG)
+ﬁlter, [7] as visualized in ﬁgure 4. Thus, our DoG is not
+only a blob detector, but also a makeshift edge detector.
+We will get a high peak at a pixel if it is at the center
+of a blob. However, we will be getting a very low abso-
+lute value if we’re at an edge. Because our segmentation
+program is very interested in ﬁnding accurate edges, this
+edge detection aspect of the DoG ﬁlters is very useful.
+
+We thus associate with each voxel [x, y, z] the follow-
+
+ing set of features:
+
+• ONE Voxel intensity V [x, y, z].
+• ONE Voxel intensity gradient ∇V [x, y, z].
+• EIGHT DoG convolutions. (V ∗ DoG)[x, y, z].
+• EIGHT DoG convolutions in gradient space. (∇V ∗
+
+DoG)[x, y, z].
+
+This gives 18 features per modality, and thus we have 72
+features overall. In addition, because DoG convolutions
+act as edge (i.e.
+inﬂection point) detectors, we can ar-
+gue that they provide information on a function’s second
+derivative. Thus, the above set of features gives us infor-
+mation on all derivatives from 0th to 3rd order.
+
+Algorithm We begin with an overview of our algo-
+rithm. First, we divide our patients into a training and
+test set. For our program, we feed in all four modali-
+ties (T1 pre-contrast, T1 post-contrast, T2 weighted, and
+FLAIR) of our pre-processed data into feature extrac-
+tion. Once we extract our features, we will have a feature
+vector associated with each voxel in our brain. We treat
+each voxel’s feature vectors completely independently.
+Thus, in the hierarchal neural net training phase of our
+program, we will not take into account voxel position or
+neighborhood other than what is already encoded in the
+feature extraction.
+
+Hierarchal Neural Nets
+Once we have extracted
+our features, our learning environment will be a hierar-
+chal neural net. We ﬁrst train a standard feed-forward
+neural net (2 hidden layers, 10 neurons per layer) for
+each of the four tumor subtypes. Neural nets are stan-
+dard in machine learning, and make predictions based on
+
+(cid:80) wiZi of the inputs Zi to that neuron. The algorithm
+
+learned features (neurons) which are linear combinations
+
+iteratively ﬁnds the weights wi, and these neurons are
+then activated (ﬁred) when they observe inputs parallel
+to their learned feature directions. NNets are relatively
+low bias and can model complex nonlinear relationships
+(the neuron “ﬁring” potential, which is usually a sigmoid,
+is highly nonlinear) between input features and output.
+This is appropriate here as we do not expect our tumor
+classiﬁcations to be simple linear combinations of our
+DoG convolutions. After all four neural nets are trained,
+we then classify in a cascading fashion as shown in algo-
+rithm 1 on the next page.
+
+Essentially, our classiﬁcation priority in descending or-
+der goes: enhancing, necrosis, non-enhancing, and edema.
+If our neural nets returns positive classiﬁcations for mul-
+tiple tumor subtypes, we classify to the positive subtype
+with the highest priority. This hierarchal design is based
+oﬀ of the hierarchical majority vote used to combine sev-
+eral diﬀerent algorithmic results. [9]
+
+This seemingly arbitrary methodology makes perfect
+sense in the context of our classiﬁcation problem. Tumor
+segmentations are judged generally in terms of three ac-
+curacies: whole tumor accuracy, tumor core accuracy, and
+enhancing tumor accuracy. Thus, because they have their
+own accuracy scores, we must prioritize classiﬁcation of
+the core over the non-core (edema), and then also the
+enhancing core over the other core. The enhancing core
+generally covers a smaller area of the brain, which lends
+even more reason to be more sensitive to its detection.
+
+Results are reported as the standard Dice score cal-
+culated via 10-fold cross validation (see: beginning of
+next section). We do not use cross validation to select
+parameters, deciding to keep our neural net parameters
+set to default values. This is both because the additional
+computation time would be prohibitive, and also because
+our Dice scores (which are also calculated from the cross
+validation) would become biased upwards.
+
+Results and Discussion For the rest of
+the paper, we report accuracies as Dice Coeﬃcients (also
+known as the Sørensen-Dice Index). We can describe this
+index as [12]
+
+Dice Score =
+
+2|Pred ∩ Ref|
+|Pred| + |Ref| ,
+
+(2)
+
+Figure 4: Use of DoG as LoG Proxy
+
+Figure 5: DoG Kernels
+
+where “Pred” is the voxels that return a positive predic-
+tion and “Ref” is the set of voxels which are positive in
+the ground truth (in our case, the expert segmentation).
+We can see that in our case, this is also equal to the har-
+|Pred∩Ref|
+)
+monic mean of the precision (as denoted by
+
+|Pred|
+
+and the recall (as denoted by
+
+|Pred∩Ref|
+
+|Ref|
+
+).
+
+Figure 6: Main Methodology of Learning Pipeline
+
+3
+
+Algorithm 1 The hierarchical majority vote. The neural net output (between
+0 and 1) per voxel for each of the four tumor structures (edema, non-enhancing core,
+necrotic core, enhancin core) is indicated by pedm, pnen, pnec, penh, respectively.
+
+label ← “nrm”
+if pedm ≥ 0.5 then (label ← “edm”)
+if pnen ≥ 0.5 then (label ← “nen”)
+if pnec ≥ 0.5 then (label ← “nec”)
+if penh ≥ 0.5 then (label ← “enh”)
+end
+
+#Initialize Normal Tissue.
+#Edema
+#Non-Enhancing Core
+#Necrotic Core
+#Enhancing Core
+
+We ﬁrst tried our pipeline (ﬁgure 6) with diﬀerent al-
+gorithms (LDA/GDA, Decision Tree, Naive Bayes), and
+we see that neural nets perform the best. We further note
+that we only trained on a subset of the data for the results
+in ﬁgure 7, and because neural nets are low bias they also
+have the most potential to improve with more data. In
+contrast, the other higher biased methods have already
+most likely asymptoted to their ﬁnal performance. Thus,
+neural nets is the clear choice for training algorithm.
+
+Figure 7: Comparison of Algorithms
+
+We can see the CV accuracies of segmentation on all
+274 patients in ﬁgure 8. Our median Dice performance on
+whole tumor detection is above 90%! To wit, the inter-
+radiologist repeatability is only 85%, so our accuracy has
+saturated with respect to the ground truth. One particu-
+larly successful segmentation can be seen in 9. A full 3D
+visualization of our tumor segmentation can be found at
+https://youtu.be/kWdE94RvDpQ. The main draw-back
+of our program are outliers. More than half of our seg-
+mentations are wildly successful, but some segmentations
+return sub-50% scores, which you would not typically see
+with a radiologist.
+
+The confusion matrix is:
+
+ (3)
+
+enh
+
+0.0001
+0.0168
+0.0053
+0.0777
+0.8565
+
+
+
+C =
+
+healthy
+0.9921
+0.0585
+0.1606
+0.0600
+0.0210
+
+nec
+
+edm
+0.0002 0.0071
+0.6989 0.0622
+0.0072 0.7772
+0.1600 0.3216
+0.0572 0.0257
+
+neh
+
+0.0005
+0.1637
+0.0497
+0.3807
+0.0396
+
+The matrix was normalized to rowsums (so the diagonal
+represents percent true positives for each class). Thus,
+Cij is the percentage of pixels in class i that were classi-
+ﬁed as class j. The most confused classes are edm (cid:55)→ neh,
+neh (cid:55)→ nec, and nec (cid:55)→ healthy. The ﬁrst two are nat-
+ural results of our hierarchy (neh overwrites edm, neh
+overwrites nec), but the last one is more interesting, and
+can be explained by the fact that nec generally shows up
+as darker on MR scans, but so does healthy tissue.
+
+Our CV mean scores for whole, core, and active tumor
+detection are 87/76/80, respectively. This is very compet-
+itive with previous methods. Some notable ones in 2013
+include ones by Zhao and Subbanna which incorporated
+Markov Random Fields (MRF), achieving Dice accuracies
+
+Figure 8: Histogram of Dice Score Accuracies
+
+4
+
+be biological evidence backing our higher-bias model. It
+has been known for a long time that neurons in the opti-
+cal system form receptive ﬁelds resembling two concentric
+circles, with positively ﬁring neurons surrounded by feed-
+back neurons or vice versa. [8] [10] See ﬁgure 10 for refer-
+ence. However, these receptive ﬁelds look very much like
+DoG proﬁles! Thus, although we are highly biased com-
+pared with a deep learning framework, our features may
+be more successful models of how the human eye perceives
+information at a low level. The subsequent feed-forward
+neural net can then learn higher level features from each
+pixel’s lower level biological features. In such a way, we
+may be more successfully mimicing human biology in this
+context than higher-level models like deep learning can
+claim. By no means are we suggesting that our method-
+ology outperforms deep learning in all contexts, but we
+may in some ways be on the right side of the bias-variance
+tradeoﬀ, possibly due to the biological underpinnings of
+our feature space.
+
+Figure 10: Biological Receptive Fields
+Figure taken from Tim Jacob. [5]
+
+Conclusions We have thus shown that a hierar-
+chical neural net model performs remarkably well on the
+glioblastoma segmentation problem. Our segmentation
+results are competitive with those using much more com-
+plex methods, and we argue our success is due to our
+smart choice of features along with a greatly enlarged
+sample space and ﬂexible training method (neural nets).
+Our algorithm is powerful despite its relatively high bias,
+and we hope that it may serve the medical community in
+their work.
+
+The natural next step of this project is a thorough
+analysis of our model’s asymptotics. We have claimed
+that our large data set has signiﬁcantly reduced model
+variance, but it is unknown whether we can further re-
+duce variance with more data. Given that our segmenta-
+tion algorithm is already on par with our reference expert
+segmentations, we suspect but would like to conﬁrm that
+our model has already reached its large-data asymptotic
+performance.
+
+Figure 9: Data Visualization. From Left to Right: T1
+post-contrast, our prediction, expert segmentation
+
+of 82/66/49 and 75/70/59, respectively. [9] Festa from
+2013 used random forests to achieve a Dice of 62/50/61. [9]
+In 2014, groups used deep learning and convolution neural
+nets (CNNs) to achieve accuracies of 85/74/68 (Davy) and
+88/83/72 (Urban). [3] ∗ It may come as rather surprising
+that our methods are competitive with highly complex
+learning methods such as CNNs. It is worth asking why
+this is the case.
+
+We begin with a discussion of the bias-variance trade-
+oﬀ. One important assumption in our data is that voxels
+are independent, only coupled by information ingrained
+in their feature vectors. While this is a high bias deci-
+sion, it allows us to use n = 4.5 billion training samples
+rather than only n = 274 patient samples. Contrast this
+to deep learning algorithms like CNNs, which “learn” the
+important features from the data by choosing convolution
+kernels on the inputs that capture the maximal amount
+of variance of the outputs. [4] However, CNNs use each
+patient as a single training sample, which allows access to
+the entire atlas of a 3D MR scan at once and hence the
+ability for the computer to automatically ﬁnd complex
+features which relate wholly diﬀerent parts of the brain.
+We, on the other hand, a priori select DoG convolu-
+tion ﬁlters as our way to relate voxels to their neighbor-
+hoods; we are not “learning” the optimal neighborhood
+information to train on, but instead choose a contrived
+set of information based on prior knowledge. This injects
+much bias into our model, but allows us to increase our
+number of training samples by a factor of more than 15
+million. Not only are neural nets intrinsically low bias, the
+hope is that the improved variance caused by the enlarged
+sample space will more than compensate for our high-bias
+assumptions. From the success of our algorithm, it is very
+plausible that our hopes were not in vain.
+
+However, it is worth mentioning that there may also
+∗Many of these other algorithms were trained on only a subset of 30 patients in line with BraTS Challenge rules. However, our
+
+algorithm returns Dice Scores of 89/78/71 on the same subset, not appreciably diﬀerent from our results on the full 274 patients.
+
+5
+
+CS229 2015
+
+| Group 277
+
+Learning with Diﬀerence of Gaussian Features in the 3D Segmentation of
+
+Glioblastoma Brain Tumors
+
+Zhao Chen (zchen89[at]Stanford.edu), Tianmin Liu (tianminl[at]Stanford.edu),
+
+Darvin Yi (darvinyi[at]Stanford.edu), Project Mentor: Irene Kaplow
+
+Introduction Glioblastoma (GBM) is an espe-
+cially aggressive brain tumor that accounts for over 50%
+of brain tissue tumor cases. [2] GBMs have a high mor-
+tality rate with a one year survival of 50% and a three
+year survival rate of 90%. [2] Much is still being done
+to understand GBM and its two subtypes, high grade
+glioma (HGG) and low grade glioma (LGG), but there is
+still a gold mine of untapped data. Chief amongst these
+is imaging data in the form of magnetic resonance (MR)
+scans. Most methods of analyzing and extracting quanti-
+tative information from these imaging data requires some
+form of segmentation of the GBM, and better yet, clas-
+siﬁcation of the tumor into four sub-categories: necrosis,
+edema, non-enhancing tumor, and enhancing tumor. To
+date, the gold standard of segmentation is still human
+radiologist segmentations. However, with the pure size
+of imaging data being accrued, manual segmentation of
+all images is no longer a sustainable system. We pro-
+pose a statistical learning pipeline that takes diﬀerence of
+gaussian features into a hierarchal neural net to segment
+and classify tumors into their sub-categories. We thus
+take as input a 3D MR image and output one of ﬁve
+labels (normal or one of 4 tumor subtypes) for each voxel
+(the 3D analog of pixel). Our combined median HGG
+and LGG results in a Dice accuracy score of 0.90 for the
+
+whole tumor detection, 0.72 for the tumor core detection,
+and 0.74 for the active tumor detection. We will see that
+this is quite competitive with the leading programs at the
+moment.
+
+Data We used the pre-processed training data pro-
+vided by the MICCAI Brain Tumor Image Segmentation
+(BRATS) challenge. [9] For each patient, four main MR
+modalities were given: (1) T-1 pre-contrast, (2) T-2 post-
+contrast, (3) T-2 Weighted, and (4) FLAIR. The training
+data comes already pre-processed, which involves skull
+stripping [1] and co-registration. Co-registration is cru-
+cial, as it aligns images for all four modalities such that
+the voxel found in the image coordinates [x, y, z] in all
+four modalities will point to the same coordinates in real
+space.
+
+Figure 1a shows an example of a single cross section of
+the four modalities, juxtaposed with the expert segmen-
+tation of the tumor which we will use as ground truth.
+Note that it is co-registration which allows for reliable
+overlay of the four modalities with the expert segmenta-
+tion. Note also that the FLAIR image is somewhat cut
+oﬀ due to the nature of the MR scan. However, big data
+algorithms are generally robust against small artifacts
+like this.
+
+(a) Modalities
+(ul: T1-Pre, ur: T1-post, dl: T2W, dr:
+FLAIR)
+
+Figure 1: Tumor Visualization
+
+(b) 3D Rendering of Tumor
+
+1
+
+Throughout this project, all of the analysis and
+methodology built around the data interprets the data
+as a 3-dimensional object. Each slice gives information
+on MR intensity in [x,y], but the slices themselves rep-
+resent the MR information in z. Thus, the data can be
+imagined as a 3-dimensional cube as seen in ﬁgure 2, and
+we can extend classic 2D imaging techniques to an addi-
+tional dimension to work on our data.
+
+Figure 2: Data Visualization
+
+Feature Extraction The Diﬀerence of Gaus-
+sian (DoG) convolution ﬁlter has been used as a blob de-
+tector for some time in 2D, and it features prominently
+in the Scale Invariant Feature Transform (SIFT) algo-
+rithm. [7] We can see SIFT’s feature detection applied
+to the iconic sunﬂower image and one of our Brain MR
+slices in ﬁgure 3. On the sunﬂower image, we can see that
+the features (based on DoG ﬁlters) ﬁnd almost all circu-
+lar objects in the image. Similarly, on the brain MR slice,
+the most predominant SIFT feature is the tumor, which
+is quite blob like.
+
+Figure 3: SIFT as Evidence of Blob Detection
+
+Our project is in 3D, and so we propose building a
+bank of 3-Dimensional DoG ﬁlters (ﬁgure 5), all of dif-
+ferent scales. By convolving our 3D data with these 3D
+ﬁlters, we will be able to build a blob proﬁle feature vector
+for each pixel of our data. In addition to the robustness of
+DoG ﬁlters as blob detectors, we can also notice two more
+important features: (1) DoG ﬁlters are rotationally sym-
+metric and (2) DoG ﬁlters are eﬃcient for 3D convolution.
+The rotational symmetry reduces system bias by not plac-
+ing special importance on a set of discretized directions.
+This makes DoG ﬁlters more robust than directional ﬁl-
+ters, such as the 3D Gabor ﬁlters which were used in
+ﬁrst iterations of our work. The DoG ﬁlter convolution is
+easy to calculate by separating the Gaussian into each lin-
+ear dimension and performing all calculations in Fourier
+
+2
+
+space. Thus, for our data volume V and our DoG ﬁlter
+f ≡ G1 − G2 (where Var(G1) = σ2
+
+1 and Var(G2) = σ2
+
+2).
+
+V [n, m, l]f [x − n, y − m, z − l]
+
+(V ∗ f )[x, y, z] ≡(cid:88)
+
+(cid:88)
+
+(cid:88)
+
+n
+
+m
+
+l
+
+−1 {ﬀt(V )ﬀt(f )} [x, y, z]
+−1 {ﬀt(V )ﬀt(G1 − G2)} [x, y, z]
+
+=ﬀt
+
+=ﬀt
+
+(1)
+
+where we know ﬀt(Gi) = e− 1
+i (m2+n2+l2). As mentioned,
+we can further simplify the calculation by taking each lin-
+ear dimension separately.
+
+2 σ2
+
+As a ﬁnal point, we note similarities between the DoG
+ﬁlter and the edge-sensitive Laplacian of Gaussian (LoG)
+ﬁlter, [7] as visualized in ﬁgure 4. Thus, our DoG is not
+only a blob detector, but also a makeshift edge detector.
+We will get a high peak at a pixel if it is at the center
+of a blob. However, we will be getting a very low abso-
+lute value if we’re at an edge. Because our segmentation
+program is very interested in ﬁnding accurate edges, this
+edge detection aspect of the DoG ﬁlters is very useful.
+
+We thus associate with each voxel [x, y, z] the follow-
+
+ing set of features:
+
+• ONE Voxel intensity V [x, y, z].
+• ONE Voxel intensity gradient ∇V [x, y, z].
+• EIGHT DoG convolutions. (V ∗ DoG)[x, y, z].
+• EIGHT DoG convolutions in gradient space. (∇V ∗
+
+DoG)[x, y, z].
+
+This gives 18 features per modality, and thus we have 72
+features overall. In addition, because DoG convolutions
+act as edge (i.e.
+inﬂection point) detectors, we can ar-
+gue that they provide information on a function’s second
+derivative. Thus, the above set of features gives us infor-
+mation on all derivatives from 0th to 3rd order.
+
+Algorithm We begin with an overview of our algo-
+rithm. First, we divide our patients into a training and
+test set. For our program, we feed in all four modali-
+ties (T1 pre-contrast, T1 post-contrast, T2 weighted, and
+FLAIR) of our pre-processed data into feature extrac-
+tion. Once we extract our features, we will have a feature
+vector associated with each voxel in our brain. We treat
+each voxel’s feature vectors completely independently.
+Thus, in the hierarchal neural net training phase of our
+program, we will not take into account voxel position or
+neighborhood other than what is already encoded in the
+feature extraction.
+
+Hierarchal Neural Nets
+Once we have extracted
+our features, our learning environment will be a hierar-
+chal neural net. We ﬁrst train a standard feed-forward
+neural net (2 hidden layers, 10 neurons per layer) for
+each of the four tumor subtypes. Neural nets are stan-
+dard in machine learning, and make predictions based on
+
+(cid:80) wiZi of the inputs Zi to that neuron. The algorithm
+
+learned features (neurons) which are linear combinations
+
+iteratively ﬁnds the weights wi, and these neurons are
+then activated (ﬁred) when they observe inputs parallel
+to their learned feature directions. NNets are relatively
+low bias and can model complex nonlinear relationships
+(the neuron “ﬁring” potential, which is usually a sigmoid,
+is highly nonlinear) between input features and output.
+This is appropriate here as we do not expect our tumor
+classiﬁcations to be simple linear combinations of our
+DoG convolutions. After all four neural nets are trained,
+we then classify in a cascading fashion as shown in algo-
+rithm 1 on the next page.
+
+Essentially, our classiﬁcation priority in descending or-
+der goes: enhancing, necrosis, non-enhancing, and edema.
+If our neural nets returns positive classiﬁcations for mul-
+tiple tumor subtypes, we classify to the positive subtype
+with the highest priority. This hierarchal design is based
+oﬀ of the hierarchical majority vote used to combine sev-
+eral diﬀerent algorithmic results. [9]
+
+This seemingly arbitrary methodology makes perfect
+sense in the context of our classiﬁcation problem. Tumor
+segmentations are judged generally in terms of three ac-
+curacies: whole tumor accuracy, tumor core accuracy, and
+enhancing tumor accuracy. Thus, because they have their
+own accuracy scores, we must prioritize classiﬁcation of
+the core over the non-core (edema), and then also the
+enhancing core over the other core. The enhancing core
+generally covers a smaller area of the brain, which lends
+even more reason to be more sensitive to its detection.
+
+Results are reported as the standard Dice score cal-
+culated via 10-fold cross validation (see: beginning of
+next section). We do not use cross validation to select
+parameters, deciding to keep our neural net parameters
+set to default values. This is both because the additional
+computation time would be prohibitive, and also because
+our Dice scores (which are also calculated from the cross
+validation) would become biased upwards.
+
+Results and Discussion For the rest of
+the paper, we report accuracies as Dice Coeﬃcients (also
+known as the Sørensen-Dice Index). We can describe this
+index as [12]
+
+Dice Score =
+
+2|Pred ∩ Ref|
+|Pred| + |Ref| ,
+
+(2)
+
+Figure 4: Use of DoG as LoG Proxy
+
+Figure 5: DoG Kernels
+
+where “Pred” is the voxels that return a positive predic-
+tion and “Ref” is the set of voxels which are positive in
+the ground truth (in our case, the expert segmentation).
+We can see that in our case, this is also equal to the har-
+|Pred∩Ref|
+)
+monic mean of the precision (as denoted by
+
+|Pred|
+
+and the recall (as denoted by
+
+|Pred∩Ref|
+
+|Ref|
+
+).
+
+Figure 6: Main Methodology of Learning Pipeline
+
+3
+
+Algorithm 1 The hierarchical majority vote. The neural net output (between
+0 and 1) per voxel for each of the four tumor structures (edema, non-enhancing core,
+necrotic core, enhancin core) is indicated by pedm, pnen, pnec, penh, respectively.
+
+label ← “nrm”
+if pedm ≥ 0.5 then (label ← “edm”)
+if pnen ≥ 0.5 then (label ← “nen”)
+if pnec ≥ 0.5 then (label ← “nec”)
+if penh ≥ 0.5 then (label ← “enh”)
+end
+
+#Initialize Normal Tissue.
+#Edema
+#Non-Enhancing Core
+#Necrotic Core
+#Enhancing Core
+
+We ﬁrst tried our pipeline (ﬁgure 6) with diﬀerent al-
+gorithms (LDA/GDA, Decision Tree, Naive Bayes), and
+we see that neural nets perform the best. We further note
+that we only trained on a subset of the data for the results
+in ﬁgure 7, and because neural nets are low bias they also
+have the most potential to improve with more data. In
+contrast, the other higher biased methods have already
+most likely asymptoted to their ﬁnal performance. Thus,
+neural nets is the clear choice for training algorithm.
+
+Figure 7: Comparison of Algorithms
+
+We can see the CV accuracies of segmentation on all
+274 patients in ﬁgure 8. Our median Dice performance on
+whole tumor detection is above 90%! To wit, the inter-
+radiologist repeatability is only 85%, so our accuracy has
+saturated with respect to the ground truth. One particu-
+larly successful segmentation can be seen in 9. A full 3D
+visualization of our tumor segmentation can be found at
+https://youtu.be/kWdE94RvDpQ. The main draw-back
+of our program are outliers. More than half of our seg-
+mentations are wildly successful, but some segmentations
+return sub-50% scores, which you would not typically see
+with a radiologist.
+
+The confusion matrix is:
+
+ (3)
+
+enh
+
+0.0001
+0.0168
+0.0053
+0.0777
+0.8565
+
+
+
+C =
+
+healthy
+0.9921
+0.0585
+0.1606
+0.0600
+0.0210
+
+nec
+
+edm
+0.0002 0.0071
+0.6989 0.0622
+0.0072 0.7772
+0.1600 0.3216
+0.0572 0.0257
+
+neh
+
+0.0005
+0.1637
+0.0497
+0.3807
+0.0396
+
+The matrix was normalized to rowsums (so the diagonal
+represents percent true positives for each class). Thus,
+Cij is the percentage of pixels in class i that were classi-
+ﬁed as class j. The most confused classes are edm (cid:55)→ neh,
+neh (cid:55)→ nec, and nec (cid:55)→ healthy. The ﬁrst two are nat-
+ural results of our hierarchy (neh overwrites edm, neh
+overwrites nec), but the last one is more interesting, and
+can be explained by the fact that nec generally shows up
+as darker on MR scans, but so does healthy tissue.
+
+Our CV mean scores for whole, core, and active tumor
+detection are 87/76/80, respectively. This is very compet-
+itive with previous methods. Some notable ones in 2013
+include ones by Zhao and Subbanna which incorporated
+Markov Random Fields (MRF), achieving Dice accuracies
+
+Figure 8: Histogram of Dice Score Accuracies
+
+4
+
+be biological evidence backing our higher-bias model. It
+has been known for a long time that neurons in the opti-
+cal system form receptive ﬁelds resembling two concentric
+circles, with positively ﬁring neurons surrounded by feed-
+back neurons or vice versa. [8] [10] See ﬁgure 10 for refer-
+ence. However, these receptive ﬁelds look very much like
+DoG proﬁles! Thus, although we are highly biased com-
+pared with a deep learning framework, our features may
+be more successful models of how the human eye perceives
+information at a low level. The subsequent feed-forward
+neural net can then learn higher level features from each
+pixel’s lower level biological features. In such a way, we
+may be more successfully mimicing human biology in this
+context than higher-level models like deep learning can
+claim. By no means are we suggesting that our method-
+ology outperforms deep learning in all contexts, but we
+may in some ways be on the right side of the bias-variance
+tradeoﬀ, possibly due to the biological underpinnings of
+our feature space.
+
+Figure 10: Biological Receptive Fields
+Figure taken from Tim Jacob. [5]
+
+Conclusions We have thus shown that a hierar-
+chical neural net model performs remarkably well on the
+glioblastoma segmentation problem. Our segmentation
+results are competitive with those using much more com-
+plex methods, and we argue our success is due to our
+smart choice of features along with a greatly enlarged
+sample space and ﬂexible training method (neural nets).
+Our algorithm is powerful despite its relatively high bias,
+and we hope that it may serve the medical community in
+their work.
+
+The natural next step of this project is a thorough
+analysis of our model’s asymptotics. We have claimed
+that our large data set has signiﬁcantly reduced model
+variance, but it is unknown whether we can further re-
+duce variance with more data. Given that our segmenta-
+tion algorithm is already on par with our reference expert
+segmentations, we suspect but would like to conﬁrm that
+our model has already reached its large-data asymptotic
+performance.
+
+Figure 9: Data Visualization. From Left to Right: T1
+post-contrast, our prediction, expert segmentation
+
+of 82/66/49 and 75/70/59, respectively. [9] Festa from
+2013 used random forests to achieve a Dice of 62/50/61. [9]
+In 2014, groups used deep learning and convolution neural
+nets (CNNs) to achieve accuracies of 85/74/68 (Davy) and
+88/83/72 (Urban). [3] ∗ It may come as rather surprising
+that our methods are competitive with highly complex
+learning methods such as CNNs. It is worth asking why
+this is the case.
+
+We begin with a discussion of the bias-variance trade-
+oﬀ. One important assumption in our data is that voxels
+are independent, only coupled by information ingrained
+in their feature vectors. While this is a high bias deci-
+sion, it allows us to use n = 4.5 billion training samples
+rather than only n = 274 patient samples. Contrast this
+to deep learning algorithms like CNNs, which “learn” the
+important features from the data by choosing convolution
+kernels on the inputs that capture the maximal amount
+of variance of the outputs. [4] However, CNNs use each
+patient as a single training sample, which allows access to
+the entire atlas of a 3D MR scan at once and hence the
+ability for the computer to automatically ﬁnd complex
+features which relate wholly diﬀerent parts of the brain.
+We, on the other hand, a priori select DoG convolu-
+tion ﬁlters as our way to relate voxels to their neighbor-
+hoods; we are not “learning” the optimal neighborhood
+information to train on, but instead choose a contrived
+set of information based on prior knowledge. This injects
+much bias into our model, but allows us to increase our
+number of training samples by a factor of more than 15
+million. Not only are neural nets intrinsically low bias, the
+hope is that the improved variance caused by the enlarged
+sample space will more than compensate for our high-bias
+assumptions. From the success of our algorithm, it is very
+plausible that our hopes were not in vain.
+
+However, it is worth mentioning that there may also
+∗Many of these other algorithms were trained on only a subset of 30 patients in line with BraTS Challenge rules. However, our
+
+algorithm returns Dice Scores of 89/78/71 on the same subset, not appreciably diﬀerent from our results on the full 274 patients.
+
+5
+
+References
+
+[1] Bauer, S., et. al. (2012). “A skull-stripping ﬁlter for
+
+ITK.” Insight Journal.
+
+[2] Bleeker, F. E., et. al. (2012). “Recent advances in the
+molecular understanding of glioblastoma.” Journal of
+Neuro-Oncology 108 (1): 11-27.
+
+[3] “BraTS Challenge Manuscripts.” (2014) MICCAI
+2014. Harvard Medical School, Boston, Mas-
+sachusetts.
+
+[4] Hinton, Geoﬀrey. (2014). “Neural Networks for Ma-
+
+chine Learning.” Coursera
+
+[5] Jacob, Tim. (2003). “Vision” Cardiﬀ University
+
+[6] Lawrence, Steve. (1997). “Face Recognition: A Con-
+volutional Neural-Network Approach.” IEEE Trans-
+actions on Neural Networks 8 (1).
+
+[7] Lowe, D. G. (1999). “Object recognition from local
+scale-invariant features.” Proceedings of the Interna-
+
+tional Conference on Computer Vision 2. pp. 1150-
+1157.
+
+[8] Martin, John H. (1989). “Neuroanatomy: Text and
+
+Atlas.” 4ed.
+
+[9] Menze, B. H. (2013). “The Multimodal Brain Tumor
+Image Segmentation Benchmark (BRATS).” IEEE
+Transactions on Medical Imaging 2014.
+
+[10] Ng, E.Y.K., et. al. (2012). “Human Eye Imaging and
+
+Modeling.”
+
+[11] Olga Russakovsky*, Jia Deng*, Hao Su, Jonathan
+Krause, Sanjeev Satheesh, Sean Ma, Zhiheng Huang,
+Andrej Karpathy, Aditya Khosla, Michael Bernstein,
+Alexander C. Berg and Li Fei-Fei. (* = equal con-
+tribution) ImageNet Large Scale Visual Recognition
+Challenge. IJCV, 2015.
+
+[12] Sørensen, T. (1948). “A method of establishing groups
+of equal amplitude in plant sociology based on simi-
+larity of species and its application to analyses of the
+vegetation on Danish commons.” Kongelige Danske
+Videnskabernes Selskab 5 (4): 1-34.
+
+6
+
+

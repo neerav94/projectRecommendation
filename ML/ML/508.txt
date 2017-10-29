@@ -1,0 +1,1182 @@
+Object Detection for Semantic SLAM using Convolution Neural
+
+Networks
+
+Saumitro Dasgupta
+
+saumitro@cs.stanford.edu
+
+1
+
+Introduction
+
+Conventional SLAM (Simultaneous Localization and
+Mapping) systems typically provide odometry esti-
+mates and point-cloud reconstructions of an unknown
+environment. While these outputs can be used for
+tasks such as autonomous navigation, they lack any
+semantic information. Our project implements a mod-
+ular object detection framework that can be used in
+conjunction with a SLAM engine to generate semantic
+scene reconstructions.
+
+A semantically-augmented reconstruction has many
+
+potential applications. Some examples include:
+
+• Discriminating between pedestrians, cars, bicy-
+
+clists, etc in an autonomous driving system.
+
+• Loop-closure detection based on object-level de-
+
+scriptors.
+
+• Smart household bots that can retrieve objects
+
+given a natural language command.
+
+An object detection algorithm designed for these
+applications has a unique set of requirements and
+constraints. The algorithm needs to be reasonably
+fast - on the order of a few seconds at most. Since the
+camera is in motion, the detections must be consis-
+tent from multiple viewpoints. It needs to be robust
+to artifacts such as motion blur and rolling shutter.
+Currently, no existing object detection algorithm ad-
+dresses all of these concerns. Therefore, our algorithm
+is designed with these requirements in mind.
+
+image classiﬁcation and detection tasks [1]. This has
+motivated us to use it as the core of our detection
+framework.
+
+2 Datasets
+
+We used a number of datasets for developing our
+framework. While the primary dataset used in the
+ﬁnal system was based on ImageNet, the rest were
+used for evaluating the “Network in Network” CNN
+architecture described in section 4.
+
+2.1 ImageNet
+
+The ImageNet dataset [2] is a collection of over 15
+million labeled RGB images organized according to
+the nouns in the WordNet hierarchy. Currently, each
+node has on an average about 500 images. The as-
+sociated ImageNet Large Scale Visual Recognition
+Challenge (ILSVRC) has been used for benchmarking
+image classiﬁcation algorithms since 2010.
+
+2.2 CIFAR-10
+
+The CIFAR-10 dataset [3] is a labeled subsets of the
+80 million tiny images dataset collected by Krizhevsky,
+Nair, and Hinton. It consists of 60,000 32x32 color
+images in 10 classes. There are 6,000 images per class.
+The ﬁrst 50,000 images were used for training, while
+the remaining 10,000 comprised the validation set.
+
+In the past couple of years, convolutional neural
+networks have experienced a resurgence in popular-
+ity. They currently dominate the benchmarks for
+
+We pre-processed the data by performing ZCA
+whitening and global contrast normalization as de-
+scribed in [3].
+
+1
+
+Object Detection for Semantic SLAM using Convolution Neural
+
+Networks
+
+Saumitro Dasgupta
+
+saumitro@cs.stanford.edu
+
+1
+
+Introduction
+
+Conventional SLAM (Simultaneous Localization and
+Mapping) systems typically provide odometry esti-
+mates and point-cloud reconstructions of an unknown
+environment. While these outputs can be used for
+tasks such as autonomous navigation, they lack any
+semantic information. Our project implements a mod-
+ular object detection framework that can be used in
+conjunction with a SLAM engine to generate semantic
+scene reconstructions.
+
+A semantically-augmented reconstruction has many
+
+potential applications. Some examples include:
+
+• Discriminating between pedestrians, cars, bicy-
+
+clists, etc in an autonomous driving system.
+
+• Loop-closure detection based on object-level de-
+
+scriptors.
+
+• Smart household bots that can retrieve objects
+
+given a natural language command.
+
+An object detection algorithm designed for these
+applications has a unique set of requirements and
+constraints. The algorithm needs to be reasonably
+fast - on the order of a few seconds at most. Since the
+camera is in motion, the detections must be consis-
+tent from multiple viewpoints. It needs to be robust
+to artifacts such as motion blur and rolling shutter.
+Currently, no existing object detection algorithm ad-
+dresses all of these concerns. Therefore, our algorithm
+is designed with these requirements in mind.
+
+image classiﬁcation and detection tasks [1]. This has
+motivated us to use it as the core of our detection
+framework.
+
+2 Datasets
+
+We used a number of datasets for developing our
+framework. While the primary dataset used in the
+ﬁnal system was based on ImageNet, the rest were
+used for evaluating the “Network in Network” CNN
+architecture described in section 4.
+
+2.1 ImageNet
+
+The ImageNet dataset [2] is a collection of over 15
+million labeled RGB images organized according to
+the nouns in the WordNet hierarchy. Currently, each
+node has on an average about 500 images. The as-
+sociated ImageNet Large Scale Visual Recognition
+Challenge (ILSVRC) has been used for benchmarking
+image classiﬁcation algorithms since 2010.
+
+2.2 CIFAR-10
+
+The CIFAR-10 dataset [3] is a labeled subsets of the
+80 million tiny images dataset collected by Krizhevsky,
+Nair, and Hinton. It consists of 60,000 32x32 color
+images in 10 classes. There are 6,000 images per class.
+The ﬁrst 50,000 images were used for training, while
+the remaining 10,000 comprised the validation set.
+
+In the past couple of years, convolutional neural
+networks have experienced a resurgence in popular-
+ity. They currently dominate the benchmarks for
+
+We pre-processed the data by performing ZCA
+whitening and global contrast normalization as de-
+scribed in [3].
+
+1
+
+Figure 1: The object detection pipeline. The compo-
+nents shown above are described in section 3.
+
+Figure 2: Visualization of the parameters from the
+ﬁrst convolutional layer of the network, along with
+the corresponding (partial) feature map.
+
+2.3 MNIST
+
+MNIST [4] is a collection of 28x28 grayscale images
+of handwritten digits. It consists of 60,000 training
+and 10,000 test examples.
+
+3 Framework Architecture
+
+Figure 1 provides an architectural overview of our
+framework. Broadly, the components involved are:
+
+1. Object Proposals: Since our network is trained
+on whole image classiﬁcation, we need a way to
+re-purpose it for localized detections. One possi-
+bility would be to use a sliding-window approach
+at multiple scales. However, this would be too
+slow for our purposes. Therefore, we adopt the
+object proposal paradigm where an algorithm
+is used to generate bounding boxes for regions
+likely to contain an object.
+In particular, we
+use the recently published “Edge Box” proposal
+algorithm by Zitnick and Doll´ar [5]. It provides
+state-of-the-art level proposals while still being
+extremely fast.
+
+2. Feature Extraction: For each proposal, we use
+a convolutional neural network trained on the Im-
+ageNet dataset to extract features from an RGB
+image. Figure 2 visualizes the parameters learned
+by the network along with the corresponding fea-
+ture map. The model is described in greater
+detail in section 4.
+
+3. Classiﬁcation: The extracted features are fed
+to a softmax regression classiﬁer to obtain the
+detection label.
+
+4. Non-Maximum Suppression: Object propos-
+als tend to yield multiple overlapping detections
+for a given object. We address this here by ﬁrst
+ﬁnding bounding boxes with an IoU (intersection
+over union) score greater than a certain thresh-
+old (0.3 in our current implementation), and then
+retaining only the one with the highest score.
+
+The resulting detections are then propagated to the
+SLAM engine for eventual localization in 3D. We
+exclude a discussion of the SLAM subsystem as it is
+beyond the scope of this report. For one potential
+approach, we refer interested readers to [6].
+
+4 Model
+
+A wide range of methods have been proposed for
+both object classiﬁcation and detection. Up until
+recently, the dominant methods involved the use of
+hand-crafted feature descriptors such as SIFT and
+LBPs. However, in 2012, Krizhevsky et. al. [8] demon-
+strated that convolutional neural networks (CNNs)
+can be eﬃciently trained for achieving superior image
+classiﬁcation results in the ImageNet Large Scale Vi-
+sual Recognition Challenge. Since then, CNNs have
+dominated the image classiﬁcation benchmarks. More
+recently, Girshick et. al [9] have shown state-of-the-
+
+2
+
+ImageFeature Extraction(NiN CNN)Softmax RegressionObject ProposalsDetectionCandidatesNon Maximum SuppressionFinalDetectionsObject Detection for Semantic SLAM using Convolution Neural
+
+Networks
+
+Saumitro Dasgupta
+
+saumitro@cs.stanford.edu
+
+1
+
+Introduction
+
+Conventional SLAM (Simultaneous Localization and
+Mapping) systems typically provide odometry esti-
+mates and point-cloud reconstructions of an unknown
+environment. While these outputs can be used for
+tasks such as autonomous navigation, they lack any
+semantic information. Our project implements a mod-
+ular object detection framework that can be used in
+conjunction with a SLAM engine to generate semantic
+scene reconstructions.
+
+A semantically-augmented reconstruction has many
+
+potential applications. Some examples include:
+
+• Discriminating between pedestrians, cars, bicy-
+
+clists, etc in an autonomous driving system.
+
+• Loop-closure detection based on object-level de-
+
+scriptors.
+
+• Smart household bots that can retrieve objects
+
+given a natural language command.
+
+An object detection algorithm designed for these
+applications has a unique set of requirements and
+constraints. The algorithm needs to be reasonably
+fast - on the order of a few seconds at most. Since the
+camera is in motion, the detections must be consis-
+tent from multiple viewpoints. It needs to be robust
+to artifacts such as motion blur and rolling shutter.
+Currently, no existing object detection algorithm ad-
+dresses all of these concerns. Therefore, our algorithm
+is designed with these requirements in mind.
+
+image classiﬁcation and detection tasks [1]. This has
+motivated us to use it as the core of our detection
+framework.
+
+2 Datasets
+
+We used a number of datasets for developing our
+framework. While the primary dataset used in the
+ﬁnal system was based on ImageNet, the rest were
+used for evaluating the “Network in Network” CNN
+architecture described in section 4.
+
+2.1 ImageNet
+
+The ImageNet dataset [2] is a collection of over 15
+million labeled RGB images organized according to
+the nouns in the WordNet hierarchy. Currently, each
+node has on an average about 500 images. The as-
+sociated ImageNet Large Scale Visual Recognition
+Challenge (ILSVRC) has been used for benchmarking
+image classiﬁcation algorithms since 2010.
+
+2.2 CIFAR-10
+
+The CIFAR-10 dataset [3] is a labeled subsets of the
+80 million tiny images dataset collected by Krizhevsky,
+Nair, and Hinton. It consists of 60,000 32x32 color
+images in 10 classes. There are 6,000 images per class.
+The ﬁrst 50,000 images were used for training, while
+the remaining 10,000 comprised the validation set.
+
+In the past couple of years, convolutional neural
+networks have experienced a resurgence in popular-
+ity. They currently dominate the benchmarks for
+
+We pre-processed the data by performing ZCA
+whitening and global contrast normalization as de-
+scribed in [3].
+
+1
+
+Figure 1: The object detection pipeline. The compo-
+nents shown above are described in section 3.
+
+Figure 2: Visualization of the parameters from the
+ﬁrst convolutional layer of the network, along with
+the corresponding (partial) feature map.
+
+2.3 MNIST
+
+MNIST [4] is a collection of 28x28 grayscale images
+of handwritten digits. It consists of 60,000 training
+and 10,000 test examples.
+
+3 Framework Architecture
+
+Figure 1 provides an architectural overview of our
+framework. Broadly, the components involved are:
+
+1. Object Proposals: Since our network is trained
+on whole image classiﬁcation, we need a way to
+re-purpose it for localized detections. One possi-
+bility would be to use a sliding-window approach
+at multiple scales. However, this would be too
+slow for our purposes. Therefore, we adopt the
+object proposal paradigm where an algorithm
+is used to generate bounding boxes for regions
+likely to contain an object.
+In particular, we
+use the recently published “Edge Box” proposal
+algorithm by Zitnick and Doll´ar [5]. It provides
+state-of-the-art level proposals while still being
+extremely fast.
+
+2. Feature Extraction: For each proposal, we use
+a convolutional neural network trained on the Im-
+ageNet dataset to extract features from an RGB
+image. Figure 2 visualizes the parameters learned
+by the network along with the corresponding fea-
+ture map. The model is described in greater
+detail in section 4.
+
+3. Classiﬁcation: The extracted features are fed
+to a softmax regression classiﬁer to obtain the
+detection label.
+
+4. Non-Maximum Suppression: Object propos-
+als tend to yield multiple overlapping detections
+for a given object. We address this here by ﬁrst
+ﬁnding bounding boxes with an IoU (intersection
+over union) score greater than a certain thresh-
+old (0.3 in our current implementation), and then
+retaining only the one with the highest score.
+
+The resulting detections are then propagated to the
+SLAM engine for eventual localization in 3D. We
+exclude a discussion of the SLAM subsystem as it is
+beyond the scope of this report. For one potential
+approach, we refer interested readers to [6].
+
+4 Model
+
+A wide range of methods have been proposed for
+both object classiﬁcation and detection. Up until
+recently, the dominant methods involved the use of
+hand-crafted feature descriptors such as SIFT and
+LBPs. However, in 2012, Krizhevsky et. al. [8] demon-
+strated that convolutional neural networks (CNNs)
+can be eﬃciently trained for achieving superior image
+classiﬁcation results in the ImageNet Large Scale Vi-
+sual Recognition Challenge. Since then, CNNs have
+dominated the image classiﬁcation benchmarks. More
+recently, Girshick et. al [9] have shown state-of-the-
+
+2
+
+ImageFeature Extraction(NiN CNN)Softmax RegressionObject ProposalsDetectionCandidatesNon Maximum SuppressionFinalDetectionsFigure 3: The “Network in Network” architecture, as described in [7]
+
+art results for object detection using CNN features
+coupled with linear SVM classiﬁers. Therefore, we
+chose CNNs as the core of our detection framework.
+Our implementation uses the novel “Network in
+Network” (NiN) architecture proposed by Lin et. al
+in [7]. The convolutional layer in the commonly used
+architecture described by Krizhevsky et. al.
+in [8]
+(often referred to as “AlexNet”) uses a linear ﬁlter.
+The NiN model replaces this with a multi-layer per-
+ceptron (MLP) which slides over the input to produce
+the feature map. As MLPs are universal function
+approximators, this tweak results in greater abstrac-
+tion capabilities over local patches. In addition, the
+fully connected layers present in AlexNet are replaced
+by global average pooling. This greatly reduces the
+number of parameters and makes it less prone to
+overﬁtting.
+
+5 Results
+
+5.1 Network in Network Benchmarks
+
+Table 1 summarizes the test errors obtained by the
+“Network in Network” architecture on the datasets
+described in section 2. On the CIFAR-10 dataset it
+achieves state-of-the-art results, achieving a test error
+of 10.03 % without image augmentation. Interestingly,
+a NiN trained on ImageNet produces a much smaller
+
+Dataset
+
+Test Error
+
+CIFAR-10
+MNIST
+ImageNet
+
+10.03%
+0.47%
+59.36 %
+
+Table 1: Benchmark results for the “Network in Net-
+work” architecture
+
+Figure 4: The training and test errors for the ﬁrst
+3500 stochastic gradient descent iterations on the
+CIFAR-10 dataset.
+
+3
+
+ . . . . . . . . . . . . . . . . . . . . .....Iterations0500100015002000250030003500Error0.10.20.30.40.50.60.70.80.91Training ErrorTest ErrorObject Detection for Semantic SLAM using Convolution Neural
+
+Networks
+
+Saumitro Dasgupta
+
+saumitro@cs.stanford.edu
+
+1
+
+Introduction
+
+Conventional SLAM (Simultaneous Localization and
+Mapping) systems typically provide odometry esti-
+mates and point-cloud reconstructions of an unknown
+environment. While these outputs can be used for
+tasks such as autonomous navigation, they lack any
+semantic information. Our project implements a mod-
+ular object detection framework that can be used in
+conjunction with a SLAM engine to generate semantic
+scene reconstructions.
+
+A semantically-augmented reconstruction has many
+
+potential applications. Some examples include:
+
+• Discriminating between pedestrians, cars, bicy-
+
+clists, etc in an autonomous driving system.
+
+• Loop-closure detection based on object-level de-
+
+scriptors.
+
+• Smart household bots that can retrieve objects
+
+given a natural language command.
+
+An object detection algorithm designed for these
+applications has a unique set of requirements and
+constraints. The algorithm needs to be reasonably
+fast - on the order of a few seconds at most. Since the
+camera is in motion, the detections must be consis-
+tent from multiple viewpoints. It needs to be robust
+to artifacts such as motion blur and rolling shutter.
+Currently, no existing object detection algorithm ad-
+dresses all of these concerns. Therefore, our algorithm
+is designed with these requirements in mind.
+
+image classiﬁcation and detection tasks [1]. This has
+motivated us to use it as the core of our detection
+framework.
+
+2 Datasets
+
+We used a number of datasets for developing our
+framework. While the primary dataset used in the
+ﬁnal system was based on ImageNet, the rest were
+used for evaluating the “Network in Network” CNN
+architecture described in section 4.
+
+2.1 ImageNet
+
+The ImageNet dataset [2] is a collection of over 15
+million labeled RGB images organized according to
+the nouns in the WordNet hierarchy. Currently, each
+node has on an average about 500 images. The as-
+sociated ImageNet Large Scale Visual Recognition
+Challenge (ILSVRC) has been used for benchmarking
+image classiﬁcation algorithms since 2010.
+
+2.2 CIFAR-10
+
+The CIFAR-10 dataset [3] is a labeled subsets of the
+80 million tiny images dataset collected by Krizhevsky,
+Nair, and Hinton. It consists of 60,000 32x32 color
+images in 10 classes. There are 6,000 images per class.
+The ﬁrst 50,000 images were used for training, while
+the remaining 10,000 comprised the validation set.
+
+In the past couple of years, convolutional neural
+networks have experienced a resurgence in popular-
+ity. They currently dominate the benchmarks for
+
+We pre-processed the data by performing ZCA
+whitening and global contrast normalization as de-
+scribed in [3].
+
+1
+
+Figure 1: The object detection pipeline. The compo-
+nents shown above are described in section 3.
+
+Figure 2: Visualization of the parameters from the
+ﬁrst convolutional layer of the network, along with
+the corresponding (partial) feature map.
+
+2.3 MNIST
+
+MNIST [4] is a collection of 28x28 grayscale images
+of handwritten digits. It consists of 60,000 training
+and 10,000 test examples.
+
+3 Framework Architecture
+
+Figure 1 provides an architectural overview of our
+framework. Broadly, the components involved are:
+
+1. Object Proposals: Since our network is trained
+on whole image classiﬁcation, we need a way to
+re-purpose it for localized detections. One possi-
+bility would be to use a sliding-window approach
+at multiple scales. However, this would be too
+slow for our purposes. Therefore, we adopt the
+object proposal paradigm where an algorithm
+is used to generate bounding boxes for regions
+likely to contain an object.
+In particular, we
+use the recently published “Edge Box” proposal
+algorithm by Zitnick and Doll´ar [5]. It provides
+state-of-the-art level proposals while still being
+extremely fast.
+
+2. Feature Extraction: For each proposal, we use
+a convolutional neural network trained on the Im-
+ageNet dataset to extract features from an RGB
+image. Figure 2 visualizes the parameters learned
+by the network along with the corresponding fea-
+ture map. The model is described in greater
+detail in section 4.
+
+3. Classiﬁcation: The extracted features are fed
+to a softmax regression classiﬁer to obtain the
+detection label.
+
+4. Non-Maximum Suppression: Object propos-
+als tend to yield multiple overlapping detections
+for a given object. We address this here by ﬁrst
+ﬁnding bounding boxes with an IoU (intersection
+over union) score greater than a certain thresh-
+old (0.3 in our current implementation), and then
+retaining only the one with the highest score.
+
+The resulting detections are then propagated to the
+SLAM engine for eventual localization in 3D. We
+exclude a discussion of the SLAM subsystem as it is
+beyond the scope of this report. For one potential
+approach, we refer interested readers to [6].
+
+4 Model
+
+A wide range of methods have been proposed for
+both object classiﬁcation and detection. Up until
+recently, the dominant methods involved the use of
+hand-crafted feature descriptors such as SIFT and
+LBPs. However, in 2012, Krizhevsky et. al. [8] demon-
+strated that convolutional neural networks (CNNs)
+can be eﬃciently trained for achieving superior image
+classiﬁcation results in the ImageNet Large Scale Vi-
+sual Recognition Challenge. Since then, CNNs have
+dominated the image classiﬁcation benchmarks. More
+recently, Girshick et. al [9] have shown state-of-the-
+
+2
+
+ImageFeature Extraction(NiN CNN)Softmax RegressionObject ProposalsDetectionCandidatesNon Maximum SuppressionFinalDetectionsFigure 3: The “Network in Network” architecture, as described in [7]
+
+art results for object detection using CNN features
+coupled with linear SVM classiﬁers. Therefore, we
+chose CNNs as the core of our detection framework.
+Our implementation uses the novel “Network in
+Network” (NiN) architecture proposed by Lin et. al
+in [7]. The convolutional layer in the commonly used
+architecture described by Krizhevsky et. al.
+in [8]
+(often referred to as “AlexNet”) uses a linear ﬁlter.
+The NiN model replaces this with a multi-layer per-
+ceptron (MLP) which slides over the input to produce
+the feature map. As MLPs are universal function
+approximators, this tweak results in greater abstrac-
+tion capabilities over local patches. In addition, the
+fully connected layers present in AlexNet are replaced
+by global average pooling. This greatly reduces the
+number of parameters and makes it less prone to
+overﬁtting.
+
+5 Results
+
+5.1 Network in Network Benchmarks
+
+Table 1 summarizes the test errors obtained by the
+“Network in Network” architecture on the datasets
+described in section 2. On the CIFAR-10 dataset it
+achieves state-of-the-art results, achieving a test error
+of 10.03 % without image augmentation. Interestingly,
+a NiN trained on ImageNet produces a much smaller
+
+Dataset
+
+Test Error
+
+CIFAR-10
+MNIST
+ImageNet
+
+10.03%
+0.47%
+59.36 %
+
+Table 1: Benchmark results for the “Network in Net-
+work” architecture
+
+Figure 4: The training and test errors for the ﬁrst
+3500 stochastic gradient descent iterations on the
+CIFAR-10 dataset.
+
+3
+
+ . . . . . . . . . . . . . . . . . . . . .....Iterations0500100015002000250030003500Error0.10.20.30.40.50.60.70.80.91Training ErrorTest Errorparameter set when compared to AlexNet (29MB vs
+230MB when using Caﬀe’s format [10]) while perform-
+ing slightly better.
+
+same hardware. Furthermore, as our current imple-
+mentation hasn’t been optimized for speed yet, we
+expect its performance to improve.
+
+5.2 Object Detections
+
+Figure 5 shows a series of frames taken from the
+TUM RGB-D SLAM dataset [11]. These frames cap-
+ture roughly the same scene from multiple viewpoints.
+Each of them has been annotated with the bounding
+box of the detected object along with its label. The de-
+tector only considers 50 of the 1000 ImageNet classes
+for this sequence. Excluded classes include those that
+are unlikely to be stationary and/or encountered in
+an oﬃce environment (such as wildlife).
+
+7 Conclusion
+
+In this report we described our implementation of
+an object detection framework that is suitable for
+use with a SLAM engine. We demonstrated that
+the Network in Network CNN model trained on the
+ImageNet dataset, coupled with Edge Box object pro-
+posals and non-maximum suppression provides fast
+and reasonably accurate results.
+
+6 Discussion
+
+6.1 Precision and Recall
+
+The classiﬁcation score threshold signiﬁcantly aﬀects
+precision and recall. An aggressive threshold reduces
+false positives but also suppresses true positives. On
+the other hand, a conservative threshold leads to
+improved recall, but reduced precision. In ﬁgure 5,
+the bottle in the ﬁrst frame is an example of a false
+positive, whereas in the third frame, the power drill is
+missed. Our current implementation uses a hardcoded
+hand-tuned threshold for the TUM dataset. However,
+a dynamically-adjusted threshold would be a more
+robust solution.
+
+Another signiﬁcant hyper-parameter is the number
+of object proposals. We found that increasing the
+number of Edge Box proposals beyond 300 does not
+signiﬁcantly inﬂuence the quality of the results. For
+comparison, R-CNN [9] generates 2000 proposals using
+the selective search algorithm.
+
+6.2 Speed
+
+8 Future Work
+
+The current implementation operates solely on 2D
+images. However, given that its designed to be used
+within a SLAM framework, it would be interesting
+to incorporate depth information into the detection
+process. Recent work along these lines have shown
+promising results [12].
+
+We also plan to ﬁne-tune tune our implementation
+using large datasets intended speciﬁcally for object
+detection, such as the ones published for the PASCAL
+VOC. We expect this to improve our detection per-
+formance, as well as provide an objective benchmark
+for evaluating our system.
+
+Yet another interesting addition would be to in-
+corporate bounding box regression, as described by
+Girshick et. al. in [9].
+
+References
+
+[1] Olga Russakovsky et al. Imagenet large scale
+arXiv preprint
+
+visual recognition challenge.
+arXiv:1409.0575, 2014.
+
+The current implementation takes about 4.6 seconds
+to fully process a single frame. A component-wise
+breakdown is given in table 2. For comparison, R-
+CNN, the current state-of-the-art CNN based object
+detection algorithm [9] takes about 30 seconds on the
+
+[2] Jia Deng, Wei Dong, Richard Socher, Li-Jia Li,
+Kai Li, and Li Fei-Fei. Imagenet: A large-scale
+hierarchical image database. In Computer Vi-
+sion and Pattern Recognition, 2009. CVPR 2009.
+IEEE Conference on, pages 248–255. IEEE, 2009.
+
+4
+
+Object Detection for Semantic SLAM using Convolution Neural
+
+Networks
+
+Saumitro Dasgupta
+
+saumitro@cs.stanford.edu
+
+1
+
+Introduction
+
+Conventional SLAM (Simultaneous Localization and
+Mapping) systems typically provide odometry esti-
+mates and point-cloud reconstructions of an unknown
+environment. While these outputs can be used for
+tasks such as autonomous navigation, they lack any
+semantic information. Our project implements a mod-
+ular object detection framework that can be used in
+conjunction with a SLAM engine to generate semantic
+scene reconstructions.
+
+A semantically-augmented reconstruction has many
+
+potential applications. Some examples include:
+
+• Discriminating between pedestrians, cars, bicy-
+
+clists, etc in an autonomous driving system.
+
+• Loop-closure detection based on object-level de-
+
+scriptors.
+
+• Smart household bots that can retrieve objects
+
+given a natural language command.
+
+An object detection algorithm designed for these
+applications has a unique set of requirements and
+constraints. The algorithm needs to be reasonably
+fast - on the order of a few seconds at most. Since the
+camera is in motion, the detections must be consis-
+tent from multiple viewpoints. It needs to be robust
+to artifacts such as motion blur and rolling shutter.
+Currently, no existing object detection algorithm ad-
+dresses all of these concerns. Therefore, our algorithm
+is designed with these requirements in mind.
+
+image classiﬁcation and detection tasks [1]. This has
+motivated us to use it as the core of our detection
+framework.
+
+2 Datasets
+
+We used a number of datasets for developing our
+framework. While the primary dataset used in the
+ﬁnal system was based on ImageNet, the rest were
+used for evaluating the “Network in Network” CNN
+architecture described in section 4.
+
+2.1 ImageNet
+
+The ImageNet dataset [2] is a collection of over 15
+million labeled RGB images organized according to
+the nouns in the WordNet hierarchy. Currently, each
+node has on an average about 500 images. The as-
+sociated ImageNet Large Scale Visual Recognition
+Challenge (ILSVRC) has been used for benchmarking
+image classiﬁcation algorithms since 2010.
+
+2.2 CIFAR-10
+
+The CIFAR-10 dataset [3] is a labeled subsets of the
+80 million tiny images dataset collected by Krizhevsky,
+Nair, and Hinton. It consists of 60,000 32x32 color
+images in 10 classes. There are 6,000 images per class.
+The ﬁrst 50,000 images were used for training, while
+the remaining 10,000 comprised the validation set.
+
+In the past couple of years, convolutional neural
+networks have experienced a resurgence in popular-
+ity. They currently dominate the benchmarks for
+
+We pre-processed the data by performing ZCA
+whitening and global contrast normalization as de-
+scribed in [3].
+
+1
+
+Figure 1: The object detection pipeline. The compo-
+nents shown above are described in section 3.
+
+Figure 2: Visualization of the parameters from the
+ﬁrst convolutional layer of the network, along with
+the corresponding (partial) feature map.
+
+2.3 MNIST
+
+MNIST [4] is a collection of 28x28 grayscale images
+of handwritten digits. It consists of 60,000 training
+and 10,000 test examples.
+
+3 Framework Architecture
+
+Figure 1 provides an architectural overview of our
+framework. Broadly, the components involved are:
+
+1. Object Proposals: Since our network is trained
+on whole image classiﬁcation, we need a way to
+re-purpose it for localized detections. One possi-
+bility would be to use a sliding-window approach
+at multiple scales. However, this would be too
+slow for our purposes. Therefore, we adopt the
+object proposal paradigm where an algorithm
+is used to generate bounding boxes for regions
+likely to contain an object.
+In particular, we
+use the recently published “Edge Box” proposal
+algorithm by Zitnick and Doll´ar [5]. It provides
+state-of-the-art level proposals while still being
+extremely fast.
+
+2. Feature Extraction: For each proposal, we use
+a convolutional neural network trained on the Im-
+ageNet dataset to extract features from an RGB
+image. Figure 2 visualizes the parameters learned
+by the network along with the corresponding fea-
+ture map. The model is described in greater
+detail in section 4.
+
+3. Classiﬁcation: The extracted features are fed
+to a softmax regression classiﬁer to obtain the
+detection label.
+
+4. Non-Maximum Suppression: Object propos-
+als tend to yield multiple overlapping detections
+for a given object. We address this here by ﬁrst
+ﬁnding bounding boxes with an IoU (intersection
+over union) score greater than a certain thresh-
+old (0.3 in our current implementation), and then
+retaining only the one with the highest score.
+
+The resulting detections are then propagated to the
+SLAM engine for eventual localization in 3D. We
+exclude a discussion of the SLAM subsystem as it is
+beyond the scope of this report. For one potential
+approach, we refer interested readers to [6].
+
+4 Model
+
+A wide range of methods have been proposed for
+both object classiﬁcation and detection. Up until
+recently, the dominant methods involved the use of
+hand-crafted feature descriptors such as SIFT and
+LBPs. However, in 2012, Krizhevsky et. al. [8] demon-
+strated that convolutional neural networks (CNNs)
+can be eﬃciently trained for achieving superior image
+classiﬁcation results in the ImageNet Large Scale Vi-
+sual Recognition Challenge. Since then, CNNs have
+dominated the image classiﬁcation benchmarks. More
+recently, Girshick et. al [9] have shown state-of-the-
+
+2
+
+ImageFeature Extraction(NiN CNN)Softmax RegressionObject ProposalsDetectionCandidatesNon Maximum SuppressionFinalDetectionsFigure 3: The “Network in Network” architecture, as described in [7]
+
+art results for object detection using CNN features
+coupled with linear SVM classiﬁers. Therefore, we
+chose CNNs as the core of our detection framework.
+Our implementation uses the novel “Network in
+Network” (NiN) architecture proposed by Lin et. al
+in [7]. The convolutional layer in the commonly used
+architecture described by Krizhevsky et. al.
+in [8]
+(often referred to as “AlexNet”) uses a linear ﬁlter.
+The NiN model replaces this with a multi-layer per-
+ceptron (MLP) which slides over the input to produce
+the feature map. As MLPs are universal function
+approximators, this tweak results in greater abstrac-
+tion capabilities over local patches. In addition, the
+fully connected layers present in AlexNet are replaced
+by global average pooling. This greatly reduces the
+number of parameters and makes it less prone to
+overﬁtting.
+
+5 Results
+
+5.1 Network in Network Benchmarks
+
+Table 1 summarizes the test errors obtained by the
+“Network in Network” architecture on the datasets
+described in section 2. On the CIFAR-10 dataset it
+achieves state-of-the-art results, achieving a test error
+of 10.03 % without image augmentation. Interestingly,
+a NiN trained on ImageNet produces a much smaller
+
+Dataset
+
+Test Error
+
+CIFAR-10
+MNIST
+ImageNet
+
+10.03%
+0.47%
+59.36 %
+
+Table 1: Benchmark results for the “Network in Net-
+work” architecture
+
+Figure 4: The training and test errors for the ﬁrst
+3500 stochastic gradient descent iterations on the
+CIFAR-10 dataset.
+
+3
+
+ . . . . . . . . . . . . . . . . . . . . .....Iterations0500100015002000250030003500Error0.10.20.30.40.50.60.70.80.91Training ErrorTest Errorparameter set when compared to AlexNet (29MB vs
+230MB when using Caﬀe’s format [10]) while perform-
+ing slightly better.
+
+same hardware. Furthermore, as our current imple-
+mentation hasn’t been optimized for speed yet, we
+expect its performance to improve.
+
+5.2 Object Detections
+
+Figure 5 shows a series of frames taken from the
+TUM RGB-D SLAM dataset [11]. These frames cap-
+ture roughly the same scene from multiple viewpoints.
+Each of them has been annotated with the bounding
+box of the detected object along with its label. The de-
+tector only considers 50 of the 1000 ImageNet classes
+for this sequence. Excluded classes include those that
+are unlikely to be stationary and/or encountered in
+an oﬃce environment (such as wildlife).
+
+7 Conclusion
+
+In this report we described our implementation of
+an object detection framework that is suitable for
+use with a SLAM engine. We demonstrated that
+the Network in Network CNN model trained on the
+ImageNet dataset, coupled with Edge Box object pro-
+posals and non-maximum suppression provides fast
+and reasonably accurate results.
+
+6 Discussion
+
+6.1 Precision and Recall
+
+The classiﬁcation score threshold signiﬁcantly aﬀects
+precision and recall. An aggressive threshold reduces
+false positives but also suppresses true positives. On
+the other hand, a conservative threshold leads to
+improved recall, but reduced precision. In ﬁgure 5,
+the bottle in the ﬁrst frame is an example of a false
+positive, whereas in the third frame, the power drill is
+missed. Our current implementation uses a hardcoded
+hand-tuned threshold for the TUM dataset. However,
+a dynamically-adjusted threshold would be a more
+robust solution.
+
+Another signiﬁcant hyper-parameter is the number
+of object proposals. We found that increasing the
+number of Edge Box proposals beyond 300 does not
+signiﬁcantly inﬂuence the quality of the results. For
+comparison, R-CNN [9] generates 2000 proposals using
+the selective search algorithm.
+
+6.2 Speed
+
+8 Future Work
+
+The current implementation operates solely on 2D
+images. However, given that its designed to be used
+within a SLAM framework, it would be interesting
+to incorporate depth information into the detection
+process. Recent work along these lines have shown
+promising results [12].
+
+We also plan to ﬁne-tune tune our implementation
+using large datasets intended speciﬁcally for object
+detection, such as the ones published for the PASCAL
+VOC. We expect this to improve our detection per-
+formance, as well as provide an objective benchmark
+for evaluating our system.
+
+Yet another interesting addition would be to in-
+corporate bounding box regression, as described by
+Girshick et. al. in [9].
+
+References
+
+[1] Olga Russakovsky et al. Imagenet large scale
+arXiv preprint
+
+visual recognition challenge.
+arXiv:1409.0575, 2014.
+
+The current implementation takes about 4.6 seconds
+to fully process a single frame. A component-wise
+breakdown is given in table 2. For comparison, R-
+CNN, the current state-of-the-art CNN based object
+detection algorithm [9] takes about 30 seconds on the
+
+[2] Jia Deng, Wei Dong, Richard Socher, Li-Jia Li,
+Kai Li, and Li Fei-Fei. Imagenet: A large-scale
+hierarchical image database. In Computer Vi-
+sion and Pattern Recognition, 2009. CVPR 2009.
+IEEE Conference on, pages 248–255. IEEE, 2009.
+
+4
+
+Figure 5: Frames from the TUM RGB-D SLAM dataset annotated with object detections.
+
+Stage
+
+Time (seconds)
+
+Object Proposals
+Feature Extraction + Classiﬁcation
+Non-Maximum Suppression
+
+Total
+
+1.8
+2.8
+0.007
+
+r
+
+Table 2: Time required by each component in the pipeline. The time quoted for “Object Proposals” include
+Edge Box proposal generation (which takes less than a second), as well as the overhead introduced by our
+implementation’s (un-optimized) cropping algorithm.
+
+[3] Alex Krizhevsky and Geoﬀrey Hinton. Learning
+multiple layers of features from tiny images. Com-
+puter Science Department, University of Toronto,
+Tech. Rep, 2009.
+
+[4] Yann LeCun and Corinna Cortes. The mnist
+
+database of handwritten digits, 1998.
+
+[5] C Lawrence Zitnick and Piotr Doll´ar. Edge
+boxes: Locating object proposals from edges. In
+Computer Vision–ECCV 2014, pages 391–405.
+Springer, 2014.
+
+[6] J¨org St¨uckler, Benedikt Waldvogel, Hannes
+Schulz, and Sven Behnke. Dense real-time map-
+ping of object-class semantics from rgb-d video.
+Journal of Real-Time Image Processing, pages
+1–11, 2014.
+
+[7] Min Lin, Qiang Chen, and Shuicheng Yan. Net-
+work in network. arXiv preprint arXiv:1312.4400,
+2013.
+
+[8] Alex Krizhevsky, Ilya Sutskever, and Geoﬀrey E
+Hinton. Imagenet classiﬁcation with deep convo-
+lutional neural networks. In Advances in neural
+
+information processing systems, pages 1097–1105,
+2012.
+
+[9] Ross Girshick, Jeﬀ Donahue, Trevor Darrell, and
+Jitendra Malik. Rich feature hierarchies for accu-
+rate object detection and semantic segmentation.
+In Computer Vision and Pattern Recognition,
+2014.
+
+[10] Yangqing Jia et al. Caﬀe: Convolutional architec-
+ture for fast feature embedding. In Proceedings
+of the ACM International Conference on Multi-
+media, pages 675–678. ACM, 2014.
+
+[11] J¨urgen Sturm, St´ephane Magnenat, Nikolas
+Engelhard, Fran¸cois Pomerleau, Francis Colas,
+W Burgard, D Cremers, and R Siegwart. To-
+wards a benchmark for rgb-d slam evaluation. In
+RSS, volume 2, page 3, 2011.
+
+[12] Saurabh Gupta, Ross Girshick, Pablo Arbel´aez,
+and Jitendra Malik. Learning rich features from
+rgb-d images for object detection and segmen-
+tation. In Computer Vision–ECCV 2014, pages
+345–360. Springer, 2014.
+
+5
+
+

@@ -1,0 +1,1726 @@
+Localization Through Wireless Access Point Channel State Information 
+
+Alexander Dewing, Robert Sun, Xiaonan Tong 
+
+adewing@stanford.edu ; robsun@stanford.edu ; xiaonan@stanford.edu 
+
+ Thursday, 10 Dec. 15 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+1. Abstract 
+
+ 
+
+We propose and implement a way of estimating 
+
+distance from Wi-Fi access points as a method of indoor 
+localization. In contrast to many other solutions, the 
+proposed method is software-only and works with current 
+widespread technology, and can be implemented on 
+current smartphones without silicon modifications. Our 
+method utilizes machine learning to produce a relatively 
+low root mean squared error of 1.27 meters, training on 
+data collected between 2m and 15m away from the 
+wireless AP.  
+
+2. Introduction 
+
+GPS is widely accepted as a standard of effective and 
+
+accurate positioning. However, GPS requires signal 
+acquisition from multiple satellites, a complication 
+anywhere inside structures or underground. As our need 
+for navigation systems grow, accurate indoor localization 
+becomes increasingly valuable and necessary. 
+
+We propose an infrastructure-free method of 
+
+triangulating local position in 3D space through predicting 
+direct-path distances to multiple Wi-Fi access points. We 
+differentiate our system from other localization 
+methodologies by its straightforwardness and 
+generalizability, while still attaining a fairly accurate 
+result. Our system uses metrics that are exposed by Wi-Fi 
+chipsets as part of normal operation and do not require any 
+hardware changes, nor changes in router-software. Our 
+technique readily works with 2.4GHz 802.11n routers. 
+ 
+
+3. Background Information 
+
+3.1. Intricacies of Wi-Fi localization 
+
+Wi-Fi transmits using Orthogonal Frequency 
+
+Division Multiplexing (OFDM), meaning that it 
+broadcasts on several narrowly separated subcarriers at the 
+same time to increase data rate. Each subcarrier is 
+synchronized at the beginning of a frame, thus the phase 
+angle between the subcarriers encodes time of flight data 
+for this packet. Furthermore, each subcarrier is measured 
+with an additional phase angle on each antenna due to the 
+spatial layout of the antenna array. At the receiver, the 
+
+ 
+
+client can recombine the various signal characteristics 
+from multiple antennas and gain information about the 
+channel. The end result is a complex number describing 
+the signal received per antenna per subcarrier. 
+Collectively, this data is known as Channel State 
+Information (CSI). We will analyze further our data 
+format in section 4.2. 
+
+ 
+Radio signals in the gigahertz range are prone to 
+
+reflecting off of walls and other surfaces. This introduces 
+complications to our estimation of the direct-path by 
+creating a multi-path system. Due to the effect of multi-
+path interference, as well as normal signal attenuation, the 
+received signal will be a convolution of the original signal 
+with the wireless channel’s properties. See Figure 1. 
+
+Figure 1 Multipath and Signal Propagation, shown with one 
+transmitter TX and two antennas RX1,2. Sometimes a signal 
+could even destructively interfere on RX1, but can be 
+reconstructed through RX2.1 
+
+ 
+
+The 802.11n Wi-Fi specification transmits in the 
+
+2.4GHz ISM band, using 11 overlapping channels in the 
+US and up to 14 elsewhere in the world. Each channel 
+defines 64 subcarrier frequencies, each separated by 
+302.5kHz. Through complex signal processing on the CSI, 
+it is possible to obtain a vector of possible AoAs (Angles 
+of Attack) and isolate the direct path (the Euclidean line to 
+the router)2.  
+
+ 
+The signal processing can be summarized as this: the 
+
+phase angle between subcarriers encodes Time of Flight 
+(ToF), and the phase angle between antennas encodes 
+AoA. By obtaining AoA and ToF of the direct path, one 
+
+                                                             
+1 Image from Multipath and Diversity – Cisco 
+2 SpotFi: Decimeter Level Localization using 
+Wi-Fi. (Kotare et al. 2015) 
+
+ 
+
+Localization Through Wireless Access Point Channel State Information 
+
+Alexander Dewing, Robert Sun, Xiaonan Tong 
+
+adewing@stanford.edu ; robsun@stanford.edu ; xiaonan@stanford.edu 
+
+ Thursday, 10 Dec. 15 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+1. Abstract 
+
+ 
+
+We propose and implement a way of estimating 
+
+distance from Wi-Fi access points as a method of indoor 
+localization. In contrast to many other solutions, the 
+proposed method is software-only and works with current 
+widespread technology, and can be implemented on 
+current smartphones without silicon modifications. Our 
+method utilizes machine learning to produce a relatively 
+low root mean squared error of 1.27 meters, training on 
+data collected between 2m and 15m away from the 
+wireless AP.  
+
+2. Introduction 
+
+GPS is widely accepted as a standard of effective and 
+
+accurate positioning. However, GPS requires signal 
+acquisition from multiple satellites, a complication 
+anywhere inside structures or underground. As our need 
+for navigation systems grow, accurate indoor localization 
+becomes increasingly valuable and necessary. 
+
+We propose an infrastructure-free method of 
+
+triangulating local position in 3D space through predicting 
+direct-path distances to multiple Wi-Fi access points. We 
+differentiate our system from other localization 
+methodologies by its straightforwardness and 
+generalizability, while still attaining a fairly accurate 
+result. Our system uses metrics that are exposed by Wi-Fi 
+chipsets as part of normal operation and do not require any 
+hardware changes, nor changes in router-software. Our 
+technique readily works with 2.4GHz 802.11n routers. 
+ 
+
+3. Background Information 
+
+3.1. Intricacies of Wi-Fi localization 
+
+Wi-Fi transmits using Orthogonal Frequency 
+
+Division Multiplexing (OFDM), meaning that it 
+broadcasts on several narrowly separated subcarriers at the 
+same time to increase data rate. Each subcarrier is 
+synchronized at the beginning of a frame, thus the phase 
+angle between the subcarriers encodes time of flight data 
+for this packet. Furthermore, each subcarrier is measured 
+with an additional phase angle on each antenna due to the 
+spatial layout of the antenna array. At the receiver, the 
+
+ 
+
+client can recombine the various signal characteristics 
+from multiple antennas and gain information about the 
+channel. The end result is a complex number describing 
+the signal received per antenna per subcarrier. 
+Collectively, this data is known as Channel State 
+Information (CSI). We will analyze further our data 
+format in section 4.2. 
+
+ 
+Radio signals in the gigahertz range are prone to 
+
+reflecting off of walls and other surfaces. This introduces 
+complications to our estimation of the direct-path by 
+creating a multi-path system. Due to the effect of multi-
+path interference, as well as normal signal attenuation, the 
+received signal will be a convolution of the original signal 
+with the wireless channel’s properties. See Figure 1. 
+
+Figure 1 Multipath and Signal Propagation, shown with one 
+transmitter TX and two antennas RX1,2. Sometimes a signal 
+could even destructively interfere on RX1, but can be 
+reconstructed through RX2.1 
+
+ 
+
+The 802.11n Wi-Fi specification transmits in the 
+
+2.4GHz ISM band, using 11 overlapping channels in the 
+US and up to 14 elsewhere in the world. Each channel 
+defines 64 subcarrier frequencies, each separated by 
+302.5kHz. Through complex signal processing on the CSI, 
+it is possible to obtain a vector of possible AoAs (Angles 
+of Attack) and isolate the direct path (the Euclidean line to 
+the router)2.  
+
+ 
+The signal processing can be summarized as this: the 
+
+phase angle between subcarriers encodes Time of Flight 
+(ToF), and the phase angle between antennas encodes 
+AoA. By obtaining AoA and ToF of the direct path, one 
+
+                                                             
+1 Image from Multipath and Diversity – Cisco 
+2 SpotFi: Decimeter Level Localization using 
+Wi-Fi. (Kotare et al. 2015) 
+
+ 
+
+ 
+
+4.2. Data Collecting 
+
+can reverse calculate the exact distance to the receiver 
+using only one router. See Figure 2. 
+
+Incident Signal!
+
+d.sin!!
+
+ 
+
+d!
+
+2!
+
+M
+
+. . .!
+
+Antenna Array !
+1!
+
+Figure 2. AoA (𝜃) is influenced due to the distance 𝑑∗𝑠𝑖𝑛𝜃  
+
+Figure 2: Uniform linear array consisting of M antennas: For AoA
+that the signal travels between antennas. 
+of ✓, the target’s signal travels an additional distance of d⇥ sin(✓)
+to the second antenna in the array compared to the ﬁrst antenna.
+ 
+This results in an additional phase of  2⇡⇥d⇥ sin(✓)⇥f /c at the
+However, for our purposes, we wanted to see if 
+second antenna.
+machine learning techniques can predict direct path 
+let’s say there are L propagation paths. Let’s assume that
+distance from the input dataset of CSI. We assume that 
+M antennas are arranged in a uniform linear array, similar
+given an accurate direct-path distance, a user could easily 
+to systems like ArrayTrack [1, 23], with equal spacing of
+triangulate his/her position using a database of known-AP 
+d between consecutive antennas. For the kth propagation
+locations, possibly using SLAM techniques. Thereby, we 
+path, let ✓k denote the angle at which the signal is arriving
+simplify the problem to estimating the distance of the 
+with respect to the normal of the antenna array of the AP.
+client from the router based on the Channel State 
+Let  k denote the complex attenuation experienced at the
+Information data. 
+ﬁrst antenna in the array by the signal traveling along kth
+4. Data Collection 
+propagation path. The attenuation at the second antenna in
+the array is the same except for an additional phase shift ac-
+cumulated due to additional distance traveled by the signal,
+4.1. Hardware Setup 
+and depends on d and ✓k.
+
+Each propagation path, therefore, has two parameters as-
+We are using an unsecured Wi-Fi Router running 
+sociated in this model: the attenuation and the AoA. As de-
+DD-WRT. The laptop collecting information is an HP 
+scribed in Sec. 2 of ArrayTrack [1] and illustrated in Fig. 2,
+Pavilion DV6, modified with an Intel Wireless Link 5300 
+relative to the ﬁrst antenna in the array, the phase shift intro-
+Wi-Fi card. This laptop will run the Linux CSI Tool to 
+duced at mth antenna is  2⇥⇡⇥d⇥(m  1)⇥ sin(✓k)⇥f /c
+extract channel measurements. As the IWL5300 is a 
+where c is the speed of light and f is the frequency of the
+multiple-input multiple-output (MIMO) chipset with 3 
+transmitted signal. For simplicity of representation, let us
+antennas (Figure 3), we obtain CSI for 3 antennas and 30 
+denote the complex exponential of these introduced phase
+subcarriers each. 
+shifts as a function of the AoA of the propagation path,
+
+ 
+
+ (✓k) = e j2⇡⇥d⇥ sin(✓k)⇥f /c.
+
+(1)
+
+So the AoA can be thought of as introducing a vector of
+phase shifts at the antenna array (or the sensor array). The re-
+sulting vector of received signals due to kth path can be writ-
+ten as ~a(✓k) k, where  k is the complex attenuation along
+the path experienced at the ﬁrst antenna in the array and
+
+~a(✓k) = [1  (✓k) . . .  (✓k)(M 1)]>
+
+(2)
+
+using the notation introduced in Eq. 1. This vector ~a(✓k) is
+also known as the steering vector. We have as many steering
+vectors as propagation paths and the overall steering matrix
+A is deﬁned as A = [~a(✓1),
+. . . , ~a(✓L)] , and has dimen-
+Figure 3 IWL5300 
+sions M ⇥ L .
+tained by superposition of signals due to all the paths, i.e.,
+
+The received signal vector ~x at the antenna array is ob-
+
+ 
+
+~x = A~ ,
+
+(3)
+
+where ~  = [ 1 . . .  L]> is the vector of complex attenua-
+tions along L paths and A is the steering matrix. In OFDM,
+
+ 
+
+⋱
+
+(5)
+
+As specified by the Linux CSI tool, each channel 
+
+ 
+We moved the laptop unit around the Wi-Fi router in 
+
+data is transmitted over multiple subcarriers each with dif-
+matrix entry is a complex number, with signed 8-bit 
+ferent frequency. We can write an equation similar to Eq.
+resolution each for the real and imaginary parts. Each 
+3 for each of the subcarriers, and the steering matrix A does
+complex number encodes the gain and phase of the signal 
+not change because the steering vectors do not change across
+path between a single transmit-receive antenna pair3. 
+closely spaced subcarriers [7, 8]. Let us construct measure-
+ment matrix X by using received signal vectors for each of
+the N subcarriers using Eq. 4 below,
+concentric circles with radii of 2m to 15m in 1 meter 
+intervals. Simultaneously, we downloaded a large file to 
+X = [~x1 . . . ~xN ] = A[~ 1 . . . ~ N ] = AF,
+(4)
+ensure a steady stream of packets, and generated multipath 
+where vectors ~x1, . . . , ~xN denote the received signal vec-
+interference by occluding the source and adding 
+tors at each of the subcarriers (correspond to ~x in Eq. 3
+reflections. To do so, we placed reflective planes 
+obtained for different subcarriers), ~ 1, . . . , ~ N are the vec-
+(aluminum foil makes for extremely radio-reflective 
+tors of complex attenuations of the propagation paths at each
+surfaces) and moved them continuously. This is not an 
+of the subcarriers (correspond to ~  in Eq. 3 obtained for dif-
+entirely rigorous data collection solution, but it does 
+guarantee high levels of multi-path reflections. 
+ferent subcarriers), and F is the matrix of complex attenua-
+tions/gains.
+
+ 
+For each of the approximately 1 million gathered 
+
+The overall attenuation and phase shift introduced by the
+packets, we separate complex data into gain and phase in a 
+channel/environment measured at each subcarrier of each
+matrix, by combining information from 3 antennas on 
+antenna is reported by the WiFi card as a CSI value (it’s a
+each of the 30 accessible subcarriers 
+complex number). For example, Eq. 5 represents a nominal
+CSI matrix reported by Intel 5300 WiFi card for 3 antennas
+and 30 subcarriers,
+
+𝑐𝑠𝑖()*+,-= 𝑔0,0,𝜃0,0 ⋯ 𝑔0,34,𝜃0,34
+⋮
+⋮
+𝑔3,0,𝜃3,0 ⋯ 𝑔3,34,𝜃3,34
+𝑐𝑠𝑖(= 𝑔0,0,𝜃0,0,…,𝑔3,34,𝜃3,34  
+CSI matrix =24
+
+ 
+We chose Kernel Ridge Regression for its speed 
+
+where csim,n is the CSI value for mth antenna and nth sub-
+5. Modeling 
+carrier. Thus, the CSI value at each subcarrier is nothing but
+For initial review and the first milestone. We decided 
+the received signal due to all the paths. Hence, for the AoA
+to train our preliminary data using Gaussian Kernel Ridge 
+model described above, the received signal vector ~x in Eq. 3
+Regression with Leave-One-Out Cross Validation. We 
+corresponds to one of the columns in the CSI matrix and the
+wrote our tool in C++ program using the DLIB library 
+measurement matrix X corresponds to the CSI matrix itself.
+(version 18.18). 
+The MUSIC algorithm is working with this information
+and relationship; the WiFi card measurements provide us the
+matrix X and the goal is to estimate the matrix A, from which
+advantage against Support Vector Regression when 
+it is easy to deduce the AoAs. The key idea behind the MU-
+trained on large datasets. Also, we chose a linear-type 
+SIC algorithm is that the eigenvectors of XXH correspond-
+regression since we believed linear combinations of the 
+ing to the eigenvalue zero, if they exist, are orthogonal to the
+steering vectors in A1. We omit the mathematical derivation
+data (scaled differences between phases and magnitudes) 
+created a meaningful result related to the direct-path time 
+for brevity but refer to the broad literature discussing these
+of flight since it seemed that delta phase created AoA and 
+ideas [7]. The MUSIC algorithm at a basic level proceeds
+ﬁrst by computing the eigenvectors of XXH corresponding
+ToF info. We opted to use a Gaussian kernel in hope of 
+finding Taylor series approximations of the trigonometric 
+to the eigenvalue zero, and then computing the steering vec-
+functions required in transforming the raw phase and 
+tors orthogonal to these vectors. Once the steering vectors
+are found, the AoAs can be deduced easily.
+magnitude data into our desired output. 
+
+ 
+csi1,30
+csi2,30
+csi3,30
+
+and store it as an array s.t: 
+
+csi1,1
+csi2,1
+csi3,1
+
+csi1,2
+csi2,2
+csi3,2
+
+35 ,
+
+. . .
+. . .
+. . .
+
+ 
+As each adjacent packet is subject to very similar 
+
+The key problem however is the assumption that there are
+eigenvectors of XXH that correspond to eigenvalue zero and
+that they are orthogonal to the steering vectors. Prior work
+spatial constraints, we concatenated packet CSI data, 
+has shown that it’s true only if the steering matrix A is skinny
+hoping to improve performance. Initially, we used 10 
+and full rank matrix and the matrix F is fat and full rank ma-
+                                                             
+trix [7].
+In other words the number of rows of steering
+3 Linux 802.11 CSI Tool 
+matrix A should be larger than the number of columns in
+http://dhalperi.github.io/linux-80211n-csitool/ 
+the matrix. Physically this maps to saying that the number
+of sensors (in this case antennas) has to be larger than the
+number of propagation paths. For example, if we have ra-
+dios with only three antennas and environment where there
+1XH is conjugate transpose of X.
+
+Localization Through Wireless Access Point Channel State Information 
+
+Alexander Dewing, Robert Sun, Xiaonan Tong 
+
+adewing@stanford.edu ; robsun@stanford.edu ; xiaonan@stanford.edu 
+
+ Thursday, 10 Dec. 15 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+1. Abstract 
+
+ 
+
+We propose and implement a way of estimating 
+
+distance from Wi-Fi access points as a method of indoor 
+localization. In contrast to many other solutions, the 
+proposed method is software-only and works with current 
+widespread technology, and can be implemented on 
+current smartphones without silicon modifications. Our 
+method utilizes machine learning to produce a relatively 
+low root mean squared error of 1.27 meters, training on 
+data collected between 2m and 15m away from the 
+wireless AP.  
+
+2. Introduction 
+
+GPS is widely accepted as a standard of effective and 
+
+accurate positioning. However, GPS requires signal 
+acquisition from multiple satellites, a complication 
+anywhere inside structures or underground. As our need 
+for navigation systems grow, accurate indoor localization 
+becomes increasingly valuable and necessary. 
+
+We propose an infrastructure-free method of 
+
+triangulating local position in 3D space through predicting 
+direct-path distances to multiple Wi-Fi access points. We 
+differentiate our system from other localization 
+methodologies by its straightforwardness and 
+generalizability, while still attaining a fairly accurate 
+result. Our system uses metrics that are exposed by Wi-Fi 
+chipsets as part of normal operation and do not require any 
+hardware changes, nor changes in router-software. Our 
+technique readily works with 2.4GHz 802.11n routers. 
+ 
+
+3. Background Information 
+
+3.1. Intricacies of Wi-Fi localization 
+
+Wi-Fi transmits using Orthogonal Frequency 
+
+Division Multiplexing (OFDM), meaning that it 
+broadcasts on several narrowly separated subcarriers at the 
+same time to increase data rate. Each subcarrier is 
+synchronized at the beginning of a frame, thus the phase 
+angle between the subcarriers encodes time of flight data 
+for this packet. Furthermore, each subcarrier is measured 
+with an additional phase angle on each antenna due to the 
+spatial layout of the antenna array. At the receiver, the 
+
+ 
+
+client can recombine the various signal characteristics 
+from multiple antennas and gain information about the 
+channel. The end result is a complex number describing 
+the signal received per antenna per subcarrier. 
+Collectively, this data is known as Channel State 
+Information (CSI). We will analyze further our data 
+format in section 4.2. 
+
+ 
+Radio signals in the gigahertz range are prone to 
+
+reflecting off of walls and other surfaces. This introduces 
+complications to our estimation of the direct-path by 
+creating a multi-path system. Due to the effect of multi-
+path interference, as well as normal signal attenuation, the 
+received signal will be a convolution of the original signal 
+with the wireless channel’s properties. See Figure 1. 
+
+Figure 1 Multipath and Signal Propagation, shown with one 
+transmitter TX and two antennas RX1,2. Sometimes a signal 
+could even destructively interfere on RX1, but can be 
+reconstructed through RX2.1 
+
+ 
+
+The 802.11n Wi-Fi specification transmits in the 
+
+2.4GHz ISM band, using 11 overlapping channels in the 
+US and up to 14 elsewhere in the world. Each channel 
+defines 64 subcarrier frequencies, each separated by 
+302.5kHz. Through complex signal processing on the CSI, 
+it is possible to obtain a vector of possible AoAs (Angles 
+of Attack) and isolate the direct path (the Euclidean line to 
+the router)2.  
+
+ 
+The signal processing can be summarized as this: the 
+
+phase angle between subcarriers encodes Time of Flight 
+(ToF), and the phase angle between antennas encodes 
+AoA. By obtaining AoA and ToF of the direct path, one 
+
+                                                             
+1 Image from Multipath and Diversity – Cisco 
+2 SpotFi: Decimeter Level Localization using 
+Wi-Fi. (Kotare et al. 2015) 
+
+ 
+
+ 
+
+4.2. Data Collecting 
+
+can reverse calculate the exact distance to the receiver 
+using only one router. See Figure 2. 
+
+Incident Signal!
+
+d.sin!!
+
+ 
+
+d!
+
+2!
+
+M
+
+. . .!
+
+Antenna Array !
+1!
+
+Figure 2. AoA (𝜃) is influenced due to the distance 𝑑∗𝑠𝑖𝑛𝜃  
+
+Figure 2: Uniform linear array consisting of M antennas: For AoA
+that the signal travels between antennas. 
+of ✓, the target’s signal travels an additional distance of d⇥ sin(✓)
+to the second antenna in the array compared to the ﬁrst antenna.
+ 
+This results in an additional phase of  2⇡⇥d⇥ sin(✓)⇥f /c at the
+However, for our purposes, we wanted to see if 
+second antenna.
+machine learning techniques can predict direct path 
+let’s say there are L propagation paths. Let’s assume that
+distance from the input dataset of CSI. We assume that 
+M antennas are arranged in a uniform linear array, similar
+given an accurate direct-path distance, a user could easily 
+to systems like ArrayTrack [1, 23], with equal spacing of
+triangulate his/her position using a database of known-AP 
+d between consecutive antennas. For the kth propagation
+locations, possibly using SLAM techniques. Thereby, we 
+path, let ✓k denote the angle at which the signal is arriving
+simplify the problem to estimating the distance of the 
+with respect to the normal of the antenna array of the AP.
+client from the router based on the Channel State 
+Let  k denote the complex attenuation experienced at the
+Information data. 
+ﬁrst antenna in the array by the signal traveling along kth
+4. Data Collection 
+propagation path. The attenuation at the second antenna in
+the array is the same except for an additional phase shift ac-
+cumulated due to additional distance traveled by the signal,
+4.1. Hardware Setup 
+and depends on d and ✓k.
+
+Each propagation path, therefore, has two parameters as-
+We are using an unsecured Wi-Fi Router running 
+sociated in this model: the attenuation and the AoA. As de-
+DD-WRT. The laptop collecting information is an HP 
+scribed in Sec. 2 of ArrayTrack [1] and illustrated in Fig. 2,
+Pavilion DV6, modified with an Intel Wireless Link 5300 
+relative to the ﬁrst antenna in the array, the phase shift intro-
+Wi-Fi card. This laptop will run the Linux CSI Tool to 
+duced at mth antenna is  2⇥⇡⇥d⇥(m  1)⇥ sin(✓k)⇥f /c
+extract channel measurements. As the IWL5300 is a 
+where c is the speed of light and f is the frequency of the
+multiple-input multiple-output (MIMO) chipset with 3 
+transmitted signal. For simplicity of representation, let us
+antennas (Figure 3), we obtain CSI for 3 antennas and 30 
+denote the complex exponential of these introduced phase
+subcarriers each. 
+shifts as a function of the AoA of the propagation path,
+
+ 
+
+ (✓k) = e j2⇡⇥d⇥ sin(✓k)⇥f /c.
+
+(1)
+
+So the AoA can be thought of as introducing a vector of
+phase shifts at the antenna array (or the sensor array). The re-
+sulting vector of received signals due to kth path can be writ-
+ten as ~a(✓k) k, where  k is the complex attenuation along
+the path experienced at the ﬁrst antenna in the array and
+
+~a(✓k) = [1  (✓k) . . .  (✓k)(M 1)]>
+
+(2)
+
+using the notation introduced in Eq. 1. This vector ~a(✓k) is
+also known as the steering vector. We have as many steering
+vectors as propagation paths and the overall steering matrix
+A is deﬁned as A = [~a(✓1),
+. . . , ~a(✓L)] , and has dimen-
+Figure 3 IWL5300 
+sions M ⇥ L .
+tained by superposition of signals due to all the paths, i.e.,
+
+The received signal vector ~x at the antenna array is ob-
+
+ 
+
+~x = A~ ,
+
+(3)
+
+where ~  = [ 1 . . .  L]> is the vector of complex attenua-
+tions along L paths and A is the steering matrix. In OFDM,
+
+ 
+
+⋱
+
+(5)
+
+As specified by the Linux CSI tool, each channel 
+
+ 
+We moved the laptop unit around the Wi-Fi router in 
+
+data is transmitted over multiple subcarriers each with dif-
+matrix entry is a complex number, with signed 8-bit 
+ferent frequency. We can write an equation similar to Eq.
+resolution each for the real and imaginary parts. Each 
+3 for each of the subcarriers, and the steering matrix A does
+complex number encodes the gain and phase of the signal 
+not change because the steering vectors do not change across
+path between a single transmit-receive antenna pair3. 
+closely spaced subcarriers [7, 8]. Let us construct measure-
+ment matrix X by using received signal vectors for each of
+the N subcarriers using Eq. 4 below,
+concentric circles with radii of 2m to 15m in 1 meter 
+intervals. Simultaneously, we downloaded a large file to 
+X = [~x1 . . . ~xN ] = A[~ 1 . . . ~ N ] = AF,
+(4)
+ensure a steady stream of packets, and generated multipath 
+where vectors ~x1, . . . , ~xN denote the received signal vec-
+interference by occluding the source and adding 
+tors at each of the subcarriers (correspond to ~x in Eq. 3
+reflections. To do so, we placed reflective planes 
+obtained for different subcarriers), ~ 1, . . . , ~ N are the vec-
+(aluminum foil makes for extremely radio-reflective 
+tors of complex attenuations of the propagation paths at each
+surfaces) and moved them continuously. This is not an 
+of the subcarriers (correspond to ~  in Eq. 3 obtained for dif-
+entirely rigorous data collection solution, but it does 
+guarantee high levels of multi-path reflections. 
+ferent subcarriers), and F is the matrix of complex attenua-
+tions/gains.
+
+ 
+For each of the approximately 1 million gathered 
+
+The overall attenuation and phase shift introduced by the
+packets, we separate complex data into gain and phase in a 
+channel/environment measured at each subcarrier of each
+matrix, by combining information from 3 antennas on 
+antenna is reported by the WiFi card as a CSI value (it’s a
+each of the 30 accessible subcarriers 
+complex number). For example, Eq. 5 represents a nominal
+CSI matrix reported by Intel 5300 WiFi card for 3 antennas
+and 30 subcarriers,
+
+𝑐𝑠𝑖()*+,-= 𝑔0,0,𝜃0,0 ⋯ 𝑔0,34,𝜃0,34
+⋮
+⋮
+𝑔3,0,𝜃3,0 ⋯ 𝑔3,34,𝜃3,34
+𝑐𝑠𝑖(= 𝑔0,0,𝜃0,0,…,𝑔3,34,𝜃3,34  
+CSI matrix =24
+
+ 
+We chose Kernel Ridge Regression for its speed 
+
+where csim,n is the CSI value for mth antenna and nth sub-
+5. Modeling 
+carrier. Thus, the CSI value at each subcarrier is nothing but
+For initial review and the first milestone. We decided 
+the received signal due to all the paths. Hence, for the AoA
+to train our preliminary data using Gaussian Kernel Ridge 
+model described above, the received signal vector ~x in Eq. 3
+Regression with Leave-One-Out Cross Validation. We 
+corresponds to one of the columns in the CSI matrix and the
+wrote our tool in C++ program using the DLIB library 
+measurement matrix X corresponds to the CSI matrix itself.
+(version 18.18). 
+The MUSIC algorithm is working with this information
+and relationship; the WiFi card measurements provide us the
+matrix X and the goal is to estimate the matrix A, from which
+advantage against Support Vector Regression when 
+it is easy to deduce the AoAs. The key idea behind the MU-
+trained on large datasets. Also, we chose a linear-type 
+SIC algorithm is that the eigenvectors of XXH correspond-
+regression since we believed linear combinations of the 
+ing to the eigenvalue zero, if they exist, are orthogonal to the
+steering vectors in A1. We omit the mathematical derivation
+data (scaled differences between phases and magnitudes) 
+created a meaningful result related to the direct-path time 
+for brevity but refer to the broad literature discussing these
+of flight since it seemed that delta phase created AoA and 
+ideas [7]. The MUSIC algorithm at a basic level proceeds
+ﬁrst by computing the eigenvectors of XXH corresponding
+ToF info. We opted to use a Gaussian kernel in hope of 
+finding Taylor series approximations of the trigonometric 
+to the eigenvalue zero, and then computing the steering vec-
+functions required in transforming the raw phase and 
+tors orthogonal to these vectors. Once the steering vectors
+are found, the AoAs can be deduced easily.
+magnitude data into our desired output. 
+
+ 
+csi1,30
+csi2,30
+csi3,30
+
+and store it as an array s.t: 
+
+csi1,1
+csi2,1
+csi3,1
+
+csi1,2
+csi2,2
+csi3,2
+
+35 ,
+
+. . .
+. . .
+. . .
+
+ 
+As each adjacent packet is subject to very similar 
+
+The key problem however is the assumption that there are
+eigenvectors of XXH that correspond to eigenvalue zero and
+that they are orthogonal to the steering vectors. Prior work
+spatial constraints, we concatenated packet CSI data, 
+has shown that it’s true only if the steering matrix A is skinny
+hoping to improve performance. Initially, we used 10 
+and full rank matrix and the matrix F is fat and full rank ma-
+                                                             
+trix [7].
+In other words the number of rows of steering
+3 Linux 802.11 CSI Tool 
+matrix A should be larger than the number of columns in
+http://dhalperi.github.io/linux-80211n-csitool/ 
+the matrix. Physically this maps to saying that the number
+of sensors (in this case antennas) has to be larger than the
+number of propagation paths. For example, if we have ra-
+dios with only three antennas and environment where there
+1XH is conjugate transpose of X.
+
+consecutively received packets per training/test pair since 
+we thought that would give enough information for the 
+multipath to be filtered out along with comparisons on a 
+per channel basis for the direct path ToF estimation. 
+ 
+Example: 
+
+𝑥= 𝑐𝑠𝑖(94,…,𝑐𝑠𝑖(9:	
+𝑦=9(𝑚𝑒𝑡𝑒𝑟𝑠) 
+
+ 
+
+ 
+Our initial dataset comprised of packets at 2-4m. The 
+
+KRR-LOOCV resulted in a mean squared error of 
+approximately 0.3 meters2 –indicating that a large portion 
+of the samples will be within 0.5 meters of their actual 
+distance from the router. 
+ 
+
+Given a proven methodology, we continued to 
+
+experiment with more data, various feature spaces, and 
+packet concatenations so as to best train the regression. 
+
+ 
+For our final results, all numbers are generated by 
+
+Kernel Ridge Regression, using K-Folds Cross Validation 
+where K=5. We computed the Gaussian (Radial Basis 
+Function) Kernel by randomly subsampling 2000 feature 
+vectors, and calculating inverse of their mean squared 
+
+𝑚𝑒𝑎𝑛𝑆𝑞𝑢𝑎𝑟𝑒𝑑𝐷𝑖𝑠𝑡𝑎𝑛𝑐𝑒𝑥0,…,𝑥K444  
+
+distance. 𝛾=
+
+1
+
+ 
+
+6. Results and Discussion 
+
+6.1. Expanded Dataset 
+
+Having proven that the distance estimation works 
+acceptably for 2-4m, we sought to expand the data set to 
+distances up to 15m. In this range we collected about 1 
+million packets, enough to generate at least 104 samples 
+per distance class. 
+ 
+
+However, using the same methodology as the 
+
+initial run, RMS increased to 2.78m, causing us to doubt 
+the generalizability of the earlier experiment. 
+
+6.2. Real and Imaginary Components 
+
+To reduce training time in the next test, after 
+
+verifying the limited effects, we reduced the training set 
+size by randomly selecting 4000 samples per distance 
+class. We also added real and imaginary components into 
+the feature vector alongside the magnitude and phase 
+angle interpretation. This gave us a total of 3600 features 
+per sample (3antennas*30subcarriers*10packets*4features). 
+ 
+
+Unfortunately, adding real and imaginary 
+
+components increased the distance estimation error to 
+3.1m. 
+
+ 
+
+Table 1. The method of generation, as well as the Root Mean Squared error of the KRR K-Folds Cross Validation. Subsequent uses of x 
+refer to recursively operating on the feature vector. 
+
+# 
+
+1 
+
+2 
+
+3 
+
+4 
+
+5 
+
+6 
+
+7 
+
+8 
+
+9 
+
+2m-15m 
+
+2m-15m, 4000 limit per distance class. 
+
+SAMPLE GENERATION METHOD 
+
+2m-15m, limit 4000 samples per distance class. 
+
+𝑥= 𝑐𝑠𝑖(0,…,𝑐𝑠𝑖(04 ,  
+𝑥= 𝑐𝑠𝑖(0,𝑐𝑠𝑖(0𝑢𝑛𝑝𝑟𝑜𝑐𝑒𝑠𝑠𝑒𝑑	,…,𝑐𝑠𝑖(04,𝑐𝑠𝑖(04𝑢𝑛𝑝𝑟𝑜𝑐𝑒𝑠𝑠𝑒𝑑   
+𝑥= 𝑐𝑠𝑖(0,…,𝑐𝑠𝑖(04 , 
+𝑥= 𝑐𝑠𝑖(0,𝑐𝑠𝑖(K,𝑥𝑥N , 
+𝑥= 𝑐𝑠𝑖(0,…,𝑐𝑠𝑖(3,𝑥𝑥N , 
+𝑥= 𝑐𝑠𝑖(0,…,𝑐𝑠𝑖(O,𝑥𝑥N , 
+𝑥= 𝑐𝑠𝑖(0, 𝑐𝑠𝑖(0𝑐𝑠𝑖(0N
+𝑥= 𝑐𝑠𝑖(0,…,𝑐𝑠𝑖(O, 𝑐𝑠𝑖(0𝑐𝑠𝑖(0N
+𝑥= 𝑐𝑠𝑖(0,…,𝑐𝑠𝑖(04, 𝑐𝑠𝑖(0𝑐𝑠𝑖(0N
+
+2m-15m, 4000 limit per distance class. 
+
+2m-15m, 4000 limit per distance class. 
+
+2m-15m, 4000 limit per distance class. 
+
+2m-15m, 4000 limit per distance class. 
+
+2m-15m, 4000 limit per distance class. 
+
+, 
+
+2m-15m, 4000 limit per distance class. 
+
+,…,(𝑐𝑠𝑖(O𝑐𝑠𝑖(ON) , 
+,…,(𝑐𝑠𝑖(04𝑐𝑠𝑖(04N ) , 
+
+DESC OF TRIAL 
+
+Expanded Dataset  
+
+Using Real and Imaginary 
+component as well as sampling 
+Experimenting with Gamma 
+value 
+Pairwise multiply 2 packets 
+
+Pairwise multiply 3 packets. 
+
+Pairwise multiply 4 packets. 
+
+Packet convolves with self. 
+
+Intra-packet pairwise multiply 4 
+packets. 
+Intra-packet pairwise multiply 
+10 packets. 
+
+RMS 
+ERROR (M) 
+2.78 
+
+3.1 
+
+See Figure 4. 
+
+1.27 
+
+1.3 
+
+1.66 
+
+2.1 
+
+2.13 
+
+2.56 
+
+ 
+
+Localization Through Wireless Access Point Channel State Information 
+
+Alexander Dewing, Robert Sun, Xiaonan Tong 
+
+adewing@stanford.edu ; robsun@stanford.edu ; xiaonan@stanford.edu 
+
+ Thursday, 10 Dec. 15 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+1. Abstract 
+
+ 
+
+We propose and implement a way of estimating 
+
+distance from Wi-Fi access points as a method of indoor 
+localization. In contrast to many other solutions, the 
+proposed method is software-only and works with current 
+widespread technology, and can be implemented on 
+current smartphones without silicon modifications. Our 
+method utilizes machine learning to produce a relatively 
+low root mean squared error of 1.27 meters, training on 
+data collected between 2m and 15m away from the 
+wireless AP.  
+
+2. Introduction 
+
+GPS is widely accepted as a standard of effective and 
+
+accurate positioning. However, GPS requires signal 
+acquisition from multiple satellites, a complication 
+anywhere inside structures or underground. As our need 
+for navigation systems grow, accurate indoor localization 
+becomes increasingly valuable and necessary. 
+
+We propose an infrastructure-free method of 
+
+triangulating local position in 3D space through predicting 
+direct-path distances to multiple Wi-Fi access points. We 
+differentiate our system from other localization 
+methodologies by its straightforwardness and 
+generalizability, while still attaining a fairly accurate 
+result. Our system uses metrics that are exposed by Wi-Fi 
+chipsets as part of normal operation and do not require any 
+hardware changes, nor changes in router-software. Our 
+technique readily works with 2.4GHz 802.11n routers. 
+ 
+
+3. Background Information 
+
+3.1. Intricacies of Wi-Fi localization 
+
+Wi-Fi transmits using Orthogonal Frequency 
+
+Division Multiplexing (OFDM), meaning that it 
+broadcasts on several narrowly separated subcarriers at the 
+same time to increase data rate. Each subcarrier is 
+synchronized at the beginning of a frame, thus the phase 
+angle between the subcarriers encodes time of flight data 
+for this packet. Furthermore, each subcarrier is measured 
+with an additional phase angle on each antenna due to the 
+spatial layout of the antenna array. At the receiver, the 
+
+ 
+
+client can recombine the various signal characteristics 
+from multiple antennas and gain information about the 
+channel. The end result is a complex number describing 
+the signal received per antenna per subcarrier. 
+Collectively, this data is known as Channel State 
+Information (CSI). We will analyze further our data 
+format in section 4.2. 
+
+ 
+Radio signals in the gigahertz range are prone to 
+
+reflecting off of walls and other surfaces. This introduces 
+complications to our estimation of the direct-path by 
+creating a multi-path system. Due to the effect of multi-
+path interference, as well as normal signal attenuation, the 
+received signal will be a convolution of the original signal 
+with the wireless channel’s properties. See Figure 1. 
+
+Figure 1 Multipath and Signal Propagation, shown with one 
+transmitter TX and two antennas RX1,2. Sometimes a signal 
+could even destructively interfere on RX1, but can be 
+reconstructed through RX2.1 
+
+ 
+
+The 802.11n Wi-Fi specification transmits in the 
+
+2.4GHz ISM band, using 11 overlapping channels in the 
+US and up to 14 elsewhere in the world. Each channel 
+defines 64 subcarrier frequencies, each separated by 
+302.5kHz. Through complex signal processing on the CSI, 
+it is possible to obtain a vector of possible AoAs (Angles 
+of Attack) and isolate the direct path (the Euclidean line to 
+the router)2.  
+
+ 
+The signal processing can be summarized as this: the 
+
+phase angle between subcarriers encodes Time of Flight 
+(ToF), and the phase angle between antennas encodes 
+AoA. By obtaining AoA and ToF of the direct path, one 
+
+                                                             
+1 Image from Multipath and Diversity – Cisco 
+2 SpotFi: Decimeter Level Localization using 
+Wi-Fi. (Kotare et al. 2015) 
+
+ 
+
+ 
+
+4.2. Data Collecting 
+
+can reverse calculate the exact distance to the receiver 
+using only one router. See Figure 2. 
+
+Incident Signal!
+
+d.sin!!
+
+ 
+
+d!
+
+2!
+
+M
+
+. . .!
+
+Antenna Array !
+1!
+
+Figure 2. AoA (𝜃) is influenced due to the distance 𝑑∗𝑠𝑖𝑛𝜃  
+
+Figure 2: Uniform linear array consisting of M antennas: For AoA
+that the signal travels between antennas. 
+of ✓, the target’s signal travels an additional distance of d⇥ sin(✓)
+to the second antenna in the array compared to the ﬁrst antenna.
+ 
+This results in an additional phase of  2⇡⇥d⇥ sin(✓)⇥f /c at the
+However, for our purposes, we wanted to see if 
+second antenna.
+machine learning techniques can predict direct path 
+let’s say there are L propagation paths. Let’s assume that
+distance from the input dataset of CSI. We assume that 
+M antennas are arranged in a uniform linear array, similar
+given an accurate direct-path distance, a user could easily 
+to systems like ArrayTrack [1, 23], with equal spacing of
+triangulate his/her position using a database of known-AP 
+d between consecutive antennas. For the kth propagation
+locations, possibly using SLAM techniques. Thereby, we 
+path, let ✓k denote the angle at which the signal is arriving
+simplify the problem to estimating the distance of the 
+with respect to the normal of the antenna array of the AP.
+client from the router based on the Channel State 
+Let  k denote the complex attenuation experienced at the
+Information data. 
+ﬁrst antenna in the array by the signal traveling along kth
+4. Data Collection 
+propagation path. The attenuation at the second antenna in
+the array is the same except for an additional phase shift ac-
+cumulated due to additional distance traveled by the signal,
+4.1. Hardware Setup 
+and depends on d and ✓k.
+
+Each propagation path, therefore, has two parameters as-
+We are using an unsecured Wi-Fi Router running 
+sociated in this model: the attenuation and the AoA. As de-
+DD-WRT. The laptop collecting information is an HP 
+scribed in Sec. 2 of ArrayTrack [1] and illustrated in Fig. 2,
+Pavilion DV6, modified with an Intel Wireless Link 5300 
+relative to the ﬁrst antenna in the array, the phase shift intro-
+Wi-Fi card. This laptop will run the Linux CSI Tool to 
+duced at mth antenna is  2⇥⇡⇥d⇥(m  1)⇥ sin(✓k)⇥f /c
+extract channel measurements. As the IWL5300 is a 
+where c is the speed of light and f is the frequency of the
+multiple-input multiple-output (MIMO) chipset with 3 
+transmitted signal. For simplicity of representation, let us
+antennas (Figure 3), we obtain CSI for 3 antennas and 30 
+denote the complex exponential of these introduced phase
+subcarriers each. 
+shifts as a function of the AoA of the propagation path,
+
+ 
+
+ (✓k) = e j2⇡⇥d⇥ sin(✓k)⇥f /c.
+
+(1)
+
+So the AoA can be thought of as introducing a vector of
+phase shifts at the antenna array (or the sensor array). The re-
+sulting vector of received signals due to kth path can be writ-
+ten as ~a(✓k) k, where  k is the complex attenuation along
+the path experienced at the ﬁrst antenna in the array and
+
+~a(✓k) = [1  (✓k) . . .  (✓k)(M 1)]>
+
+(2)
+
+using the notation introduced in Eq. 1. This vector ~a(✓k) is
+also known as the steering vector. We have as many steering
+vectors as propagation paths and the overall steering matrix
+A is deﬁned as A = [~a(✓1),
+. . . , ~a(✓L)] , and has dimen-
+Figure 3 IWL5300 
+sions M ⇥ L .
+tained by superposition of signals due to all the paths, i.e.,
+
+The received signal vector ~x at the antenna array is ob-
+
+ 
+
+~x = A~ ,
+
+(3)
+
+where ~  = [ 1 . . .  L]> is the vector of complex attenua-
+tions along L paths and A is the steering matrix. In OFDM,
+
+ 
+
+⋱
+
+(5)
+
+As specified by the Linux CSI tool, each channel 
+
+ 
+We moved the laptop unit around the Wi-Fi router in 
+
+data is transmitted over multiple subcarriers each with dif-
+matrix entry is a complex number, with signed 8-bit 
+ferent frequency. We can write an equation similar to Eq.
+resolution each for the real and imaginary parts. Each 
+3 for each of the subcarriers, and the steering matrix A does
+complex number encodes the gain and phase of the signal 
+not change because the steering vectors do not change across
+path between a single transmit-receive antenna pair3. 
+closely spaced subcarriers [7, 8]. Let us construct measure-
+ment matrix X by using received signal vectors for each of
+the N subcarriers using Eq. 4 below,
+concentric circles with radii of 2m to 15m in 1 meter 
+intervals. Simultaneously, we downloaded a large file to 
+X = [~x1 . . . ~xN ] = A[~ 1 . . . ~ N ] = AF,
+(4)
+ensure a steady stream of packets, and generated multipath 
+where vectors ~x1, . . . , ~xN denote the received signal vec-
+interference by occluding the source and adding 
+tors at each of the subcarriers (correspond to ~x in Eq. 3
+reflections. To do so, we placed reflective planes 
+obtained for different subcarriers), ~ 1, . . . , ~ N are the vec-
+(aluminum foil makes for extremely radio-reflective 
+tors of complex attenuations of the propagation paths at each
+surfaces) and moved them continuously. This is not an 
+of the subcarriers (correspond to ~  in Eq. 3 obtained for dif-
+entirely rigorous data collection solution, but it does 
+guarantee high levels of multi-path reflections. 
+ferent subcarriers), and F is the matrix of complex attenua-
+tions/gains.
+
+ 
+For each of the approximately 1 million gathered 
+
+The overall attenuation and phase shift introduced by the
+packets, we separate complex data into gain and phase in a 
+channel/environment measured at each subcarrier of each
+matrix, by combining information from 3 antennas on 
+antenna is reported by the WiFi card as a CSI value (it’s a
+each of the 30 accessible subcarriers 
+complex number). For example, Eq. 5 represents a nominal
+CSI matrix reported by Intel 5300 WiFi card for 3 antennas
+and 30 subcarriers,
+
+𝑐𝑠𝑖()*+,-= 𝑔0,0,𝜃0,0 ⋯ 𝑔0,34,𝜃0,34
+⋮
+⋮
+𝑔3,0,𝜃3,0 ⋯ 𝑔3,34,𝜃3,34
+𝑐𝑠𝑖(= 𝑔0,0,𝜃0,0,…,𝑔3,34,𝜃3,34  
+CSI matrix =24
+
+ 
+We chose Kernel Ridge Regression for its speed 
+
+where csim,n is the CSI value for mth antenna and nth sub-
+5. Modeling 
+carrier. Thus, the CSI value at each subcarrier is nothing but
+For initial review and the first milestone. We decided 
+the received signal due to all the paths. Hence, for the AoA
+to train our preliminary data using Gaussian Kernel Ridge 
+model described above, the received signal vector ~x in Eq. 3
+Regression with Leave-One-Out Cross Validation. We 
+corresponds to one of the columns in the CSI matrix and the
+wrote our tool in C++ program using the DLIB library 
+measurement matrix X corresponds to the CSI matrix itself.
+(version 18.18). 
+The MUSIC algorithm is working with this information
+and relationship; the WiFi card measurements provide us the
+matrix X and the goal is to estimate the matrix A, from which
+advantage against Support Vector Regression when 
+it is easy to deduce the AoAs. The key idea behind the MU-
+trained on large datasets. Also, we chose a linear-type 
+SIC algorithm is that the eigenvectors of XXH correspond-
+regression since we believed linear combinations of the 
+ing to the eigenvalue zero, if they exist, are orthogonal to the
+steering vectors in A1. We omit the mathematical derivation
+data (scaled differences between phases and magnitudes) 
+created a meaningful result related to the direct-path time 
+for brevity but refer to the broad literature discussing these
+of flight since it seemed that delta phase created AoA and 
+ideas [7]. The MUSIC algorithm at a basic level proceeds
+ﬁrst by computing the eigenvectors of XXH corresponding
+ToF info. We opted to use a Gaussian kernel in hope of 
+finding Taylor series approximations of the trigonometric 
+to the eigenvalue zero, and then computing the steering vec-
+functions required in transforming the raw phase and 
+tors orthogonal to these vectors. Once the steering vectors
+are found, the AoAs can be deduced easily.
+magnitude data into our desired output. 
+
+ 
+csi1,30
+csi2,30
+csi3,30
+
+and store it as an array s.t: 
+
+csi1,1
+csi2,1
+csi3,1
+
+csi1,2
+csi2,2
+csi3,2
+
+35 ,
+
+. . .
+. . .
+. . .
+
+ 
+As each adjacent packet is subject to very similar 
+
+The key problem however is the assumption that there are
+eigenvectors of XXH that correspond to eigenvalue zero and
+that they are orthogonal to the steering vectors. Prior work
+spatial constraints, we concatenated packet CSI data, 
+has shown that it’s true only if the steering matrix A is skinny
+hoping to improve performance. Initially, we used 10 
+and full rank matrix and the matrix F is fat and full rank ma-
+                                                             
+trix [7].
+In other words the number of rows of steering
+3 Linux 802.11 CSI Tool 
+matrix A should be larger than the number of columns in
+http://dhalperi.github.io/linux-80211n-csitool/ 
+the matrix. Physically this maps to saying that the number
+of sensors (in this case antennas) has to be larger than the
+number of propagation paths. For example, if we have ra-
+dios with only three antennas and environment where there
+1XH is conjugate transpose of X.
+
+consecutively received packets per training/test pair since 
+we thought that would give enough information for the 
+multipath to be filtered out along with comparisons on a 
+per channel basis for the direct path ToF estimation. 
+ 
+Example: 
+
+𝑥= 𝑐𝑠𝑖(94,…,𝑐𝑠𝑖(9:	
+𝑦=9(𝑚𝑒𝑡𝑒𝑟𝑠) 
+
+ 
+
+ 
+Our initial dataset comprised of packets at 2-4m. The 
+
+KRR-LOOCV resulted in a mean squared error of 
+approximately 0.3 meters2 –indicating that a large portion 
+of the samples will be within 0.5 meters of their actual 
+distance from the router. 
+ 
+
+Given a proven methodology, we continued to 
+
+experiment with more data, various feature spaces, and 
+packet concatenations so as to best train the regression. 
+
+ 
+For our final results, all numbers are generated by 
+
+Kernel Ridge Regression, using K-Folds Cross Validation 
+where K=5. We computed the Gaussian (Radial Basis 
+Function) Kernel by randomly subsampling 2000 feature 
+vectors, and calculating inverse of their mean squared 
+
+𝑚𝑒𝑎𝑛𝑆𝑞𝑢𝑎𝑟𝑒𝑑𝐷𝑖𝑠𝑡𝑎𝑛𝑐𝑒𝑥0,…,𝑥K444  
+
+distance. 𝛾=
+
+1
+
+ 
+
+6. Results and Discussion 
+
+6.1. Expanded Dataset 
+
+Having proven that the distance estimation works 
+acceptably for 2-4m, we sought to expand the data set to 
+distances up to 15m. In this range we collected about 1 
+million packets, enough to generate at least 104 samples 
+per distance class. 
+ 
+
+However, using the same methodology as the 
+
+initial run, RMS increased to 2.78m, causing us to doubt 
+the generalizability of the earlier experiment. 
+
+6.2. Real and Imaginary Components 
+
+To reduce training time in the next test, after 
+
+verifying the limited effects, we reduced the training set 
+size by randomly selecting 4000 samples per distance 
+class. We also added real and imaginary components into 
+the feature vector alongside the magnitude and phase 
+angle interpretation. This gave us a total of 3600 features 
+per sample (3antennas*30subcarriers*10packets*4features). 
+ 
+
+Unfortunately, adding real and imaginary 
+
+components increased the distance estimation error to 
+3.1m. 
+
+ 
+
+Table 1. The method of generation, as well as the Root Mean Squared error of the KRR K-Folds Cross Validation. Subsequent uses of x 
+refer to recursively operating on the feature vector. 
+
+# 
+
+1 
+
+2 
+
+3 
+
+4 
+
+5 
+
+6 
+
+7 
+
+8 
+
+9 
+
+2m-15m 
+
+2m-15m, 4000 limit per distance class. 
+
+SAMPLE GENERATION METHOD 
+
+2m-15m, limit 4000 samples per distance class. 
+
+𝑥= 𝑐𝑠𝑖(0,…,𝑐𝑠𝑖(04 ,  
+𝑥= 𝑐𝑠𝑖(0,𝑐𝑠𝑖(0𝑢𝑛𝑝𝑟𝑜𝑐𝑒𝑠𝑠𝑒𝑑	,…,𝑐𝑠𝑖(04,𝑐𝑠𝑖(04𝑢𝑛𝑝𝑟𝑜𝑐𝑒𝑠𝑠𝑒𝑑   
+𝑥= 𝑐𝑠𝑖(0,…,𝑐𝑠𝑖(04 , 
+𝑥= 𝑐𝑠𝑖(0,𝑐𝑠𝑖(K,𝑥𝑥N , 
+𝑥= 𝑐𝑠𝑖(0,…,𝑐𝑠𝑖(3,𝑥𝑥N , 
+𝑥= 𝑐𝑠𝑖(0,…,𝑐𝑠𝑖(O,𝑥𝑥N , 
+𝑥= 𝑐𝑠𝑖(0, 𝑐𝑠𝑖(0𝑐𝑠𝑖(0N
+𝑥= 𝑐𝑠𝑖(0,…,𝑐𝑠𝑖(O, 𝑐𝑠𝑖(0𝑐𝑠𝑖(0N
+𝑥= 𝑐𝑠𝑖(0,…,𝑐𝑠𝑖(04, 𝑐𝑠𝑖(0𝑐𝑠𝑖(0N
+
+2m-15m, 4000 limit per distance class. 
+
+2m-15m, 4000 limit per distance class. 
+
+2m-15m, 4000 limit per distance class. 
+
+2m-15m, 4000 limit per distance class. 
+
+2m-15m, 4000 limit per distance class. 
+
+, 
+
+2m-15m, 4000 limit per distance class. 
+
+,…,(𝑐𝑠𝑖(O𝑐𝑠𝑖(ON) , 
+,…,(𝑐𝑠𝑖(04𝑐𝑠𝑖(04N ) , 
+
+DESC OF TRIAL 
+
+Expanded Dataset  
+
+Using Real and Imaginary 
+component as well as sampling 
+Experimenting with Gamma 
+value 
+Pairwise multiply 2 packets 
+
+Pairwise multiply 3 packets. 
+
+Pairwise multiply 4 packets. 
+
+Packet convolves with self. 
+
+Intra-packet pairwise multiply 4 
+packets. 
+Intra-packet pairwise multiply 
+10 packets. 
+
+RMS 
+ERROR (M) 
+2.78 
+
+3.1 
+
+See Figure 4. 
+
+1.27 
+
+1.3 
+
+1.66 
+
+2.1 
+
+2.13 
+
+2.56 
+
+ 
+
+6.3. Gamma experimentation 
+
+We observed the effect of Gamma value (for the 
+RBF Kernel) on the cross validation error. Mechanically 
+altering it to larger values and testing the same feature 
+vector as defined in Section 6.1, we observed decreasing 
+accuracy as we increased gamma. See Figure 4 for more 
+details. 
+ 
+
+Figure 4. Gamma vs 5-folds root mean squared error. 
+
+Ultimately, we left the gamma value unchanged 
+
+from the mathematical definition in Section 5, as that 
+yielded the smallest RMS error (approximately 0.001 in 
+Figure 4). 
+ 
+
+6.4. Pairwise Multiplications 
+
+From further analysis of the mathematics of 
+calculating Time of Flight from received signals, we 
+determined that some sort of convolution might be 
+necessary. Intuitively, AoA and ToF are calculated using 
+matrix multiplication from CSI. 
+
+ 
+Since AoA is calculated through combinations of 
+phase and magnitude between antennas and ToF through 
+combinations per channel, it seemed to be a reasonable 
+choice for us to find all pair combinations of features and 
+multiply the pair together. The algorithm should figure out 
+which of these pairs contributed the most to the distance 
+estimation.  
+ 
+
+Therefore, we focused on a smaller number of 
+packets for runtime consideration, and generated our 
+feature space using the outer product of the CSI vector. 
+Using two concatenated packets, 65K features were 
+generated, with up to 260K features for 4 packets. 
+Essentially, we are learning on a single fully connected 
+neural net layer.  
+ 
+
+This technique yielded substantially improved 
+
+results. With a relatively small 1.27m of RMS error, the 2-
+packet vector gave the best generalization of actual 
+
+ 
+
+ 
+
+ 
+
+distance. After achieving a substantially better result for 
+the 2-packet vector, we attempted 3 and 4 packet 
+groupings with a vastly higher number of features, but the 
+test error increased. We attribute this effect to overfitting. 
+
+ 
+With infinite training time, we would have tried to 
+
+further train with triplet-wise multiplications 
+(multiplications of 3 numbers chosen from the feature 
+vector), on feature vectors of 2 to 10 packets. However, 
+performing triplet-wise multiplication on a two packet 
+feature vector would generate 7 million features would not 
+be feasible due to memory and processing constraints. 
+However, it is highly possible to attain high accuracy with 
+those features as the convolution style of data modeling 
+makes perfect sense in this application. 
+
+6.5. Internal Pairwise Multiplications 
+
+Based on a theory that each packet might be 
+
+linearly separable we sought to limit our feature vector by 
+convolving each individual packet, instead of the entire 
+multi-packet vector. This allowed us to train on larger 
+concatenated packet counts with acceptable runtime. 
+ 
+
+Using 1-packet, 4-packets, and 10-packets, we could 
+not improve RMS error; results were substantially worse 
+than the current optimum of 1.27m. We obtained RMS 
+errors of 2.1, 2.1, and 2.5m respectively. 
+ 
+7. Future Considerations 
+
+Using 2-packet convolutions and a Kernel Ridge 
+
+Regression, we have achieved almost meter-level accuracy 
+on a tough localization challenge. With no signal 
+processing involved, we demonstrate errors that compare 
+favorably against much more complex and advanced 
+localization research. There is promise in applying 
+machine learning to localization and Machine Learning 
+could be coupled with more theoretical algorithms for 
+improved results. 
+
+ 
+
+Due to our final algorithm’s resemblance to 
+
+ 
+neural net structures, future research should evaluate the 
+use of deeper neural nets to approximate distance. One 
+possible way to increase speed would be restricting the 
+pair-wise multiplication to just phases or just magnitudes, 
+since the phase and magnitude product makes little sense.  
+ 
+
+However, given current results and our initial 
+constraints to commodity hardware, indoor localization 
+appears increasingly ready for large-scale deployment. 
+
+

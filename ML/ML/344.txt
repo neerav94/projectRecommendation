@@ -1,0 +1,2138 @@
+Model Clustering via Group Lasso
+
+David Hallac
+
+hallac@stanford.edu
+
+CS 229 Final Report
+
+1.
+
+INTRODUCTION
+
+As datasets get larger and more intricate, many classical methods
+of analysis begin to fail due to a lack of scalability and/or robust-
+ness. This in particular holds true with networks, which allow us to
+represent the complicated relationships between different pieces of
+information. The challenge lies in developing models sophisticated
+enough to uncover patterns, general enough to work well indepen-
+dent of the input, and capable of scaling to the immense networks
+that today’s questions require.
+
+While some network properties are easily and efﬁciently com-
+puted, most non-trivial features, even things as simple as k-means
+clustering, rely on heuristics which do not guarantee the optimal
+solutions. In other words, they are not convex. These approaches
+often yield solutions which are “good enough”, but there is no way
+(in polynomial time) to know how suboptimal these answers are, i.e
+how much better we can do. Furthermore, as we delve deeper into
+network analysis, we hope to model and discover even more com-
+plex features. These will require new techniques and algorithms
+where fast, guaranteed convergence will be of the utmost impor-
+tance.
+
+In general, solving these large-scale problems is not easy. With
+the complicated coupling imposed by real world networks, it is not
+feasible to assume any speciﬁc structure. Therefore it is necessary
+to be able to solve this problem on any type of network, given a va-
+riety of possible constraints and conditions. To do so, we formulate
+it as a convex optimization problem. Unfortunately, optimization
+solvers do not scale well past several thousand unknown variables,
+too small for many real world applications. Therefore, standard
+methods will not work. We instead need to develop a distributed
+algorithm to optimize networks of this size.
+
+There are several reasons why this is just now coming to the
+forefront of research interests. With increasing availability of data
+and cheaper computing costs, it is becoming more viable to per-
+form complex large-scale analysis. However, as this ﬁeld is still
+relatively new, it has been easy to use the prior heuristics and con-
+sider the local optima as sufﬁcient solutions. Scaling up these
+more mathematically rigorous methods requires an integration of
+two ﬁelds, network analysis and convex optimization. Most of the
+related work has focused on speciﬁc instances and applications of
+optimization problems, rather than formulating more general solu-
+tions.
+
+In this project, we develop a framework for solving optimization
+problems on networks. This particular approach is best used when
+there is prior knowledge that some sort of clustering exists, even
+if we know nothing else about it. We use a distributed algorithm
+
+which is guaranteed to converge to the global optimum, and a sim-
+ilar distributed non-convex one which has no guarantees but tends
+to perform very well. Then, we apply this method to two com-
+mon machine learning problems, binary classiﬁcation and predict-
+ing housing prices, and compare our results to common baselines.
+
+2. CONVEX PROBLEM DEFINITION
+Given a connected, undirected graph G, consisting of m nodes
+and n edges with weights wjk ∈ R+, we solve for a set of vari-
+ables xi ∈ Rp, i = 1, . . . , m, one per node. These can repre-
+sent parameters in a statistical model, optimal actions to under-
+take, etc. Each node has a closed proper convex objective function
+fi : Rp → R ∪ {∞}, which we want to minimize. Additionally,
+there is a proportional penalty whenever two connected nodes have
+different values of x. This can be written as the optimization prob-
+lem
+
+minimize (cid:80)
+
+fi(xi) + λ (cid:80)
+
+minimize (cid:80)
+
+wjk(cid:107)xj − xk(cid:107)2,
+
+i∈V
+
+(j,k)∈E
+
+(1)
+where λ ∈ R+ is the regularization parameter, V is the set of nodes,
+and E is the edge set. This problem is convex in the variable x =
+(x1, . . . , xm) ∈ Rmp. We let x(cid:63) denote an optimal solution.
+Regularization Path. Although λ can be incorporated into the
+wij’s by scaling the edge weights, it is best viewed separately as
+a single parameter which is tuned to yield different global results.
+At λ = 0, x(cid:63)
+i , the solution at node i, is simply any minimizer of
+fi. This can be computed locally at each node, since when λ = 0
+the network has no effect. At the other extreme, there can exist a
+λcritical such that for any λ ≥ λcritical, we have x(cid:63)
+i = xcons, i.e.,
+the solution at every node is equal. Thus problem (1) turns into
+
+fi(x),
+
+i∈V
+
+(2)
+which is solved by xcons ∈ Rp. We refer to (2) as the consensus
+problem and to xcons as the consensus solution. It can be shown
+that, if (2) has a ﬁnite solution, λcritical exists and must be ﬁnite.
+For λ’s in between λ = 0 and λcritical, the family of solutions
+follows a trade-off curve and is known as the regularization path,
+though it is sometimes referred to as the clusterpath [3].
+Group Lasso and Clustering. The (cid:96)2-norm penalty over the edge
+difference, (cid:107)xj − xk(cid:107)2, is called group lasso [11]. It incentivizes
+the differences between connected nodes to be exactly zero, rather
+than just close to zero, yet it does not penalize large outliers (in
+this case, node values being very different) too severely. An edge
+difference of zero means that xj = xk. When many edges are in
+consensus like this, we have clustered the nodes into groups with
+equal x values. The outliers then refer to edges between nodes in
+different clusters. The sizes of these clusters depend on λ. Average
+
+Model Clustering via Group Lasso
+
+David Hallac
+
+hallac@stanford.edu
+
+CS 229 Final Report
+
+1.
+
+INTRODUCTION
+
+As datasets get larger and more intricate, many classical methods
+of analysis begin to fail due to a lack of scalability and/or robust-
+ness. This in particular holds true with networks, which allow us to
+represent the complicated relationships between different pieces of
+information. The challenge lies in developing models sophisticated
+enough to uncover patterns, general enough to work well indepen-
+dent of the input, and capable of scaling to the immense networks
+that today’s questions require.
+
+While some network properties are easily and efﬁciently com-
+puted, most non-trivial features, even things as simple as k-means
+clustering, rely on heuristics which do not guarantee the optimal
+solutions. In other words, they are not convex. These approaches
+often yield solutions which are “good enough”, but there is no way
+(in polynomial time) to know how suboptimal these answers are, i.e
+how much better we can do. Furthermore, as we delve deeper into
+network analysis, we hope to model and discover even more com-
+plex features. These will require new techniques and algorithms
+where fast, guaranteed convergence will be of the utmost impor-
+tance.
+
+In general, solving these large-scale problems is not easy. With
+the complicated coupling imposed by real world networks, it is not
+feasible to assume any speciﬁc structure. Therefore it is necessary
+to be able to solve this problem on any type of network, given a va-
+riety of possible constraints and conditions. To do so, we formulate
+it as a convex optimization problem. Unfortunately, optimization
+solvers do not scale well past several thousand unknown variables,
+too small for many real world applications. Therefore, standard
+methods will not work. We instead need to develop a distributed
+algorithm to optimize networks of this size.
+
+There are several reasons why this is just now coming to the
+forefront of research interests. With increasing availability of data
+and cheaper computing costs, it is becoming more viable to per-
+form complex large-scale analysis. However, as this ﬁeld is still
+relatively new, it has been easy to use the prior heuristics and con-
+sider the local optima as sufﬁcient solutions. Scaling up these
+more mathematically rigorous methods requires an integration of
+two ﬁelds, network analysis and convex optimization. Most of the
+related work has focused on speciﬁc instances and applications of
+optimization problems, rather than formulating more general solu-
+tions.
+
+In this project, we develop a framework for solving optimization
+problems on networks. This particular approach is best used when
+there is prior knowledge that some sort of clustering exists, even
+if we know nothing else about it. We use a distributed algorithm
+
+which is guaranteed to converge to the global optimum, and a sim-
+ilar distributed non-convex one which has no guarantees but tends
+to perform very well. Then, we apply this method to two com-
+mon machine learning problems, binary classiﬁcation and predict-
+ing housing prices, and compare our results to common baselines.
+
+2. CONVEX PROBLEM DEFINITION
+Given a connected, undirected graph G, consisting of m nodes
+and n edges with weights wjk ∈ R+, we solve for a set of vari-
+ables xi ∈ Rp, i = 1, . . . , m, one per node. These can repre-
+sent parameters in a statistical model, optimal actions to under-
+take, etc. Each node has a closed proper convex objective function
+fi : Rp → R ∪ {∞}, which we want to minimize. Additionally,
+there is a proportional penalty whenever two connected nodes have
+different values of x. This can be written as the optimization prob-
+lem
+
+minimize (cid:80)
+
+fi(xi) + λ (cid:80)
+
+minimize (cid:80)
+
+wjk(cid:107)xj − xk(cid:107)2,
+
+i∈V
+
+(j,k)∈E
+
+(1)
+where λ ∈ R+ is the regularization parameter, V is the set of nodes,
+and E is the edge set. This problem is convex in the variable x =
+(x1, . . . , xm) ∈ Rmp. We let x(cid:63) denote an optimal solution.
+Regularization Path. Although λ can be incorporated into the
+wij’s by scaling the edge weights, it is best viewed separately as
+a single parameter which is tuned to yield different global results.
+At λ = 0, x(cid:63)
+i , the solution at node i, is simply any minimizer of
+fi. This can be computed locally at each node, since when λ = 0
+the network has no effect. At the other extreme, there can exist a
+λcritical such that for any λ ≥ λcritical, we have x(cid:63)
+i = xcons, i.e.,
+the solution at every node is equal. Thus problem (1) turns into
+
+fi(x),
+
+i∈V
+
+(2)
+which is solved by xcons ∈ Rp. We refer to (2) as the consensus
+problem and to xcons as the consensus solution. It can be shown
+that, if (2) has a ﬁnite solution, λcritical exists and must be ﬁnite.
+For λ’s in between λ = 0 and λcritical, the family of solutions
+follows a trade-off curve and is known as the regularization path,
+though it is sometimes referred to as the clusterpath [3].
+Group Lasso and Clustering. The (cid:96)2-norm penalty over the edge
+difference, (cid:107)xj − xk(cid:107)2, is called group lasso [11]. It incentivizes
+the differences between connected nodes to be exactly zero, rather
+than just close to zero, yet it does not penalize large outliers (in
+this case, node values being very different) too severely. An edge
+difference of zero means that xj = xk. When many edges are in
+consensus like this, we have clustered the nodes into groups with
+equal x values. The outliers then refer to edges between nodes in
+different clusters. The sizes of these clusters depend on λ. Average
+
+cluster size gets larger as λ increases, until at λcritical the consensus
+solution can be thought of as a single cluster for the entire network.
+Even though increasing λ is most often agglomerative, cluster ﬁs-
+sion may occur, so the clustering pattern is not strictly hierarchical
+[7].
+
+This setup is similar to other regularization models, but leads to
+different results. The (cid:96)2-norm considers the entire xi as one entity,
+whereas an (cid:96)1-norm, called the lasso [10], would have treated each
+element of xi separately. This would yield element-wise instead of
+node-wise stratiﬁcation. Had the (cid:96)2-norm been squared, it would be
+Laplacian regularization. However, this would attempt to smooth
+out the results, which also would not lead to the clustering behavior
+that we are seeking.
+Inference on New Nodes. After we have solved for x, we can in-
+terpolate the solution to predict x on new nodes, for example during
+cross-validation on a test set. Given a new node j, all we need is its
+location within the network; that is, the neighbors of j and the edge
+weights. With this information, we treat j like a dummy node, with
+fj(xj) = 0. We solve for xj just like in problem (1) except without
+the objective function fj, so the optimization problem becomes
+
+wjk(cid:107)x − xk(cid:107)2.
+
+(3)
+
+minimize (cid:80)
+
+k∈N (j)
+
+This estimate of xj can be thought of as a weighted median of
+j’s neighbors’ solutions. This is called the Weber problem, and it
+involves ﬁnding the point which minimizes the weighted sum of
+distances to a set of other points. It has no analytical solution when
+j has more than two neighbors, but it can be readily computed even
+for large problems.
+
+3. PROPOSED SOLUTION
+
+Since the focus of this project is on the machine learning ap-
+plications (and due to space limitations), we will not delve into
+the derivations of the algorithms.
+Instead, we will give a high-
+level description of how it works, and provide the distributed al-
+gorithm to compute it. Note that a distributed solution is neces-
+sary so that computational and storage limits do not constrain the
+scope of potential applications. We use a well-established method
+called Alternating Direction Method of Multipliers (ADMM) [1]
+[9]. With ADMM, each individual component solves its own pri-
+vate objective function, passes this solution to its neighbors, and
+repeats the process until the entire network converges. There is no
+need for global coordination except for iteration synchronization,
+so this method can scale to arbitrarily large problems.
+
+Algorithm 1 Regularization Path
+initialize Solve for x(cid:63) at λ = 0.
+set λ = λinitial; α > 1.
+repeat
+
+Use ADMM to solve for x(cid:63)(λ), starting at previous solution.
+Stopping Criterion. quit if all edges are in consensus.
+Set λ := αλ.
+
+return x(cid:63)(λ) for λ from 0 to ˜λcritical.
+
+We solve this problem along the entire regularization path to gain
+insight into the network structure. For speciﬁc applications, this
+may also help decide the correct value of λ to use, for example by
+choosing the λ which minimizes the cross-validation error. We be-
+gin the regularization path at λ = 0 and solve for an increasing
+sequence of λ’s. We know when we have reached λcritical because
+
+a single xcons will be the optimal solution at every node, and in-
+creasing λ no longer affects the solution. This will sometimes lead
+to a stopping point slightly above λcritical, which we can denote
+˜λcritical. Solving for the exact λcritical is impractical for all but the
+smallest problems . It is okay if ˜λcritical ≥ λcritical, though, since
+they will both yield the same result, the consensus solution.
+
+At each step in the regularization path, we solve a single con-
+vex problem, a speciﬁc instance of problem (1) with a given λ,
+by ADMM. The entire process is outlined in Algorithm 1. The
+ADMM solution can be treated as a black box which provides a
+scalable, distributed solution to this large convex problem, and is
+guaranteed to converge to the global optimum.
+
+4. NON-CONVEX EXTENSION
+
+In many applications, we are using the group lasso as an approx-
+imation of the (cid:96)0-norm [2]. That is, we are looking for a sparse
+solution where relatively few edge differences are non-zero. How-
+ever, once an edge does break off, we do not care about the mag-
+nitude of (cid:107)xi − xj(cid:107)2. The lasso has a proportional penalty, which
+is the closest that a convex function can come to approximating
+the (cid:96)0-norm. However, once we’ve found the true clusters, this will
+“pull” the different clusters towards each other through their mutual
+edges. If we replace the group lasso penalty with a monotonically
+nondecreasing concave function φ(u), where φ(0) = 0 and whose
+domain is u ≥ 0, we come even closer to the (cid:96)0 . However, this
+new optimization problem,
+
+minimize (cid:80)
+
+fi(xi) + λ (cid:80)
+
+wjkφ ((cid:107)xj − xk(cid:107)2) ,
+
+(4)
+
+i∈V
+
+(j,k)∈E
+
+is not convex. ADMM is therefore not guaranteed to converge, and
+even if it does, it need not be to the global optimum. It is in some
+sense a “riskier” approach. In fact, different initial conditions on
+x, u, z, and ρ can yield quite different solutions. However, as a
+heuristic, a slight modiﬁcation to ADMM has been shown to per-
+form well in these cases. We will use this approach in the speciﬁc
+ ), where  is a constant scaling factor,
+case where φ(u) = log(1+ u
+and compare our results to the baselines and convex case.
+
+5.
+
+IMPLEMENTATION
+
+We test our approach on two different examples. To run these ex-
+periments, we built a module combining Snap.py [8] and CVXPY
+[5]. The network is stored as a Snap.py structure, and the ADMM
+updates are run in parallel using CVXPY.
+
+6. EXPERIMENTS
+
+We now examine this method to see two potential problems that
+this approach can solve. First, we look at a synthetic example in
+which we gather statistical power from the network to improve clas-
+siﬁcation accuracy. Next, we see how it can apply to a geographic
+network, allowing us to gain insights on residential neighborhoods
+by looking at home sales.
+6.1 Network-Enhanced Classiﬁcation
+Dataset. In this synthetic dataset, there are 1000 randomly gener-
+ated nodes, each with its own classiﬁer, a support vector machine
+(SVM) in R50 [4]. Given an input w ∈ R50, it tries to predict
+y ∈ {−1, 1}, where
+
+y = sgn(aT w + a0 + v),
+
+and v ∈ N (0, 1), the noise, is independent for each trial. An SVM
+involves solving a convex optimization problem from a set of train-
+
+Model Clustering via Group Lasso
+
+David Hallac
+
+hallac@stanford.edu
+
+CS 229 Final Report
+
+1.
+
+INTRODUCTION
+
+As datasets get larger and more intricate, many classical methods
+of analysis begin to fail due to a lack of scalability and/or robust-
+ness. This in particular holds true with networks, which allow us to
+represent the complicated relationships between different pieces of
+information. The challenge lies in developing models sophisticated
+enough to uncover patterns, general enough to work well indepen-
+dent of the input, and capable of scaling to the immense networks
+that today’s questions require.
+
+While some network properties are easily and efﬁciently com-
+puted, most non-trivial features, even things as simple as k-means
+clustering, rely on heuristics which do not guarantee the optimal
+solutions. In other words, they are not convex. These approaches
+often yield solutions which are “good enough”, but there is no way
+(in polynomial time) to know how suboptimal these answers are, i.e
+how much better we can do. Furthermore, as we delve deeper into
+network analysis, we hope to model and discover even more com-
+plex features. These will require new techniques and algorithms
+where fast, guaranteed convergence will be of the utmost impor-
+tance.
+
+In general, solving these large-scale problems is not easy. With
+the complicated coupling imposed by real world networks, it is not
+feasible to assume any speciﬁc structure. Therefore it is necessary
+to be able to solve this problem on any type of network, given a va-
+riety of possible constraints and conditions. To do so, we formulate
+it as a convex optimization problem. Unfortunately, optimization
+solvers do not scale well past several thousand unknown variables,
+too small for many real world applications. Therefore, standard
+methods will not work. We instead need to develop a distributed
+algorithm to optimize networks of this size.
+
+There are several reasons why this is just now coming to the
+forefront of research interests. With increasing availability of data
+and cheaper computing costs, it is becoming more viable to per-
+form complex large-scale analysis. However, as this ﬁeld is still
+relatively new, it has been easy to use the prior heuristics and con-
+sider the local optima as sufﬁcient solutions. Scaling up these
+more mathematically rigorous methods requires an integration of
+two ﬁelds, network analysis and convex optimization. Most of the
+related work has focused on speciﬁc instances and applications of
+optimization problems, rather than formulating more general solu-
+tions.
+
+In this project, we develop a framework for solving optimization
+problems on networks. This particular approach is best used when
+there is prior knowledge that some sort of clustering exists, even
+if we know nothing else about it. We use a distributed algorithm
+
+which is guaranteed to converge to the global optimum, and a sim-
+ilar distributed non-convex one which has no guarantees but tends
+to perform very well. Then, we apply this method to two com-
+mon machine learning problems, binary classiﬁcation and predict-
+ing housing prices, and compare our results to common baselines.
+
+2. CONVEX PROBLEM DEFINITION
+Given a connected, undirected graph G, consisting of m nodes
+and n edges with weights wjk ∈ R+, we solve for a set of vari-
+ables xi ∈ Rp, i = 1, . . . , m, one per node. These can repre-
+sent parameters in a statistical model, optimal actions to under-
+take, etc. Each node has a closed proper convex objective function
+fi : Rp → R ∪ {∞}, which we want to minimize. Additionally,
+there is a proportional penalty whenever two connected nodes have
+different values of x. This can be written as the optimization prob-
+lem
+
+minimize (cid:80)
+
+fi(xi) + λ (cid:80)
+
+minimize (cid:80)
+
+wjk(cid:107)xj − xk(cid:107)2,
+
+i∈V
+
+(j,k)∈E
+
+(1)
+where λ ∈ R+ is the regularization parameter, V is the set of nodes,
+and E is the edge set. This problem is convex in the variable x =
+(x1, . . . , xm) ∈ Rmp. We let x(cid:63) denote an optimal solution.
+Regularization Path. Although λ can be incorporated into the
+wij’s by scaling the edge weights, it is best viewed separately as
+a single parameter which is tuned to yield different global results.
+At λ = 0, x(cid:63)
+i , the solution at node i, is simply any minimizer of
+fi. This can be computed locally at each node, since when λ = 0
+the network has no effect. At the other extreme, there can exist a
+λcritical such that for any λ ≥ λcritical, we have x(cid:63)
+i = xcons, i.e.,
+the solution at every node is equal. Thus problem (1) turns into
+
+fi(x),
+
+i∈V
+
+(2)
+which is solved by xcons ∈ Rp. We refer to (2) as the consensus
+problem and to xcons as the consensus solution. It can be shown
+that, if (2) has a ﬁnite solution, λcritical exists and must be ﬁnite.
+For λ’s in between λ = 0 and λcritical, the family of solutions
+follows a trade-off curve and is known as the regularization path,
+though it is sometimes referred to as the clusterpath [3].
+Group Lasso and Clustering. The (cid:96)2-norm penalty over the edge
+difference, (cid:107)xj − xk(cid:107)2, is called group lasso [11]. It incentivizes
+the differences between connected nodes to be exactly zero, rather
+than just close to zero, yet it does not penalize large outliers (in
+this case, node values being very different) too severely. An edge
+difference of zero means that xj = xk. When many edges are in
+consensus like this, we have clustered the nodes into groups with
+equal x values. The outliers then refer to edges between nodes in
+different clusters. The sizes of these clusters depend on λ. Average
+
+cluster size gets larger as λ increases, until at λcritical the consensus
+solution can be thought of as a single cluster for the entire network.
+Even though increasing λ is most often agglomerative, cluster ﬁs-
+sion may occur, so the clustering pattern is not strictly hierarchical
+[7].
+
+This setup is similar to other regularization models, but leads to
+different results. The (cid:96)2-norm considers the entire xi as one entity,
+whereas an (cid:96)1-norm, called the lasso [10], would have treated each
+element of xi separately. This would yield element-wise instead of
+node-wise stratiﬁcation. Had the (cid:96)2-norm been squared, it would be
+Laplacian regularization. However, this would attempt to smooth
+out the results, which also would not lead to the clustering behavior
+that we are seeking.
+Inference on New Nodes. After we have solved for x, we can in-
+terpolate the solution to predict x on new nodes, for example during
+cross-validation on a test set. Given a new node j, all we need is its
+location within the network; that is, the neighbors of j and the edge
+weights. With this information, we treat j like a dummy node, with
+fj(xj) = 0. We solve for xj just like in problem (1) except without
+the objective function fj, so the optimization problem becomes
+
+wjk(cid:107)x − xk(cid:107)2.
+
+(3)
+
+minimize (cid:80)
+
+k∈N (j)
+
+This estimate of xj can be thought of as a weighted median of
+j’s neighbors’ solutions. This is called the Weber problem, and it
+involves ﬁnding the point which minimizes the weighted sum of
+distances to a set of other points. It has no analytical solution when
+j has more than two neighbors, but it can be readily computed even
+for large problems.
+
+3. PROPOSED SOLUTION
+
+Since the focus of this project is on the machine learning ap-
+plications (and due to space limitations), we will not delve into
+the derivations of the algorithms.
+Instead, we will give a high-
+level description of how it works, and provide the distributed al-
+gorithm to compute it. Note that a distributed solution is neces-
+sary so that computational and storage limits do not constrain the
+scope of potential applications. We use a well-established method
+called Alternating Direction Method of Multipliers (ADMM) [1]
+[9]. With ADMM, each individual component solves its own pri-
+vate objective function, passes this solution to its neighbors, and
+repeats the process until the entire network converges. There is no
+need for global coordination except for iteration synchronization,
+so this method can scale to arbitrarily large problems.
+
+Algorithm 1 Regularization Path
+initialize Solve for x(cid:63) at λ = 0.
+set λ = λinitial; α > 1.
+repeat
+
+Use ADMM to solve for x(cid:63)(λ), starting at previous solution.
+Stopping Criterion. quit if all edges are in consensus.
+Set λ := αλ.
+
+return x(cid:63)(λ) for λ from 0 to ˜λcritical.
+
+We solve this problem along the entire regularization path to gain
+insight into the network structure. For speciﬁc applications, this
+may also help decide the correct value of λ to use, for example by
+choosing the λ which minimizes the cross-validation error. We be-
+gin the regularization path at λ = 0 and solve for an increasing
+sequence of λ’s. We know when we have reached λcritical because
+
+a single xcons will be the optimal solution at every node, and in-
+creasing λ no longer affects the solution. This will sometimes lead
+to a stopping point slightly above λcritical, which we can denote
+˜λcritical. Solving for the exact λcritical is impractical for all but the
+smallest problems . It is okay if ˜λcritical ≥ λcritical, though, since
+they will both yield the same result, the consensus solution.
+
+At each step in the regularization path, we solve a single con-
+vex problem, a speciﬁc instance of problem (1) with a given λ,
+by ADMM. The entire process is outlined in Algorithm 1. The
+ADMM solution can be treated as a black box which provides a
+scalable, distributed solution to this large convex problem, and is
+guaranteed to converge to the global optimum.
+
+4. NON-CONVEX EXTENSION
+
+In many applications, we are using the group lasso as an approx-
+imation of the (cid:96)0-norm [2]. That is, we are looking for a sparse
+solution where relatively few edge differences are non-zero. How-
+ever, once an edge does break off, we do not care about the mag-
+nitude of (cid:107)xi − xj(cid:107)2. The lasso has a proportional penalty, which
+is the closest that a convex function can come to approximating
+the (cid:96)0-norm. However, once we’ve found the true clusters, this will
+“pull” the different clusters towards each other through their mutual
+edges. If we replace the group lasso penalty with a monotonically
+nondecreasing concave function φ(u), where φ(0) = 0 and whose
+domain is u ≥ 0, we come even closer to the (cid:96)0 . However, this
+new optimization problem,
+
+minimize (cid:80)
+
+fi(xi) + λ (cid:80)
+
+wjkφ ((cid:107)xj − xk(cid:107)2) ,
+
+(4)
+
+i∈V
+
+(j,k)∈E
+
+is not convex. ADMM is therefore not guaranteed to converge, and
+even if it does, it need not be to the global optimum. It is in some
+sense a “riskier” approach. In fact, different initial conditions on
+x, u, z, and ρ can yield quite different solutions. However, as a
+heuristic, a slight modiﬁcation to ADMM has been shown to per-
+form well in these cases. We will use this approach in the speciﬁc
+ ), where  is a constant scaling factor,
+case where φ(u) = log(1+ u
+and compare our results to the baselines and convex case.
+
+5.
+
+IMPLEMENTATION
+
+We test our approach on two different examples. To run these ex-
+periments, we built a module combining Snap.py [8] and CVXPY
+[5]. The network is stored as a Snap.py structure, and the ADMM
+updates are run in parallel using CVXPY.
+
+6. EXPERIMENTS
+
+We now examine this method to see two potential problems that
+this approach can solve. First, we look at a synthetic example in
+which we gather statistical power from the network to improve clas-
+siﬁcation accuracy. Next, we see how it can apply to a geographic
+network, allowing us to gain insights on residential neighborhoods
+by looking at home sales.
+6.1 Network-Enhanced Classiﬁcation
+Dataset. In this synthetic dataset, there are 1000 randomly gener-
+ated nodes, each with its own classiﬁer, a support vector machine
+(SVM) in R50 [4]. Given an input w ∈ R50, it tries to predict
+y ∈ {−1, 1}, where
+
+y = sgn(aT w + a0 + v),
+
+and v ∈ N (0, 1), the noise, is independent for each trial. An SVM
+involves solving a convex optimization problem from a set of train-
+
+(cid:20) a
+
+(cid:21)
+
+(cid:20) a
+
+(cid:21)
+
+a0
+
+a0
+
+ing examples to obtain x =
+
+∈ R51. This deﬁnes a separating
+hyperplane to determine how to classify new inputs. There is no
+way to counter the noise v, but an accurate x can help us predict
+y from w reasonably accurately. Each node determines its own
+optimal classiﬁer from a training set consisting of 25 (w, y)-pairs,
+which we use to solve for x at every node. To evaluate our results,
+there is a test set of 10 (w, y)-pairs per node. All elements in w,
+a, and v are drawn independently from a normal distribution with
+an identity covariance matrix, with the y values dependent on the
+other variables.
+Network. The 1000 nodes are split into 20 equally-sized clusters,
+each with 50 nodes. Each cluster has a common underlying classi-
+
+ﬁer,
+
+, while different clusters have independent a’s. If i and j
+
+are in the same cluster, they have an edge with probability 0.5, and
+if they are in different clusters, there is an edge with probability
+0.01. Overall, the network has a total of 17079 edges, with 28.12%
+of the edges connecting nodes in different clusters.
+Our goal. Each node has nowhere near enough information to gen-
+erate a robust classiﬁer, since there are twice as many dimensions
+as there are training examples. We hope that the nodes can, in
+essence, “borrow” training examples from their relevant neighbors
+to improve their own classiﬁers. Of course, neighbors in different
+clusters will provide misleading information. These are the edges
+which should break off, yielding different x’s at the two connected
+nodes. Note that even though this is a synthetic example, the large
+number of misleading edges means this is far from an ideal case.
+This problem can be thought of as an example of generic classiﬁca-
+tion where we have incomplete/incorrect information. Each node
+needs to solve its own optimization problem, simultaneously deter-
+mining which information to include and which to ignore.
+Optimization Parameter and Objective Function. The optimiza-
+
+tion parameter x =
+
+=
+
+deﬁnes our estimate for the
+
+separating hyperplane for the SVM. Each node then solves its own
+optimization problem, using its 25 training examples. At node i, fi
+is deﬁned [6] as
+
+(cid:20)xa
+
+(cid:21)
+
+x0
+
+(cid:20) a
+
+(cid:21)
+
+a0
+
+25(cid:80)
+
+(a) Convex
+
+(b) Non-convex
+
+Figure 1: SVM regularization path
+
+Method
+Local SVM (λ = 0)
+Global SVM (λ ≥ λcritical)
+Convex
+Non-convex
+
+Maximum Prediction Accuracy
+
+65.90%
+57.10%
+86.68%
+87.94%
+
+Table 1: Prediction accuracy compared to baselines
+
+assumes the entire graph is coupled together and does not allow for
+any edges to break. This common hyperplane at every node yields
+an accuracy of 57.10%, which is barely an improvement over ran-
+dom guessing.
+
+In contrast, both the convex and non-convex cases perform much
+better for λ’s in the middle. From Figure 1, we see a distinct shape
+in both the convex and nonconvex regularization paths. As λ in-
+creases, the accuracy steadily improves, until a peak of around
+λ = 1. Intuitively, this represents the point where the algorithm
+has approximately split the nodes into their correct clusters, each
+with its own classiﬁer. As λ goes past one, there is a rapid drop off
+in prediction accuracy, due to the different clusters “pulling” each
+other together. The maximum prediction accuracies in this plots
+are 86.68% (convex) and 87.94% (nonconvex). These results are
+summarized in Table 1.
+6.2 Spatial Clustering with Regressors
+Dataset. We look at a list of real estate transactions over a one-
+week period in May 2008 in the Greater Sacramento area1. This
+dataset contains information on 985 sales, including latitude, lon-
+gitude, number of bedrooms, number of bathrooms, square feet,
+and sales price. However, as often happens with real data, we are
+missing some of the values. 17% of the home sales are missing
+at least one of the regressors. To verify our results, we remove a
+random subset of 200 houses as a test set.
+Network. We build the graph by using the latitude/longitude coor-
+dinates of each house. After removing the test set, we connect every
+remaining house to the ﬁve nearest homes with an edge weight of
+
+wij =
+
+1
+
+dij + 
+
+,
+
+where dij is the distance in miles from house i to house j and
+ = 0.1 bounds the weights between 0 and 10. If house j is in
+the nearest neighbors of i, there is an undirected edge regardless of
+whether or not house i is in the set of nearest neighbors of j, which
+may or may not be the case. The resulting graph leaves 785 nodes
+and 2447 edges, and it has a diameter of 61.
+Our goal. We attempt to estimate the price of the house based
+on the spatial network and the set of regressors (number of bed-
+rooms, bathrooms, and square feet). The reason that the spatial
+1Data comes from http://support.spatialkey.com/
+spatialkey-sample-csv-data/
+
+1
+
+2(cid:107)xa(cid:107)2
+
+minimize
+subject to y(i)(aT xa + x0) ≥ 1 − εi,
+
+2 +
+
+i=1
+
+c(cid:107)εi(cid:107)1
+
+i = 1, . . . , 25,
+
+where c is the soft-margin threshold parameter empirically found
+to perform well on a common model.We solve for 51 + 25 = 76
+variables at each node, so the total problem has 76,000 unknown
+variables.
+Results. To evaluate performance, we ﬁnd prediction accuracy on
+the test set of 10,000 examples (10 per node). We plot percentage of
+correct predictions vs. λ, where λ is displayed in log-scale, for the
+entire regularization path from λ = 0 to λ ≥ λcritical, as shown in
+Figure 1. In this example, these two extremes represent important
+baselines.
+
+At λ = 0, each node only uses its own training examples, ig-
+noring all the information provided by the neighbors. This is just
+a local SVM, with only 25 training examples to estimate a vec-
+tor in R51. This leads to a prediction accuracy of 65.90% and is
+clearly a suboptimal approach. When λ ≥ λcritical, the problem
+leads to a common x at every node, which is equivalent to solving
+a global SVM over the entire network. Even though we have prior
+knowledge that there is some underlying clustering structure, this
+
+Model Clustering via Group Lasso
+
+David Hallac
+
+hallac@stanford.edu
+
+CS 229 Final Report
+
+1.
+
+INTRODUCTION
+
+As datasets get larger and more intricate, many classical methods
+of analysis begin to fail due to a lack of scalability and/or robust-
+ness. This in particular holds true with networks, which allow us to
+represent the complicated relationships between different pieces of
+information. The challenge lies in developing models sophisticated
+enough to uncover patterns, general enough to work well indepen-
+dent of the input, and capable of scaling to the immense networks
+that today’s questions require.
+
+While some network properties are easily and efﬁciently com-
+puted, most non-trivial features, even things as simple as k-means
+clustering, rely on heuristics which do not guarantee the optimal
+solutions. In other words, they are not convex. These approaches
+often yield solutions which are “good enough”, but there is no way
+(in polynomial time) to know how suboptimal these answers are, i.e
+how much better we can do. Furthermore, as we delve deeper into
+network analysis, we hope to model and discover even more com-
+plex features. These will require new techniques and algorithms
+where fast, guaranteed convergence will be of the utmost impor-
+tance.
+
+In general, solving these large-scale problems is not easy. With
+the complicated coupling imposed by real world networks, it is not
+feasible to assume any speciﬁc structure. Therefore it is necessary
+to be able to solve this problem on any type of network, given a va-
+riety of possible constraints and conditions. To do so, we formulate
+it as a convex optimization problem. Unfortunately, optimization
+solvers do not scale well past several thousand unknown variables,
+too small for many real world applications. Therefore, standard
+methods will not work. We instead need to develop a distributed
+algorithm to optimize networks of this size.
+
+There are several reasons why this is just now coming to the
+forefront of research interests. With increasing availability of data
+and cheaper computing costs, it is becoming more viable to per-
+form complex large-scale analysis. However, as this ﬁeld is still
+relatively new, it has been easy to use the prior heuristics and con-
+sider the local optima as sufﬁcient solutions. Scaling up these
+more mathematically rigorous methods requires an integration of
+two ﬁelds, network analysis and convex optimization. Most of the
+related work has focused on speciﬁc instances and applications of
+optimization problems, rather than formulating more general solu-
+tions.
+
+In this project, we develop a framework for solving optimization
+problems on networks. This particular approach is best used when
+there is prior knowledge that some sort of clustering exists, even
+if we know nothing else about it. We use a distributed algorithm
+
+which is guaranteed to converge to the global optimum, and a sim-
+ilar distributed non-convex one which has no guarantees but tends
+to perform very well. Then, we apply this method to two com-
+mon machine learning problems, binary classiﬁcation and predict-
+ing housing prices, and compare our results to common baselines.
+
+2. CONVEX PROBLEM DEFINITION
+Given a connected, undirected graph G, consisting of m nodes
+and n edges with weights wjk ∈ R+, we solve for a set of vari-
+ables xi ∈ Rp, i = 1, . . . , m, one per node. These can repre-
+sent parameters in a statistical model, optimal actions to under-
+take, etc. Each node has a closed proper convex objective function
+fi : Rp → R ∪ {∞}, which we want to minimize. Additionally,
+there is a proportional penalty whenever two connected nodes have
+different values of x. This can be written as the optimization prob-
+lem
+
+minimize (cid:80)
+
+fi(xi) + λ (cid:80)
+
+minimize (cid:80)
+
+wjk(cid:107)xj − xk(cid:107)2,
+
+i∈V
+
+(j,k)∈E
+
+(1)
+where λ ∈ R+ is the regularization parameter, V is the set of nodes,
+and E is the edge set. This problem is convex in the variable x =
+(x1, . . . , xm) ∈ Rmp. We let x(cid:63) denote an optimal solution.
+Regularization Path. Although λ can be incorporated into the
+wij’s by scaling the edge weights, it is best viewed separately as
+a single parameter which is tuned to yield different global results.
+At λ = 0, x(cid:63)
+i , the solution at node i, is simply any minimizer of
+fi. This can be computed locally at each node, since when λ = 0
+the network has no effect. At the other extreme, there can exist a
+λcritical such that for any λ ≥ λcritical, we have x(cid:63)
+i = xcons, i.e.,
+the solution at every node is equal. Thus problem (1) turns into
+
+fi(x),
+
+i∈V
+
+(2)
+which is solved by xcons ∈ Rp. We refer to (2) as the consensus
+problem and to xcons as the consensus solution. It can be shown
+that, if (2) has a ﬁnite solution, λcritical exists and must be ﬁnite.
+For λ’s in between λ = 0 and λcritical, the family of solutions
+follows a trade-off curve and is known as the regularization path,
+though it is sometimes referred to as the clusterpath [3].
+Group Lasso and Clustering. The (cid:96)2-norm penalty over the edge
+difference, (cid:107)xj − xk(cid:107)2, is called group lasso [11]. It incentivizes
+the differences between connected nodes to be exactly zero, rather
+than just close to zero, yet it does not penalize large outliers (in
+this case, node values being very different) too severely. An edge
+difference of zero means that xj = xk. When many edges are in
+consensus like this, we have clustered the nodes into groups with
+equal x values. The outliers then refer to edges between nodes in
+different clusters. The sizes of these clusters depend on λ. Average
+
+cluster size gets larger as λ increases, until at λcritical the consensus
+solution can be thought of as a single cluster for the entire network.
+Even though increasing λ is most often agglomerative, cluster ﬁs-
+sion may occur, so the clustering pattern is not strictly hierarchical
+[7].
+
+This setup is similar to other regularization models, but leads to
+different results. The (cid:96)2-norm considers the entire xi as one entity,
+whereas an (cid:96)1-norm, called the lasso [10], would have treated each
+element of xi separately. This would yield element-wise instead of
+node-wise stratiﬁcation. Had the (cid:96)2-norm been squared, it would be
+Laplacian regularization. However, this would attempt to smooth
+out the results, which also would not lead to the clustering behavior
+that we are seeking.
+Inference on New Nodes. After we have solved for x, we can in-
+terpolate the solution to predict x on new nodes, for example during
+cross-validation on a test set. Given a new node j, all we need is its
+location within the network; that is, the neighbors of j and the edge
+weights. With this information, we treat j like a dummy node, with
+fj(xj) = 0. We solve for xj just like in problem (1) except without
+the objective function fj, so the optimization problem becomes
+
+wjk(cid:107)x − xk(cid:107)2.
+
+(3)
+
+minimize (cid:80)
+
+k∈N (j)
+
+This estimate of xj can be thought of as a weighted median of
+j’s neighbors’ solutions. This is called the Weber problem, and it
+involves ﬁnding the point which minimizes the weighted sum of
+distances to a set of other points. It has no analytical solution when
+j has more than two neighbors, but it can be readily computed even
+for large problems.
+
+3. PROPOSED SOLUTION
+
+Since the focus of this project is on the machine learning ap-
+plications (and due to space limitations), we will not delve into
+the derivations of the algorithms.
+Instead, we will give a high-
+level description of how it works, and provide the distributed al-
+gorithm to compute it. Note that a distributed solution is neces-
+sary so that computational and storage limits do not constrain the
+scope of potential applications. We use a well-established method
+called Alternating Direction Method of Multipliers (ADMM) [1]
+[9]. With ADMM, each individual component solves its own pri-
+vate objective function, passes this solution to its neighbors, and
+repeats the process until the entire network converges. There is no
+need for global coordination except for iteration synchronization,
+so this method can scale to arbitrarily large problems.
+
+Algorithm 1 Regularization Path
+initialize Solve for x(cid:63) at λ = 0.
+set λ = λinitial; α > 1.
+repeat
+
+Use ADMM to solve for x(cid:63)(λ), starting at previous solution.
+Stopping Criterion. quit if all edges are in consensus.
+Set λ := αλ.
+
+return x(cid:63)(λ) for λ from 0 to ˜λcritical.
+
+We solve this problem along the entire regularization path to gain
+insight into the network structure. For speciﬁc applications, this
+may also help decide the correct value of λ to use, for example by
+choosing the λ which minimizes the cross-validation error. We be-
+gin the regularization path at λ = 0 and solve for an increasing
+sequence of λ’s. We know when we have reached λcritical because
+
+a single xcons will be the optimal solution at every node, and in-
+creasing λ no longer affects the solution. This will sometimes lead
+to a stopping point slightly above λcritical, which we can denote
+˜λcritical. Solving for the exact λcritical is impractical for all but the
+smallest problems . It is okay if ˜λcritical ≥ λcritical, though, since
+they will both yield the same result, the consensus solution.
+
+At each step in the regularization path, we solve a single con-
+vex problem, a speciﬁc instance of problem (1) with a given λ,
+by ADMM. The entire process is outlined in Algorithm 1. The
+ADMM solution can be treated as a black box which provides a
+scalable, distributed solution to this large convex problem, and is
+guaranteed to converge to the global optimum.
+
+4. NON-CONVEX EXTENSION
+
+In many applications, we are using the group lasso as an approx-
+imation of the (cid:96)0-norm [2]. That is, we are looking for a sparse
+solution where relatively few edge differences are non-zero. How-
+ever, once an edge does break off, we do not care about the mag-
+nitude of (cid:107)xi − xj(cid:107)2. The lasso has a proportional penalty, which
+is the closest that a convex function can come to approximating
+the (cid:96)0-norm. However, once we’ve found the true clusters, this will
+“pull” the different clusters towards each other through their mutual
+edges. If we replace the group lasso penalty with a monotonically
+nondecreasing concave function φ(u), where φ(0) = 0 and whose
+domain is u ≥ 0, we come even closer to the (cid:96)0 . However, this
+new optimization problem,
+
+minimize (cid:80)
+
+fi(xi) + λ (cid:80)
+
+wjkφ ((cid:107)xj − xk(cid:107)2) ,
+
+(4)
+
+i∈V
+
+(j,k)∈E
+
+is not convex. ADMM is therefore not guaranteed to converge, and
+even if it does, it need not be to the global optimum. It is in some
+sense a “riskier” approach. In fact, different initial conditions on
+x, u, z, and ρ can yield quite different solutions. However, as a
+heuristic, a slight modiﬁcation to ADMM has been shown to per-
+form well in these cases. We will use this approach in the speciﬁc
+ ), where  is a constant scaling factor,
+case where φ(u) = log(1+ u
+and compare our results to the baselines and convex case.
+
+5.
+
+IMPLEMENTATION
+
+We test our approach on two different examples. To run these ex-
+periments, we built a module combining Snap.py [8] and CVXPY
+[5]. The network is stored as a Snap.py structure, and the ADMM
+updates are run in parallel using CVXPY.
+
+6. EXPERIMENTS
+
+We now examine this method to see two potential problems that
+this approach can solve. First, we look at a synthetic example in
+which we gather statistical power from the network to improve clas-
+siﬁcation accuracy. Next, we see how it can apply to a geographic
+network, allowing us to gain insights on residential neighborhoods
+by looking at home sales.
+6.1 Network-Enhanced Classiﬁcation
+Dataset. In this synthetic dataset, there are 1000 randomly gener-
+ated nodes, each with its own classiﬁer, a support vector machine
+(SVM) in R50 [4]. Given an input w ∈ R50, it tries to predict
+y ∈ {−1, 1}, where
+
+y = sgn(aT w + a0 + v),
+
+and v ∈ N (0, 1), the noise, is independent for each trial. An SVM
+involves solving a convex optimization problem from a set of train-
+
+(cid:20) a
+
+(cid:21)
+
+(cid:20) a
+
+(cid:21)
+
+a0
+
+a0
+
+ing examples to obtain x =
+
+∈ R51. This deﬁnes a separating
+hyperplane to determine how to classify new inputs. There is no
+way to counter the noise v, but an accurate x can help us predict
+y from w reasonably accurately. Each node determines its own
+optimal classiﬁer from a training set consisting of 25 (w, y)-pairs,
+which we use to solve for x at every node. To evaluate our results,
+there is a test set of 10 (w, y)-pairs per node. All elements in w,
+a, and v are drawn independently from a normal distribution with
+an identity covariance matrix, with the y values dependent on the
+other variables.
+Network. The 1000 nodes are split into 20 equally-sized clusters,
+each with 50 nodes. Each cluster has a common underlying classi-
+
+ﬁer,
+
+, while different clusters have independent a’s. If i and j
+
+are in the same cluster, they have an edge with probability 0.5, and
+if they are in different clusters, there is an edge with probability
+0.01. Overall, the network has a total of 17079 edges, with 28.12%
+of the edges connecting nodes in different clusters.
+Our goal. Each node has nowhere near enough information to gen-
+erate a robust classiﬁer, since there are twice as many dimensions
+as there are training examples. We hope that the nodes can, in
+essence, “borrow” training examples from their relevant neighbors
+to improve their own classiﬁers. Of course, neighbors in different
+clusters will provide misleading information. These are the edges
+which should break off, yielding different x’s at the two connected
+nodes. Note that even though this is a synthetic example, the large
+number of misleading edges means this is far from an ideal case.
+This problem can be thought of as an example of generic classiﬁca-
+tion where we have incomplete/incorrect information. Each node
+needs to solve its own optimization problem, simultaneously deter-
+mining which information to include and which to ignore.
+Optimization Parameter and Objective Function. The optimiza-
+
+tion parameter x =
+
+=
+
+deﬁnes our estimate for the
+
+separating hyperplane for the SVM. Each node then solves its own
+optimization problem, using its 25 training examples. At node i, fi
+is deﬁned [6] as
+
+(cid:20)xa
+
+(cid:21)
+
+x0
+
+(cid:20) a
+
+(cid:21)
+
+a0
+
+25(cid:80)
+
+(a) Convex
+
+(b) Non-convex
+
+Figure 1: SVM regularization path
+
+Method
+Local SVM (λ = 0)
+Global SVM (λ ≥ λcritical)
+Convex
+Non-convex
+
+Maximum Prediction Accuracy
+
+65.90%
+57.10%
+86.68%
+87.94%
+
+Table 1: Prediction accuracy compared to baselines
+
+assumes the entire graph is coupled together and does not allow for
+any edges to break. This common hyperplane at every node yields
+an accuracy of 57.10%, which is barely an improvement over ran-
+dom guessing.
+
+In contrast, both the convex and non-convex cases perform much
+better for λ’s in the middle. From Figure 1, we see a distinct shape
+in both the convex and nonconvex regularization paths. As λ in-
+creases, the accuracy steadily improves, until a peak of around
+λ = 1. Intuitively, this represents the point where the algorithm
+has approximately split the nodes into their correct clusters, each
+with its own classiﬁer. As λ goes past one, there is a rapid drop off
+in prediction accuracy, due to the different clusters “pulling” each
+other together. The maximum prediction accuracies in this plots
+are 86.68% (convex) and 87.94% (nonconvex). These results are
+summarized in Table 1.
+6.2 Spatial Clustering with Regressors
+Dataset. We look at a list of real estate transactions over a one-
+week period in May 2008 in the Greater Sacramento area1. This
+dataset contains information on 985 sales, including latitude, lon-
+gitude, number of bedrooms, number of bathrooms, square feet,
+and sales price. However, as often happens with real data, we are
+missing some of the values. 17% of the home sales are missing
+at least one of the regressors. To verify our results, we remove a
+random subset of 200 houses as a test set.
+Network. We build the graph by using the latitude/longitude coor-
+dinates of each house. After removing the test set, we connect every
+remaining house to the ﬁve nearest homes with an edge weight of
+
+wij =
+
+1
+
+dij + 
+
+,
+
+where dij is the distance in miles from house i to house j and
+ = 0.1 bounds the weights between 0 and 10. If house j is in
+the nearest neighbors of i, there is an undirected edge regardless of
+whether or not house i is in the set of nearest neighbors of j, which
+may or may not be the case. The resulting graph leaves 785 nodes
+and 2447 edges, and it has a diameter of 61.
+Our goal. We attempt to estimate the price of the house based
+on the spatial network and the set of regressors (number of bed-
+rooms, bathrooms, and square feet). The reason that the spatial
+1Data comes from http://support.spatialkey.com/
+spatialkey-sample-csv-data/
+
+1
+
+2(cid:107)xa(cid:107)2
+
+minimize
+subject to y(i)(aT xa + x0) ≥ 1 − εi,
+
+2 +
+
+i=1
+
+c(cid:107)εi(cid:107)1
+
+i = 1, . . . , 25,
+
+where c is the soft-margin threshold parameter empirically found
+to perform well on a common model.We solve for 51 + 25 = 76
+variables at each node, so the total problem has 76,000 unknown
+variables.
+Results. To evaluate performance, we ﬁnd prediction accuracy on
+the test set of 10,000 examples (10 per node). We plot percentage of
+correct predictions vs. λ, where λ is displayed in log-scale, for the
+entire regularization path from λ = 0 to λ ≥ λcritical, as shown in
+Figure 1. In this example, these two extremes represent important
+baselines.
+
+At λ = 0, each node only uses its own training examples, ig-
+noring all the information provided by the neighbors. This is just
+a local SVM, with only 25 training examples to estimate a vec-
+tor in R51. This leads to a prediction accuracy of 65.90% and is
+clearly a suboptimal approach. When λ ≥ λcritical, the problem
+leads to a common x at every node, which is equivalent to solving
+a global SVM over the entire network. Even though we have prior
+knowledge that there is some underlying clustering structure, this
+
+Method
+Geographic (λ = 0)
+Regularized Linear Regression (λ ≥ λcritical)
+Naive Prediction (Global Mean)
+Convex
+Non-convex
+
+MSE
+0.60127
+0.86107
+
+1.0
+
+0.46299
+0.45393
+
+Table 2: Mean squared error for housing price predictions
+
+on spatial data. For large λ’s, we are ﬁtting a common linear model
+for all the houses. This is just regularized linear regression on the
+entire dataset and is the canonical method of estimating housing
+prices from a series of features. Note that this approach completely
+ignores the geographic network. As expected, in part due to the
+missing regressor information, it performs rather poorly, with an
+MSE of 0.86107. Note that since the prices are standardized with
+unit variance, a naive guess (with no information about the house)
+would be the global average. This would lead to an MSE of 1.0,
+so linear regression yields only a 13.9% improvement over this ap-
+proach. The convex and non-convex methods are both maximized
+around λ = 5, with minimum MSE’s of 0.46299 and 0.45393, re-
+spectively. The convex MSE is 46.2% lower than regularized linear
+regression and 23.0% lower than the network-only method. The
+non-convex MSE drops by 47.3% and 24.5%, respectively. The
+results are summarized in Table 2.
+
+We can visualize the clustering pattern by overlaying the net-
+work on a map of Sacramento. We plot each sale with a marker,
+colored according to its corresponding xi (converting each vector
+from R4 into a 3-dimensional RGB color, so houses with the same
+color are in consensus). With this, we see how the clustering pat-
+tern emerges. In Figure 3, we look at this plot for ﬁve values of λ
+between 0.1 and 1,000. In 3(a), λ is very small, so the neighbor-
+hoods have not yet formed. On the other hand, in 3(e) the cluster-
+ing is very clear, but it doesn’t perform well since it forces together
+neighborhoods which are very different.
+
+Aside from outperforming the baselines, this method is also bet-
+ter able to handle anomalies, which certainly exist in this housing
+dataset. In particular, a subset of over 40 houses, all on one street in
+Lincoln, California, were “sold” on the same day for $4,987 each.
+This is the type of problematic information that typically needs to
+be removed via a data cleansing process. Otherwise, it will have a
+large adverse effect on the results. Our approach is robust to these
+sorts of anomalies, and is in fact even able to detect them. In Fig-
+ure 3(c), these outliers are conﬁned to the cluster of houses in the
+northwest section of the plot, colored in black. Its effect on the
+rest of the network is limited. There is a very large edge differ-
+ence between the anomalous cluster and its neighbors. However,
+when λ approaches λcritical, these outliers are forced into consen-
+sus with the rest of the network, so we run into the same problem
+that linear regression did. Near the optimal λ, though, our method
+accurately classiﬁes these anomalies, separates them from the rest
+of the graph, and builds separate and relatively accurate models for
+both subsets.
+
+7. CONCLUSION AND FUTURE WORK
+
+These results show that within one single framework, we can
+better understand and improve on several common machine learn-
+ing/network analysis problems. The magnitude of the improve-
+ments over the baselines show that this approach is worth explor-
+ing further, as there are many potential ideas to build on. Within
+the ADMM algorithm, there are plenty of opportunities to improve
+speed, performance, and robustness. This includes ﬁnding closed-
+form solutions for common objective functions, automatically de-
+
+(a) Convex
+(b) Non-convex
+Figure 2: Regularization path for housing data
+
+network will help is that house prices often cluster together along
+neighborhood lines. For reasons relating to taxes, security, school
+districts, etc, similar houses in different locations can have drasti-
+cally different prices. In this example, the clustering occurs when
+nearby houses have similar pricing models, while edges that break
+will be between those in different neighborhoods. Simultaneously,
+as houses group together, each cluster will build its own local lin-
+ear regression model to predict the price of new houses in the area.
+This way, by using our method to combine a spatial network with
+the housing regressors, we can obtain a better price estimate than
+other common methods.
+Optimization Parameter and Objective Function. At each node,
+we solve for a variable
+
+x =(cid:2)a b
+
+c d(cid:3)T ,
+
+which shows how the price of the house depends on the set of re-
+gressors. For simplicity, the price and all regressors are standard-
+ized to zero mean and unit variance. Any missing features are ig-
+nored by setting the value to 0, the average. The price estimate is
+given by
+price = a × Bedrooms + b × Bathrooms + c × SQFT + d,
+where the constant offset d is the “baseline”, the normalized price
+for which a house in that location would sell for with a global av-
+erage number of bedrooms, bathrooms, and square feet. We aim
+to minimize the mean square error (MSE) of our price estimate.
+To prevent overﬁtting, we regularize the a, b, and c terms, every-
+thing besides the offset. The objective function at each node then
+becomes
+
+fi = (cid:107)price − price(cid:107)2
+
+2 + µ
+
+(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+1 0 0 0
+ x
+
+0 1 0 0
+0 0 1 0
+
+(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+2
+
+2
+
+where µ is a regularization parameter found to perform well on a
+common model.
+
+To predict the prices for the test set houses, ﬁrst connect each
+new house to the 5 nearest sales, weighted by inverse distance, just
+like before. We then infer the value of x by solving problem (3)
+and use it to estimate the sales price.
+Results. We plot the MSE of our test set price estimates vs. λ in
+Figure 2 for the convex and nonconvex formulations of the prob-
+lem. Once again, the two extremes of the regularization path are
+relevant baselines.
+
+At λ = 0, the regularization term in fi(x) insures that the only
+non-zero element of x is d. Therefore, the weights of the regressors
+on the other features are 0, and di equals the price of house i. Our
+estimate for each new house is simply the weighted median price
+of the 5 nearest homes, which leads to an MSE of 0.60127 on the
+test set. This ignores the regressors and is a prediction based solely
+
+Model Clustering via Group Lasso
+
+David Hallac
+
+hallac@stanford.edu
+
+CS 229 Final Report
+
+1.
+
+INTRODUCTION
+
+As datasets get larger and more intricate, many classical methods
+of analysis begin to fail due to a lack of scalability and/or robust-
+ness. This in particular holds true with networks, which allow us to
+represent the complicated relationships between different pieces of
+information. The challenge lies in developing models sophisticated
+enough to uncover patterns, general enough to work well indepen-
+dent of the input, and capable of scaling to the immense networks
+that today’s questions require.
+
+While some network properties are easily and efﬁciently com-
+puted, most non-trivial features, even things as simple as k-means
+clustering, rely on heuristics which do not guarantee the optimal
+solutions. In other words, they are not convex. These approaches
+often yield solutions which are “good enough”, but there is no way
+(in polynomial time) to know how suboptimal these answers are, i.e
+how much better we can do. Furthermore, as we delve deeper into
+network analysis, we hope to model and discover even more com-
+plex features. These will require new techniques and algorithms
+where fast, guaranteed convergence will be of the utmost impor-
+tance.
+
+In general, solving these large-scale problems is not easy. With
+the complicated coupling imposed by real world networks, it is not
+feasible to assume any speciﬁc structure. Therefore it is necessary
+to be able to solve this problem on any type of network, given a va-
+riety of possible constraints and conditions. To do so, we formulate
+it as a convex optimization problem. Unfortunately, optimization
+solvers do not scale well past several thousand unknown variables,
+too small for many real world applications. Therefore, standard
+methods will not work. We instead need to develop a distributed
+algorithm to optimize networks of this size.
+
+There are several reasons why this is just now coming to the
+forefront of research interests. With increasing availability of data
+and cheaper computing costs, it is becoming more viable to per-
+form complex large-scale analysis. However, as this ﬁeld is still
+relatively new, it has been easy to use the prior heuristics and con-
+sider the local optima as sufﬁcient solutions. Scaling up these
+more mathematically rigorous methods requires an integration of
+two ﬁelds, network analysis and convex optimization. Most of the
+related work has focused on speciﬁc instances and applications of
+optimization problems, rather than formulating more general solu-
+tions.
+
+In this project, we develop a framework for solving optimization
+problems on networks. This particular approach is best used when
+there is prior knowledge that some sort of clustering exists, even
+if we know nothing else about it. We use a distributed algorithm
+
+which is guaranteed to converge to the global optimum, and a sim-
+ilar distributed non-convex one which has no guarantees but tends
+to perform very well. Then, we apply this method to two com-
+mon machine learning problems, binary classiﬁcation and predict-
+ing housing prices, and compare our results to common baselines.
+
+2. CONVEX PROBLEM DEFINITION
+Given a connected, undirected graph G, consisting of m nodes
+and n edges with weights wjk ∈ R+, we solve for a set of vari-
+ables xi ∈ Rp, i = 1, . . . , m, one per node. These can repre-
+sent parameters in a statistical model, optimal actions to under-
+take, etc. Each node has a closed proper convex objective function
+fi : Rp → R ∪ {∞}, which we want to minimize. Additionally,
+there is a proportional penalty whenever two connected nodes have
+different values of x. This can be written as the optimization prob-
+lem
+
+minimize (cid:80)
+
+fi(xi) + λ (cid:80)
+
+minimize (cid:80)
+
+wjk(cid:107)xj − xk(cid:107)2,
+
+i∈V
+
+(j,k)∈E
+
+(1)
+where λ ∈ R+ is the regularization parameter, V is the set of nodes,
+and E is the edge set. This problem is convex in the variable x =
+(x1, . . . , xm) ∈ Rmp. We let x(cid:63) denote an optimal solution.
+Regularization Path. Although λ can be incorporated into the
+wij’s by scaling the edge weights, it is best viewed separately as
+a single parameter which is tuned to yield different global results.
+At λ = 0, x(cid:63)
+i , the solution at node i, is simply any minimizer of
+fi. This can be computed locally at each node, since when λ = 0
+the network has no effect. At the other extreme, there can exist a
+λcritical such that for any λ ≥ λcritical, we have x(cid:63)
+i = xcons, i.e.,
+the solution at every node is equal. Thus problem (1) turns into
+
+fi(x),
+
+i∈V
+
+(2)
+which is solved by xcons ∈ Rp. We refer to (2) as the consensus
+problem and to xcons as the consensus solution. It can be shown
+that, if (2) has a ﬁnite solution, λcritical exists and must be ﬁnite.
+For λ’s in between λ = 0 and λcritical, the family of solutions
+follows a trade-off curve and is known as the regularization path,
+though it is sometimes referred to as the clusterpath [3].
+Group Lasso and Clustering. The (cid:96)2-norm penalty over the edge
+difference, (cid:107)xj − xk(cid:107)2, is called group lasso [11]. It incentivizes
+the differences between connected nodes to be exactly zero, rather
+than just close to zero, yet it does not penalize large outliers (in
+this case, node values being very different) too severely. An edge
+difference of zero means that xj = xk. When many edges are in
+consensus like this, we have clustered the nodes into groups with
+equal x values. The outliers then refer to edges between nodes in
+different clusters. The sizes of these clusters depend on λ. Average
+
+cluster size gets larger as λ increases, until at λcritical the consensus
+solution can be thought of as a single cluster for the entire network.
+Even though increasing λ is most often agglomerative, cluster ﬁs-
+sion may occur, so the clustering pattern is not strictly hierarchical
+[7].
+
+This setup is similar to other regularization models, but leads to
+different results. The (cid:96)2-norm considers the entire xi as one entity,
+whereas an (cid:96)1-norm, called the lasso [10], would have treated each
+element of xi separately. This would yield element-wise instead of
+node-wise stratiﬁcation. Had the (cid:96)2-norm been squared, it would be
+Laplacian regularization. However, this would attempt to smooth
+out the results, which also would not lead to the clustering behavior
+that we are seeking.
+Inference on New Nodes. After we have solved for x, we can in-
+terpolate the solution to predict x on new nodes, for example during
+cross-validation on a test set. Given a new node j, all we need is its
+location within the network; that is, the neighbors of j and the edge
+weights. With this information, we treat j like a dummy node, with
+fj(xj) = 0. We solve for xj just like in problem (1) except without
+the objective function fj, so the optimization problem becomes
+
+wjk(cid:107)x − xk(cid:107)2.
+
+(3)
+
+minimize (cid:80)
+
+k∈N (j)
+
+This estimate of xj can be thought of as a weighted median of
+j’s neighbors’ solutions. This is called the Weber problem, and it
+involves ﬁnding the point which minimizes the weighted sum of
+distances to a set of other points. It has no analytical solution when
+j has more than two neighbors, but it can be readily computed even
+for large problems.
+
+3. PROPOSED SOLUTION
+
+Since the focus of this project is on the machine learning ap-
+plications (and due to space limitations), we will not delve into
+the derivations of the algorithms.
+Instead, we will give a high-
+level description of how it works, and provide the distributed al-
+gorithm to compute it. Note that a distributed solution is neces-
+sary so that computational and storage limits do not constrain the
+scope of potential applications. We use a well-established method
+called Alternating Direction Method of Multipliers (ADMM) [1]
+[9]. With ADMM, each individual component solves its own pri-
+vate objective function, passes this solution to its neighbors, and
+repeats the process until the entire network converges. There is no
+need for global coordination except for iteration synchronization,
+so this method can scale to arbitrarily large problems.
+
+Algorithm 1 Regularization Path
+initialize Solve for x(cid:63) at λ = 0.
+set λ = λinitial; α > 1.
+repeat
+
+Use ADMM to solve for x(cid:63)(λ), starting at previous solution.
+Stopping Criterion. quit if all edges are in consensus.
+Set λ := αλ.
+
+return x(cid:63)(λ) for λ from 0 to ˜λcritical.
+
+We solve this problem along the entire regularization path to gain
+insight into the network structure. For speciﬁc applications, this
+may also help decide the correct value of λ to use, for example by
+choosing the λ which minimizes the cross-validation error. We be-
+gin the regularization path at λ = 0 and solve for an increasing
+sequence of λ’s. We know when we have reached λcritical because
+
+a single xcons will be the optimal solution at every node, and in-
+creasing λ no longer affects the solution. This will sometimes lead
+to a stopping point slightly above λcritical, which we can denote
+˜λcritical. Solving for the exact λcritical is impractical for all but the
+smallest problems . It is okay if ˜λcritical ≥ λcritical, though, since
+they will both yield the same result, the consensus solution.
+
+At each step in the regularization path, we solve a single con-
+vex problem, a speciﬁc instance of problem (1) with a given λ,
+by ADMM. The entire process is outlined in Algorithm 1. The
+ADMM solution can be treated as a black box which provides a
+scalable, distributed solution to this large convex problem, and is
+guaranteed to converge to the global optimum.
+
+4. NON-CONVEX EXTENSION
+
+In many applications, we are using the group lasso as an approx-
+imation of the (cid:96)0-norm [2]. That is, we are looking for a sparse
+solution where relatively few edge differences are non-zero. How-
+ever, once an edge does break off, we do not care about the mag-
+nitude of (cid:107)xi − xj(cid:107)2. The lasso has a proportional penalty, which
+is the closest that a convex function can come to approximating
+the (cid:96)0-norm. However, once we’ve found the true clusters, this will
+“pull” the different clusters towards each other through their mutual
+edges. If we replace the group lasso penalty with a monotonically
+nondecreasing concave function φ(u), where φ(0) = 0 and whose
+domain is u ≥ 0, we come even closer to the (cid:96)0 . However, this
+new optimization problem,
+
+minimize (cid:80)
+
+fi(xi) + λ (cid:80)
+
+wjkφ ((cid:107)xj − xk(cid:107)2) ,
+
+(4)
+
+i∈V
+
+(j,k)∈E
+
+is not convex. ADMM is therefore not guaranteed to converge, and
+even if it does, it need not be to the global optimum. It is in some
+sense a “riskier” approach. In fact, different initial conditions on
+x, u, z, and ρ can yield quite different solutions. However, as a
+heuristic, a slight modiﬁcation to ADMM has been shown to per-
+form well in these cases. We will use this approach in the speciﬁc
+ ), where  is a constant scaling factor,
+case where φ(u) = log(1+ u
+and compare our results to the baselines and convex case.
+
+5.
+
+IMPLEMENTATION
+
+We test our approach on two different examples. To run these ex-
+periments, we built a module combining Snap.py [8] and CVXPY
+[5]. The network is stored as a Snap.py structure, and the ADMM
+updates are run in parallel using CVXPY.
+
+6. EXPERIMENTS
+
+We now examine this method to see two potential problems that
+this approach can solve. First, we look at a synthetic example in
+which we gather statistical power from the network to improve clas-
+siﬁcation accuracy. Next, we see how it can apply to a geographic
+network, allowing us to gain insights on residential neighborhoods
+by looking at home sales.
+6.1 Network-Enhanced Classiﬁcation
+Dataset. In this synthetic dataset, there are 1000 randomly gener-
+ated nodes, each with its own classiﬁer, a support vector machine
+(SVM) in R50 [4]. Given an input w ∈ R50, it tries to predict
+y ∈ {−1, 1}, where
+
+y = sgn(aT w + a0 + v),
+
+and v ∈ N (0, 1), the noise, is independent for each trial. An SVM
+involves solving a convex optimization problem from a set of train-
+
+(cid:20) a
+
+(cid:21)
+
+(cid:20) a
+
+(cid:21)
+
+a0
+
+a0
+
+ing examples to obtain x =
+
+∈ R51. This deﬁnes a separating
+hyperplane to determine how to classify new inputs. There is no
+way to counter the noise v, but an accurate x can help us predict
+y from w reasonably accurately. Each node determines its own
+optimal classiﬁer from a training set consisting of 25 (w, y)-pairs,
+which we use to solve for x at every node. To evaluate our results,
+there is a test set of 10 (w, y)-pairs per node. All elements in w,
+a, and v are drawn independently from a normal distribution with
+an identity covariance matrix, with the y values dependent on the
+other variables.
+Network. The 1000 nodes are split into 20 equally-sized clusters,
+each with 50 nodes. Each cluster has a common underlying classi-
+
+ﬁer,
+
+, while different clusters have independent a’s. If i and j
+
+are in the same cluster, they have an edge with probability 0.5, and
+if they are in different clusters, there is an edge with probability
+0.01. Overall, the network has a total of 17079 edges, with 28.12%
+of the edges connecting nodes in different clusters.
+Our goal. Each node has nowhere near enough information to gen-
+erate a robust classiﬁer, since there are twice as many dimensions
+as there are training examples. We hope that the nodes can, in
+essence, “borrow” training examples from their relevant neighbors
+to improve their own classiﬁers. Of course, neighbors in different
+clusters will provide misleading information. These are the edges
+which should break off, yielding different x’s at the two connected
+nodes. Note that even though this is a synthetic example, the large
+number of misleading edges means this is far from an ideal case.
+This problem can be thought of as an example of generic classiﬁca-
+tion where we have incomplete/incorrect information. Each node
+needs to solve its own optimization problem, simultaneously deter-
+mining which information to include and which to ignore.
+Optimization Parameter and Objective Function. The optimiza-
+
+tion parameter x =
+
+=
+
+deﬁnes our estimate for the
+
+separating hyperplane for the SVM. Each node then solves its own
+optimization problem, using its 25 training examples. At node i, fi
+is deﬁned [6] as
+
+(cid:20)xa
+
+(cid:21)
+
+x0
+
+(cid:20) a
+
+(cid:21)
+
+a0
+
+25(cid:80)
+
+(a) Convex
+
+(b) Non-convex
+
+Figure 1: SVM regularization path
+
+Method
+Local SVM (λ = 0)
+Global SVM (λ ≥ λcritical)
+Convex
+Non-convex
+
+Maximum Prediction Accuracy
+
+65.90%
+57.10%
+86.68%
+87.94%
+
+Table 1: Prediction accuracy compared to baselines
+
+assumes the entire graph is coupled together and does not allow for
+any edges to break. This common hyperplane at every node yields
+an accuracy of 57.10%, which is barely an improvement over ran-
+dom guessing.
+
+In contrast, both the convex and non-convex cases perform much
+better for λ’s in the middle. From Figure 1, we see a distinct shape
+in both the convex and nonconvex regularization paths. As λ in-
+creases, the accuracy steadily improves, until a peak of around
+λ = 1. Intuitively, this represents the point where the algorithm
+has approximately split the nodes into their correct clusters, each
+with its own classiﬁer. As λ goes past one, there is a rapid drop off
+in prediction accuracy, due to the different clusters “pulling” each
+other together. The maximum prediction accuracies in this plots
+are 86.68% (convex) and 87.94% (nonconvex). These results are
+summarized in Table 1.
+6.2 Spatial Clustering with Regressors
+Dataset. We look at a list of real estate transactions over a one-
+week period in May 2008 in the Greater Sacramento area1. This
+dataset contains information on 985 sales, including latitude, lon-
+gitude, number of bedrooms, number of bathrooms, square feet,
+and sales price. However, as often happens with real data, we are
+missing some of the values. 17% of the home sales are missing
+at least one of the regressors. To verify our results, we remove a
+random subset of 200 houses as a test set.
+Network. We build the graph by using the latitude/longitude coor-
+dinates of each house. After removing the test set, we connect every
+remaining house to the ﬁve nearest homes with an edge weight of
+
+wij =
+
+1
+
+dij + 
+
+,
+
+where dij is the distance in miles from house i to house j and
+ = 0.1 bounds the weights between 0 and 10. If house j is in
+the nearest neighbors of i, there is an undirected edge regardless of
+whether or not house i is in the set of nearest neighbors of j, which
+may or may not be the case. The resulting graph leaves 785 nodes
+and 2447 edges, and it has a diameter of 61.
+Our goal. We attempt to estimate the price of the house based
+on the spatial network and the set of regressors (number of bed-
+rooms, bathrooms, and square feet). The reason that the spatial
+1Data comes from http://support.spatialkey.com/
+spatialkey-sample-csv-data/
+
+1
+
+2(cid:107)xa(cid:107)2
+
+minimize
+subject to y(i)(aT xa + x0) ≥ 1 − εi,
+
+2 +
+
+i=1
+
+c(cid:107)εi(cid:107)1
+
+i = 1, . . . , 25,
+
+where c is the soft-margin threshold parameter empirically found
+to perform well on a common model.We solve for 51 + 25 = 76
+variables at each node, so the total problem has 76,000 unknown
+variables.
+Results. To evaluate performance, we ﬁnd prediction accuracy on
+the test set of 10,000 examples (10 per node). We plot percentage of
+correct predictions vs. λ, where λ is displayed in log-scale, for the
+entire regularization path from λ = 0 to λ ≥ λcritical, as shown in
+Figure 1. In this example, these two extremes represent important
+baselines.
+
+At λ = 0, each node only uses its own training examples, ig-
+noring all the information provided by the neighbors. This is just
+a local SVM, with only 25 training examples to estimate a vec-
+tor in R51. This leads to a prediction accuracy of 65.90% and is
+clearly a suboptimal approach. When λ ≥ λcritical, the problem
+leads to a common x at every node, which is equivalent to solving
+a global SVM over the entire network. Even though we have prior
+knowledge that there is some underlying clustering structure, this
+
+Method
+Geographic (λ = 0)
+Regularized Linear Regression (λ ≥ λcritical)
+Naive Prediction (Global Mean)
+Convex
+Non-convex
+
+MSE
+0.60127
+0.86107
+
+1.0
+
+0.46299
+0.45393
+
+Table 2: Mean squared error for housing price predictions
+
+on spatial data. For large λ’s, we are ﬁtting a common linear model
+for all the houses. This is just regularized linear regression on the
+entire dataset and is the canonical method of estimating housing
+prices from a series of features. Note that this approach completely
+ignores the geographic network. As expected, in part due to the
+missing regressor information, it performs rather poorly, with an
+MSE of 0.86107. Note that since the prices are standardized with
+unit variance, a naive guess (with no information about the house)
+would be the global average. This would lead to an MSE of 1.0,
+so linear regression yields only a 13.9% improvement over this ap-
+proach. The convex and non-convex methods are both maximized
+around λ = 5, with minimum MSE’s of 0.46299 and 0.45393, re-
+spectively. The convex MSE is 46.2% lower than regularized linear
+regression and 23.0% lower than the network-only method. The
+non-convex MSE drops by 47.3% and 24.5%, respectively. The
+results are summarized in Table 2.
+
+We can visualize the clustering pattern by overlaying the net-
+work on a map of Sacramento. We plot each sale with a marker,
+colored according to its corresponding xi (converting each vector
+from R4 into a 3-dimensional RGB color, so houses with the same
+color are in consensus). With this, we see how the clustering pat-
+tern emerges. In Figure 3, we look at this plot for ﬁve values of λ
+between 0.1 and 1,000. In 3(a), λ is very small, so the neighbor-
+hoods have not yet formed. On the other hand, in 3(e) the cluster-
+ing is very clear, but it doesn’t perform well since it forces together
+neighborhoods which are very different.
+
+Aside from outperforming the baselines, this method is also bet-
+ter able to handle anomalies, which certainly exist in this housing
+dataset. In particular, a subset of over 40 houses, all on one street in
+Lincoln, California, were “sold” on the same day for $4,987 each.
+This is the type of problematic information that typically needs to
+be removed via a data cleansing process. Otherwise, it will have a
+large adverse effect on the results. Our approach is robust to these
+sorts of anomalies, and is in fact even able to detect them. In Fig-
+ure 3(c), these outliers are conﬁned to the cluster of houses in the
+northwest section of the plot, colored in black. Its effect on the
+rest of the network is limited. There is a very large edge differ-
+ence between the anomalous cluster and its neighbors. However,
+when λ approaches λcritical, these outliers are forced into consen-
+sus with the rest of the network, so we run into the same problem
+that linear regression did. Near the optimal λ, though, our method
+accurately classiﬁes these anomalies, separates them from the rest
+of the graph, and builds separate and relatively accurate models for
+both subsets.
+
+7. CONCLUSION AND FUTURE WORK
+
+These results show that within one single framework, we can
+better understand and improve on several common machine learn-
+ing/network analysis problems. The magnitude of the improve-
+ments over the baselines show that this approach is worth explor-
+ing further, as there are many potential ideas to build on. Within
+the ADMM algorithm, there are plenty of opportunities to improve
+speed, performance, and robustness. This includes ﬁnding closed-
+form solutions for common objective functions, automatically de-
+
+(a) Convex
+(b) Non-convex
+Figure 2: Regularization path for housing data
+
+network will help is that house prices often cluster together along
+neighborhood lines. For reasons relating to taxes, security, school
+districts, etc, similar houses in different locations can have drasti-
+cally different prices. In this example, the clustering occurs when
+nearby houses have similar pricing models, while edges that break
+will be between those in different neighborhoods. Simultaneously,
+as houses group together, each cluster will build its own local lin-
+ear regression model to predict the price of new houses in the area.
+This way, by using our method to combine a spatial network with
+the housing regressors, we can obtain a better price estimate than
+other common methods.
+Optimization Parameter and Objective Function. At each node,
+we solve for a variable
+
+x =(cid:2)a b
+
+c d(cid:3)T ,
+
+which shows how the price of the house depends on the set of re-
+gressors. For simplicity, the price and all regressors are standard-
+ized to zero mean and unit variance. Any missing features are ig-
+nored by setting the value to 0, the average. The price estimate is
+given by
+price = a × Bedrooms + b × Bathrooms + c × SQFT + d,
+where the constant offset d is the “baseline”, the normalized price
+for which a house in that location would sell for with a global av-
+erage number of bedrooms, bathrooms, and square feet. We aim
+to minimize the mean square error (MSE) of our price estimate.
+To prevent overﬁtting, we regularize the a, b, and c terms, every-
+thing besides the offset. The objective function at each node then
+becomes
+
+fi = (cid:107)price − price(cid:107)2
+
+2 + µ
+
+(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+1 0 0 0
+ x
+
+0 1 0 0
+0 0 1 0
+
+(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)(cid:13)
+
+2
+
+2
+
+where µ is a regularization parameter found to perform well on a
+common model.
+
+To predict the prices for the test set houses, ﬁrst connect each
+new house to the 5 nearest sales, weighted by inverse distance, just
+like before. We then infer the value of x by solving problem (3)
+and use it to estimate the sales price.
+Results. We plot the MSE of our test set price estimates vs. λ in
+Figure 2 for the convex and nonconvex formulations of the prob-
+lem. Once again, the two extremes of the regularization path are
+relevant baselines.
+
+At λ = 0, the regularization term in fi(x) insures that the only
+non-zero element of x is d. Therefore, the weights of the regressors
+on the other features are 0, and di equals the price of house i. Our
+estimate for each new house is simply the weighted median price
+of the 5 nearest homes, which leads to an MSE of 0.60127 on the
+test set. This ignores the regressors and is a prediction based solely
+
+termining the optimal ADMM parameters, and even allowing edge
+objective functions fe(xi, xj) beyond just the weighted group lasso.
+From a machine learning standpoint, there are other ML problems
+that can be put into this framework, for example anomaly detection
+in networks, which was brieﬂy touched upon in Section 6.2. Even-
+tually, we hope to develop an easy-to-use interface that lets pro-
+grammers solve these types of large-scale problems in a distributed
+setting without having to specify the ADMM details, which would
+greatly improve the practical beneﬁt of this work.
+Acknowledgements
+This work is in collaboration with Stephen Boyd and Jure Leskovec.
+
+8. REFERENCES
+
+[1] S. Boyd, N. Parikh, E. Chu, B. Peleato, and J. Eckstein. Dis-
+tributed optimization and statistical learning via the alternat-
+ing direction method of multipliers. Foundations and Trends
+in Machine learning, 3:1–122, 2011.
+
+[2] E. Candes, M. Wakin, and S. Boyd. Enhancing sparsity by
+reweighed (cid:96)1 minimization. Journal of Fourier analysis and
+applications, 14:877–905, 2008.
+
+[3] E. Chi and K. Lange. Splitting methods for convex clustering.
+
+Journal of Computational and Graphical Statistics, 2013.
+
+[4] C. Cortes and V. Vapnik. Support-vector networks. Machine
+
+Learning, 20:273–297, 1995.
+
+[5] S. Diamond, E. Chu, and S. Boyd. CVXPY: A Python-
+embedded modeling language for convex optimization, ver-
+sion 0.2. http://cvxpy.org/, May 2014.
+
+[6] T. Hastie, S. Rosset, R. Tibshirani, and J. Zhu. The entire reg-
+ularization path for the support vector machine. pages 1391–
+1415, 2004.
+
+[7] T. Hocking, A. Joulin, F. Bach, and J. Vert. Clusterpath: an
+algorithm for clustering using convex fusion penalties. 28th
+International Conference on Machine Learning, 2011.
+
+[8] J. Leskovec and R. Sosiˇc. Snap.py: SNAP for Python, a
+general purpose network analysis and graph mining tool in
+Python. http://snap.stanford.edu/snappy, June
+2014.
+
+[9] N. Parikh and S. Boyd. Proximal algorithms. Foundations and
+
+Trends in Optimization, 1:123–231, 2014.
+
+[10] R. Tibshirani. Regression shrinkage and selection via the
+lasso. Journal of the Royal Statistical Society. Series B, pages
+267–288, 1996.
+
+[11] M. Yuan and Y. Lin. Model selection and estimation in regres-
+sion with grouped variables. Journal of the Royal Statistical
+Society: Series B, 68:49–67, 2006.
+
+(a) λ = 0.1
+
+(b) λ = 1
+
+(c) λ = 10
+
+(d) λ = 100
+(e) λ = 1000
+Figure 3: Regularization path clustering pattern
+
+

@@ -1,0 +1,1919 @@
+CS 229 Project
+
+Needle Tumor Puncture Detection Using a Force and Position Sensor
+
+Joey Greer and Nathan Usevitch
+
+(Dated: 11 December 2015)
+
+Preforming a tumor ablation procedure involves precisely positioning an ablation probe in
+a tumor. Limited sensing accuracy and variations in tissue properties require that surgeons
+often identify when they have correctly positioned the probe through their sense of touch.
+In this paper, supervised learning is used to detect the point at which a needle has entered
+a tumor using a combination of force and position data. A classiﬁer is developed that uses
+force data to detect a puncture event, and a Bayesian network that incorporates a position
+estimate to distinguish between puncture events that may occur because of tissue variations,
+and puncture events that indicate the target has been reached.
+
+I.
+
+INTRODUCTION
+
+Tumor ablation is a minimally invasive technique to
+treat cancer.
+It involves guiding the tip of an electric
+probe to the tumor to be treated and running a current
+through the probe once the tip of the probe has been
+positioned in the tumor. The electric current destroys
+the cancerous tissue through heat. Often times it is diﬃ-
+cult for the clinician to know that he or she has success-
+fully reached the tumor, even with the aid of intraopera-
+tive imaging such as ultrasound or computed tomography
+(CT). When this happens, the clinician falls back on his
+or her sense of touch to know that they have success-
+fully reached their target, since often times the tumor is
+stiﬀer than the surrounding, non-cancerous tissue. This
+project applies machine learning to the problem of detect-
+ing when the ablation probe has successfully been placed
+inside a tumor, using a combination of position data ob-
+tained from imaging, as well as force data gathered from
+an instrumented needle. Enabling an instrumented nee-
+dle to autonomously detect tumor penetration would en-
+able robotically steered needles to be used in procedures
+where puncture detection had previously necessitated a
+human operator. In addition, this classiﬁer could be used
+as a tool by physicians to more conﬁdently identify when
+they have reached a tumor. Ideally, the classiﬁer making
+this prediction would be able to classify tumors in ma-
+terials of a variety of properties, as material properties
+of human tissue can vary between people and based on
+location in the body.
+
+II. PRIOR WORK
+
+Analyzing the forces of needle insertion has been a
+topic of interest in the medical robotics community for
+around a decade. Previous work has focused on mechan-
+ics modeling and prediction5,7, which analyze the forces
+of needle insertion in terms of tissue friction, tissue stiﬀ-
+ness, and transient events such as membrane puncture,
+which is of particular interest in this work. Recently,
+Elayaperumal et al.1 designed a custom needle sensor to
+measure forces at the needle tip and play these forces
+back via haptic actuators to the clinician. Finally, Go-
+nenc et al.2 recently used a custom force sensor to detect
+vein puncture for retinal surgery in the eye, but relied on
+heuristic to perform the detection, rather than machine
+learning techniques.
+
+FIG. 1. Expeirmental setup. The needle steering device, (a) is
+used to insert the needle, shown in (d), at a constant insertion
+velocity. Two tissue phantoms were used: a cow liver on top of
+a layer of EcoFlex 00-30 silicone rubber (simulating cancerous
+tissue), shown in (c), and a block of Polyvinyl Chloride on top
+of silicone rubber, which was used for collection of training
+data. (d) Shows a zoomed in picture of the ATI Industrial
+Automation Nano 17 Force Sensor attached to the base of the
+needle used for data collection in this paper.)
+
+In this work, we are using time series data as one input
+modality for classiﬁcation. Times series oﬀer a unique set
+of challenges for classiﬁcation and several approaches ex-
+ist to using this data, which is covered well in a survey
+by Keogh et al.3. Popular methods include using Hidden
+Markov Models for time series segmentation, where the
+latent variables correspond to segment labels4 and time
+series transforms such as the Discrete Fourier Transform
+
+CS 229 Project
+
+Needle Tumor Puncture Detection Using a Force and Position Sensor
+
+Joey Greer and Nathan Usevitch
+
+(Dated: 11 December 2015)
+
+Preforming a tumor ablation procedure involves precisely positioning an ablation probe in
+a tumor. Limited sensing accuracy and variations in tissue properties require that surgeons
+often identify when they have correctly positioned the probe through their sense of touch.
+In this paper, supervised learning is used to detect the point at which a needle has entered
+a tumor using a combination of force and position data. A classiﬁer is developed that uses
+force data to detect a puncture event, and a Bayesian network that incorporates a position
+estimate to distinguish between puncture events that may occur because of tissue variations,
+and puncture events that indicate the target has been reached.
+
+I.
+
+INTRODUCTION
+
+Tumor ablation is a minimally invasive technique to
+treat cancer.
+It involves guiding the tip of an electric
+probe to the tumor to be treated and running a current
+through the probe once the tip of the probe has been
+positioned in the tumor. The electric current destroys
+the cancerous tissue through heat. Often times it is diﬃ-
+cult for the clinician to know that he or she has success-
+fully reached the tumor, even with the aid of intraopera-
+tive imaging such as ultrasound or computed tomography
+(CT). When this happens, the clinician falls back on his
+or her sense of touch to know that they have success-
+fully reached their target, since often times the tumor is
+stiﬀer than the surrounding, non-cancerous tissue. This
+project applies machine learning to the problem of detect-
+ing when the ablation probe has successfully been placed
+inside a tumor, using a combination of position data ob-
+tained from imaging, as well as force data gathered from
+an instrumented needle. Enabling an instrumented nee-
+dle to autonomously detect tumor penetration would en-
+able robotically steered needles to be used in procedures
+where puncture detection had previously necessitated a
+human operator. In addition, this classiﬁer could be used
+as a tool by physicians to more conﬁdently identify when
+they have reached a tumor. Ideally, the classiﬁer making
+this prediction would be able to classify tumors in ma-
+terials of a variety of properties, as material properties
+of human tissue can vary between people and based on
+location in the body.
+
+II. PRIOR WORK
+
+Analyzing the forces of needle insertion has been a
+topic of interest in the medical robotics community for
+around a decade. Previous work has focused on mechan-
+ics modeling and prediction5,7, which analyze the forces
+of needle insertion in terms of tissue friction, tissue stiﬀ-
+ness, and transient events such as membrane puncture,
+which is of particular interest in this work. Recently,
+Elayaperumal et al.1 designed a custom needle sensor to
+measure forces at the needle tip and play these forces
+back via haptic actuators to the clinician. Finally, Go-
+nenc et al.2 recently used a custom force sensor to detect
+vein puncture for retinal surgery in the eye, but relied on
+heuristic to perform the detection, rather than machine
+learning techniques.
+
+FIG. 1. Expeirmental setup. The needle steering device, (a) is
+used to insert the needle, shown in (d), at a constant insertion
+velocity. Two tissue phantoms were used: a cow liver on top of
+a layer of EcoFlex 00-30 silicone rubber (simulating cancerous
+tissue), shown in (c), and a block of Polyvinyl Chloride on top
+of silicone rubber, which was used for collection of training
+data. (d) Shows a zoomed in picture of the ATI Industrial
+Automation Nano 17 Force Sensor attached to the base of the
+needle used for data collection in this paper.)
+
+In this work, we are using time series data as one input
+modality for classiﬁcation. Times series oﬀer a unique set
+of challenges for classiﬁcation and several approaches ex-
+ist to using this data, which is covered well in a survey
+by Keogh et al.3. Popular methods include using Hidden
+Markov Models for time series segmentation, where the
+latent variables correspond to segment labels4 and time
+series transforms such as the Discrete Fourier Transform
+
+CS 229 Project
+
+2
+
+and various forms of the Wavelet Transform to reduce
+the dimensionality of the time series for classiﬁcation.
+In this work, we use a sliding window approach, where a
+window of force values, centered around the point in time
+to be classiﬁed are transformed by a featurization func-
+tion φ(··· ) (section III) and used for classiﬁcation. This
+method was chosen due to it simplicity and eﬀectiveness
+on our data.
+
+III. EXPERIMENTAL SETUP AND DATA
+
+Data was collected using a custom needle insertion
+device (Figure 1(a)) with an insertion stage powered
+by a DC motor. A straight needle, used to simulate
+an ablation probe, was mounted on the insertion stage
+and an ATI Industrial Automation Nano 17 force sen-
+sor (Figure 1(d)) and Asenscion technologies electromag-
+netic tracker were mounted at the base of the needle.
+Two data modalities were collected over the course of an
+insertion: axial force magnitude, f (t) and estimated dis-
+tance between target and needle, d(t). The goal of this
+work is to develop an algorithm that can detect puncture
+events in near real-time using force and distance data by
+estimating
+
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+(cid:17)
+
+(cid:16)
+
+ρ(t) = 1 | φ
+
+P
+
+(cid:17)
+
+, d(t)
+
+using supervised learning. ρ(t) = 1 corresponds to the
+event that a puncture occurred at time t, and ρ(t) = 0
+corresponds to no puncture at time t. φ : R2W +1 → Rn
+corresponds to a featurization of a window of force data
+(section IV).
+
+Two types of tissue phantoms were used. The ﬁrst was
+for testing purposes and consisted of a cow liver, on top
+of a silicone membrane, which was resting on a slab of
+gelatin (Figure 1(c)). The silicone membrane and slab of
+gelatin were used to simulate a tumor to be punctured.
+Another tissue phantom was used for training data col-
+lection, and consisted of a slab of homogeneous gelatin
+tissue on top of a silicone membrane, which was on top of
+another slab of gelatin tissue of diﬀerent stiﬀness. Again,
+the silicone membrane and second slab of gelatin tissue
+were used to simulate a tumor to be punctured. The sec-
+ond tissue phantom was used to collect training data due
+to its greater re-usability, which allowed for more data
+collection.
+
+Before each test, the needle steering apparatus was re-
+oriented to provide a diﬀerent insertion angle and con-
+trolled to insert the needle into the tumor phantom at
+a constant velocity between 2 mm/s and 6 mm/s. The
+training set used in this project contains 100 diﬀerent
+puncture events in which angle of insertion as well as
+insertion velocity were varied between tests. A typical
+force-distance time series collected from a single inser-
+tion through the liver and into a silicone membrane is
+shown in ﬁgure 2.
+
+FIG. 2. A typical force and position time series collected from
+a single insertion through the cow liver and silicone layer. A
+ﬁrst puncture type event occurs when the needle punctured
+the liver capsule. The tumor puncture occurs at a distance
+past the estimated distance to target because the membrane
+deﬂects before the needle punctures through the membrane.
+
+training data set. The windows centered on the punc-
+ture along with N other random intervals were selected
+as training data for the classiﬁer. Parameters to con-
+sider when designing the force classiﬁer were feature type,
+classiﬁer type, training data weighting (to address class
+imbalance), and window size. To guide these decisions,
+10-fold cross validation was used.
+
+Several parameters were analyzed to design the force
+classiﬁer. Two types of features were considered for a
+particular window of force values: raw force values that
+were normalized (so as to make the classiﬁer able to gen-
+eralize) and combinations of diﬀerent slope values (ﬁrst
+half slope, second half slope, ﬁrst quarter slope, last quar-
+ter slope). In addition two types of classiﬁers were con-
+sidered: logistic regression and regularized logistic regres-
+sion (a lasso penalty was used and the penalty parameter,
+λ, was chosen using cross validation.) (Note that Sup-
+port Vector machines were not considered because we
+needed a probability of puncture output for the purposes
+of the combined classiﬁer explained in section V.) Fi-
+nally, the eﬀect of adding in quadratic combinations of
+features were considered. The results of diﬀerent com-
+binations of these options are shown in ﬁgure IV, with
+speciﬁcity and sensitivity as the error metrics in order
+manage eﬀects of class imbalance. The best results were
+obtained using raw (normalized) force values combined
+with quadratic combinations of these values, and a regu-
+larized logistic regression classiﬁer. Once these parame-
+ters were chosen, we considered the eﬀect of window size
+for force data. Again, 10-Fold cross validation was used
+to guide our decision process (ﬁgure 4). Based on this
+experiment, a window size of 7 time steps was selected.
+
+V. POSITION DATA
+
+IV. FORCE TIME SERIES CLASSIFICATION
+
+From each time series collected in these experiments
+several windows of force data were extracted to form a
+
+Intuitively, we expect d(t), the estimated distance be-
+tween the needle tip and target to be near zero when
+puncture occurs. Due to position noise, elasticity in
+the target, and mechanical movement, d(t) is not a reli-
+
+−20−10010203000.511.522.5Distance to Target (mm)Force Magnitude (N)Force Magnitude, f(d)CS 229 Project
+
+Needle Tumor Puncture Detection Using a Force and Position Sensor
+
+Joey Greer and Nathan Usevitch
+
+(Dated: 11 December 2015)
+
+Preforming a tumor ablation procedure involves precisely positioning an ablation probe in
+a tumor. Limited sensing accuracy and variations in tissue properties require that surgeons
+often identify when they have correctly positioned the probe through their sense of touch.
+In this paper, supervised learning is used to detect the point at which a needle has entered
+a tumor using a combination of force and position data. A classiﬁer is developed that uses
+force data to detect a puncture event, and a Bayesian network that incorporates a position
+estimate to distinguish between puncture events that may occur because of tissue variations,
+and puncture events that indicate the target has been reached.
+
+I.
+
+INTRODUCTION
+
+Tumor ablation is a minimally invasive technique to
+treat cancer.
+It involves guiding the tip of an electric
+probe to the tumor to be treated and running a current
+through the probe once the tip of the probe has been
+positioned in the tumor. The electric current destroys
+the cancerous tissue through heat. Often times it is diﬃ-
+cult for the clinician to know that he or she has success-
+fully reached the tumor, even with the aid of intraopera-
+tive imaging such as ultrasound or computed tomography
+(CT). When this happens, the clinician falls back on his
+or her sense of touch to know that they have success-
+fully reached their target, since often times the tumor is
+stiﬀer than the surrounding, non-cancerous tissue. This
+project applies machine learning to the problem of detect-
+ing when the ablation probe has successfully been placed
+inside a tumor, using a combination of position data ob-
+tained from imaging, as well as force data gathered from
+an instrumented needle. Enabling an instrumented nee-
+dle to autonomously detect tumor penetration would en-
+able robotically steered needles to be used in procedures
+where puncture detection had previously necessitated a
+human operator. In addition, this classiﬁer could be used
+as a tool by physicians to more conﬁdently identify when
+they have reached a tumor. Ideally, the classiﬁer making
+this prediction would be able to classify tumors in ma-
+terials of a variety of properties, as material properties
+of human tissue can vary between people and based on
+location in the body.
+
+II. PRIOR WORK
+
+Analyzing the forces of needle insertion has been a
+topic of interest in the medical robotics community for
+around a decade. Previous work has focused on mechan-
+ics modeling and prediction5,7, which analyze the forces
+of needle insertion in terms of tissue friction, tissue stiﬀ-
+ness, and transient events such as membrane puncture,
+which is of particular interest in this work. Recently,
+Elayaperumal et al.1 designed a custom needle sensor to
+measure forces at the needle tip and play these forces
+back via haptic actuators to the clinician. Finally, Go-
+nenc et al.2 recently used a custom force sensor to detect
+vein puncture for retinal surgery in the eye, but relied on
+heuristic to perform the detection, rather than machine
+learning techniques.
+
+FIG. 1. Expeirmental setup. The needle steering device, (a) is
+used to insert the needle, shown in (d), at a constant insertion
+velocity. Two tissue phantoms were used: a cow liver on top of
+a layer of EcoFlex 00-30 silicone rubber (simulating cancerous
+tissue), shown in (c), and a block of Polyvinyl Chloride on top
+of silicone rubber, which was used for collection of training
+data. (d) Shows a zoomed in picture of the ATI Industrial
+Automation Nano 17 Force Sensor attached to the base of the
+needle used for data collection in this paper.)
+
+In this work, we are using time series data as one input
+modality for classiﬁcation. Times series oﬀer a unique set
+of challenges for classiﬁcation and several approaches ex-
+ist to using this data, which is covered well in a survey
+by Keogh et al.3. Popular methods include using Hidden
+Markov Models for time series segmentation, where the
+latent variables correspond to segment labels4 and time
+series transforms such as the Discrete Fourier Transform
+
+CS 229 Project
+
+2
+
+and various forms of the Wavelet Transform to reduce
+the dimensionality of the time series for classiﬁcation.
+In this work, we use a sliding window approach, where a
+window of force values, centered around the point in time
+to be classiﬁed are transformed by a featurization func-
+tion φ(··· ) (section III) and used for classiﬁcation. This
+method was chosen due to it simplicity and eﬀectiveness
+on our data.
+
+III. EXPERIMENTAL SETUP AND DATA
+
+Data was collected using a custom needle insertion
+device (Figure 1(a)) with an insertion stage powered
+by a DC motor. A straight needle, used to simulate
+an ablation probe, was mounted on the insertion stage
+and an ATI Industrial Automation Nano 17 force sen-
+sor (Figure 1(d)) and Asenscion technologies electromag-
+netic tracker were mounted at the base of the needle.
+Two data modalities were collected over the course of an
+insertion: axial force magnitude, f (t) and estimated dis-
+tance between target and needle, d(t). The goal of this
+work is to develop an algorithm that can detect puncture
+events in near real-time using force and distance data by
+estimating
+
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+(cid:17)
+
+(cid:16)
+
+ρ(t) = 1 | φ
+
+P
+
+(cid:17)
+
+, d(t)
+
+using supervised learning. ρ(t) = 1 corresponds to the
+event that a puncture occurred at time t, and ρ(t) = 0
+corresponds to no puncture at time t. φ : R2W +1 → Rn
+corresponds to a featurization of a window of force data
+(section IV).
+
+Two types of tissue phantoms were used. The ﬁrst was
+for testing purposes and consisted of a cow liver, on top
+of a silicone membrane, which was resting on a slab of
+gelatin (Figure 1(c)). The silicone membrane and slab of
+gelatin were used to simulate a tumor to be punctured.
+Another tissue phantom was used for training data col-
+lection, and consisted of a slab of homogeneous gelatin
+tissue on top of a silicone membrane, which was on top of
+another slab of gelatin tissue of diﬀerent stiﬀness. Again,
+the silicone membrane and second slab of gelatin tissue
+were used to simulate a tumor to be punctured. The sec-
+ond tissue phantom was used to collect training data due
+to its greater re-usability, which allowed for more data
+collection.
+
+Before each test, the needle steering apparatus was re-
+oriented to provide a diﬀerent insertion angle and con-
+trolled to insert the needle into the tumor phantom at
+a constant velocity between 2 mm/s and 6 mm/s. The
+training set used in this project contains 100 diﬀerent
+puncture events in which angle of insertion as well as
+insertion velocity were varied between tests. A typical
+force-distance time series collected from a single inser-
+tion through the liver and into a silicone membrane is
+shown in ﬁgure 2.
+
+FIG. 2. A typical force and position time series collected from
+a single insertion through the cow liver and silicone layer. A
+ﬁrst puncture type event occurs when the needle punctured
+the liver capsule. The tumor puncture occurs at a distance
+past the estimated distance to target because the membrane
+deﬂects before the needle punctures through the membrane.
+
+training data set. The windows centered on the punc-
+ture along with N other random intervals were selected
+as training data for the classiﬁer. Parameters to con-
+sider when designing the force classiﬁer were feature type,
+classiﬁer type, training data weighting (to address class
+imbalance), and window size. To guide these decisions,
+10-fold cross validation was used.
+
+Several parameters were analyzed to design the force
+classiﬁer. Two types of features were considered for a
+particular window of force values: raw force values that
+were normalized (so as to make the classiﬁer able to gen-
+eralize) and combinations of diﬀerent slope values (ﬁrst
+half slope, second half slope, ﬁrst quarter slope, last quar-
+ter slope). In addition two types of classiﬁers were con-
+sidered: logistic regression and regularized logistic regres-
+sion (a lasso penalty was used and the penalty parameter,
+λ, was chosen using cross validation.) (Note that Sup-
+port Vector machines were not considered because we
+needed a probability of puncture output for the purposes
+of the combined classiﬁer explained in section V.) Fi-
+nally, the eﬀect of adding in quadratic combinations of
+features were considered. The results of diﬀerent com-
+binations of these options are shown in ﬁgure IV, with
+speciﬁcity and sensitivity as the error metrics in order
+manage eﬀects of class imbalance. The best results were
+obtained using raw (normalized) force values combined
+with quadratic combinations of these values, and a regu-
+larized logistic regression classiﬁer. Once these parame-
+ters were chosen, we considered the eﬀect of window size
+for force data. Again, 10-Fold cross validation was used
+to guide our decision process (ﬁgure 4). Based on this
+experiment, a window size of 7 time steps was selected.
+
+V. POSITION DATA
+
+IV. FORCE TIME SERIES CLASSIFICATION
+
+From each time series collected in these experiments
+several windows of force data were extracted to form a
+
+Intuitively, we expect d(t), the estimated distance be-
+tween the needle tip and target to be near zero when
+puncture occurs. Due to position noise, elasticity in
+the target, and mechanical movement, d(t) is not a reli-
+
+−20−10010203000.511.522.5Distance to Target (mm)Force Magnitude (N)Force Magnitude, f(d)CS 229 Project
+
+3
+
+FIG. 3. In this plot, the eﬀect of diﬀerent combinations of features and classiﬁers were considered on classiﬁer performance
+using 10-Fold cross validation on our data. Each plot contains a label r = a, l = b, q = c where a, b, c ∈ {0, 1}. r = 0 corresponds
+to using slope ratio features and r = 1 corresponds to raw force values on a window centered around the point to be classiﬁed.
+l = 0, 1 correspond to using non-regularized and regularized logistic regression, respectively. Finally, q = 0, 1 correspond to
+adding quadratic combinations of features (either slope ratios or raw force values depending on the value of r), respectively.
+The x-axis of these plots correspond to the weighting used on positive examples to address class imbalance (i.e. an x-axis value
+of 5 corresponds to positive examples being weighted by 5 times over negative examples in the classiﬁer objective function.)
+Based on these plots, raw force values were used, with regularized logistic regression and quadratic features.
+
+curs.
+Therefore, we seek to encode this relation-
+ship between d(t) into our classiﬁer. To do this, we
+model the conditional structure of the random variables
+ρ(t), φ
+, d(t) as a Bayesian net-
+
+(cid:17)
+
+work (ﬁgure 6). Assuming the structure between punc-
+ture, force, and distance given by the Bayesian network,
+we can write the joint probability of these variables as
+
+P
+
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+(cid:16)
+(cid:17)
+(cid:16)
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+(cid:17)
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+(cid:17)(cid:17)
+
+ρ(t) = 1, φ(··· ), d(t)
+d(t) | ρ(t) = 1
+
+that we
+
+(cid:17)
+
+(cid:16)
+
+=
+
+P
+
+P
+
+are
+
+, d(t)
+
+ρ(t) | φ
+
+interested in the quantity
+Given,
+P
+, we would
+like to compute this quantity in terms of the two con-
+ditional distributions we are training, P (d(t) | ρ(t)) and
+P
+Using Bayes
+Rule and the conditional independence assumptions of
+the Bayesian network structure in ﬁgure 6 we arrive at
+the following formula
+
+ρ(t) | φ
+
+.
+
+ρ(t) = 1 | φ(··· )
+
+(cid:17)
+
+(cid:17)
+
+(cid:16)
+(cid:16)
+
+(cid:17)
+(cid:17)
+
+(cid:16)
+(cid:88)
+
+P
+
+(cid:16)
+
+ρ(t) | d(t), φ(··· )
+d(t) | ρ(t)
+
+P
+
+(cid:16)
+
+P
+
+P
+d(t) | ρ(t)
+
+ρ(t)∈{0,1}
+
+(cid:17)
+
+(cid:16)
+(cid:17)
+
+=
+ρ | φ(··· )
+
+(cid:16)
+
+ρ(t) | φ(··· )
+
+P
+
+(cid:17)
+
+(1)
+
+The log likelihood of the joint probability of puncture,
+distance, and force takes the following form, which is the
+
+FIG. 4. The eﬀect of changing window size on performance
+of logistic regression classiﬁer using raw force features. Error
+rates are obtained by 10 fold cross validation. A window size
+of 7 is selected.
+
+able indicator by itself, however it is useful for classiﬁca-
+tion. There are two ways to include this data for clas-
+siﬁcation. The simplest way is to include d(t) alongside
+
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+
+and train a discriminative
+
+(cid:17)
+
+φ
+classiﬁer to model
+
+(cid:16)
+
+ρ | φ
+
+P
+
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+
+(cid:17)
+
+(cid:17)
+
+, d(t)
+
+directly. However, as stated before, we know more
+about the relationship between d(t) and ρ(t). Namely,
+we expect d(t) to be near zero when puncture oc-
+
+5101520250.80.91r=0, l=0, q=0sensitivityspecificity5101520250.80.91r=0, l=0, q=15101520250.80.91r=0, l=1, q=05101520250.80.91r=0, l=1, q=15101520250.80.91r=1, l=0, q=05101520250.80.91r=1, l=0, q=15101520250.80.91r=1, l=1, q=05101520250.80.91r=1, l=1, q=1010203040506000.050.25WindowSizeErrorRateFalseNegativeRateFalsePositiveRateCrossVValidatedVErrorCS 229 Project
+
+Needle Tumor Puncture Detection Using a Force and Position Sensor
+
+Joey Greer and Nathan Usevitch
+
+(Dated: 11 December 2015)
+
+Preforming a tumor ablation procedure involves precisely positioning an ablation probe in
+a tumor. Limited sensing accuracy and variations in tissue properties require that surgeons
+often identify when they have correctly positioned the probe through their sense of touch.
+In this paper, supervised learning is used to detect the point at which a needle has entered
+a tumor using a combination of force and position data. A classiﬁer is developed that uses
+force data to detect a puncture event, and a Bayesian network that incorporates a position
+estimate to distinguish between puncture events that may occur because of tissue variations,
+and puncture events that indicate the target has been reached.
+
+I.
+
+INTRODUCTION
+
+Tumor ablation is a minimally invasive technique to
+treat cancer.
+It involves guiding the tip of an electric
+probe to the tumor to be treated and running a current
+through the probe once the tip of the probe has been
+positioned in the tumor. The electric current destroys
+the cancerous tissue through heat. Often times it is diﬃ-
+cult for the clinician to know that he or she has success-
+fully reached the tumor, even with the aid of intraopera-
+tive imaging such as ultrasound or computed tomography
+(CT). When this happens, the clinician falls back on his
+or her sense of touch to know that they have success-
+fully reached their target, since often times the tumor is
+stiﬀer than the surrounding, non-cancerous tissue. This
+project applies machine learning to the problem of detect-
+ing when the ablation probe has successfully been placed
+inside a tumor, using a combination of position data ob-
+tained from imaging, as well as force data gathered from
+an instrumented needle. Enabling an instrumented nee-
+dle to autonomously detect tumor penetration would en-
+able robotically steered needles to be used in procedures
+where puncture detection had previously necessitated a
+human operator. In addition, this classiﬁer could be used
+as a tool by physicians to more conﬁdently identify when
+they have reached a tumor. Ideally, the classiﬁer making
+this prediction would be able to classify tumors in ma-
+terials of a variety of properties, as material properties
+of human tissue can vary between people and based on
+location in the body.
+
+II. PRIOR WORK
+
+Analyzing the forces of needle insertion has been a
+topic of interest in the medical robotics community for
+around a decade. Previous work has focused on mechan-
+ics modeling and prediction5,7, which analyze the forces
+of needle insertion in terms of tissue friction, tissue stiﬀ-
+ness, and transient events such as membrane puncture,
+which is of particular interest in this work. Recently,
+Elayaperumal et al.1 designed a custom needle sensor to
+measure forces at the needle tip and play these forces
+back via haptic actuators to the clinician. Finally, Go-
+nenc et al.2 recently used a custom force sensor to detect
+vein puncture for retinal surgery in the eye, but relied on
+heuristic to perform the detection, rather than machine
+learning techniques.
+
+FIG. 1. Expeirmental setup. The needle steering device, (a) is
+used to insert the needle, shown in (d), at a constant insertion
+velocity. Two tissue phantoms were used: a cow liver on top of
+a layer of EcoFlex 00-30 silicone rubber (simulating cancerous
+tissue), shown in (c), and a block of Polyvinyl Chloride on top
+of silicone rubber, which was used for collection of training
+data. (d) Shows a zoomed in picture of the ATI Industrial
+Automation Nano 17 Force Sensor attached to the base of the
+needle used for data collection in this paper.)
+
+In this work, we are using time series data as one input
+modality for classiﬁcation. Times series oﬀer a unique set
+of challenges for classiﬁcation and several approaches ex-
+ist to using this data, which is covered well in a survey
+by Keogh et al.3. Popular methods include using Hidden
+Markov Models for time series segmentation, where the
+latent variables correspond to segment labels4 and time
+series transforms such as the Discrete Fourier Transform
+
+CS 229 Project
+
+2
+
+and various forms of the Wavelet Transform to reduce
+the dimensionality of the time series for classiﬁcation.
+In this work, we use a sliding window approach, where a
+window of force values, centered around the point in time
+to be classiﬁed are transformed by a featurization func-
+tion φ(··· ) (section III) and used for classiﬁcation. This
+method was chosen due to it simplicity and eﬀectiveness
+on our data.
+
+III. EXPERIMENTAL SETUP AND DATA
+
+Data was collected using a custom needle insertion
+device (Figure 1(a)) with an insertion stage powered
+by a DC motor. A straight needle, used to simulate
+an ablation probe, was mounted on the insertion stage
+and an ATI Industrial Automation Nano 17 force sen-
+sor (Figure 1(d)) and Asenscion technologies electromag-
+netic tracker were mounted at the base of the needle.
+Two data modalities were collected over the course of an
+insertion: axial force magnitude, f (t) and estimated dis-
+tance between target and needle, d(t). The goal of this
+work is to develop an algorithm that can detect puncture
+events in near real-time using force and distance data by
+estimating
+
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+(cid:17)
+
+(cid:16)
+
+ρ(t) = 1 | φ
+
+P
+
+(cid:17)
+
+, d(t)
+
+using supervised learning. ρ(t) = 1 corresponds to the
+event that a puncture occurred at time t, and ρ(t) = 0
+corresponds to no puncture at time t. φ : R2W +1 → Rn
+corresponds to a featurization of a window of force data
+(section IV).
+
+Two types of tissue phantoms were used. The ﬁrst was
+for testing purposes and consisted of a cow liver, on top
+of a silicone membrane, which was resting on a slab of
+gelatin (Figure 1(c)). The silicone membrane and slab of
+gelatin were used to simulate a tumor to be punctured.
+Another tissue phantom was used for training data col-
+lection, and consisted of a slab of homogeneous gelatin
+tissue on top of a silicone membrane, which was on top of
+another slab of gelatin tissue of diﬀerent stiﬀness. Again,
+the silicone membrane and second slab of gelatin tissue
+were used to simulate a tumor to be punctured. The sec-
+ond tissue phantom was used to collect training data due
+to its greater re-usability, which allowed for more data
+collection.
+
+Before each test, the needle steering apparatus was re-
+oriented to provide a diﬀerent insertion angle and con-
+trolled to insert the needle into the tumor phantom at
+a constant velocity between 2 mm/s and 6 mm/s. The
+training set used in this project contains 100 diﬀerent
+puncture events in which angle of insertion as well as
+insertion velocity were varied between tests. A typical
+force-distance time series collected from a single inser-
+tion through the liver and into a silicone membrane is
+shown in ﬁgure 2.
+
+FIG. 2. A typical force and position time series collected from
+a single insertion through the cow liver and silicone layer. A
+ﬁrst puncture type event occurs when the needle punctured
+the liver capsule. The tumor puncture occurs at a distance
+past the estimated distance to target because the membrane
+deﬂects before the needle punctures through the membrane.
+
+training data set. The windows centered on the punc-
+ture along with N other random intervals were selected
+as training data for the classiﬁer. Parameters to con-
+sider when designing the force classiﬁer were feature type,
+classiﬁer type, training data weighting (to address class
+imbalance), and window size. To guide these decisions,
+10-fold cross validation was used.
+
+Several parameters were analyzed to design the force
+classiﬁer. Two types of features were considered for a
+particular window of force values: raw force values that
+were normalized (so as to make the classiﬁer able to gen-
+eralize) and combinations of diﬀerent slope values (ﬁrst
+half slope, second half slope, ﬁrst quarter slope, last quar-
+ter slope). In addition two types of classiﬁers were con-
+sidered: logistic regression and regularized logistic regres-
+sion (a lasso penalty was used and the penalty parameter,
+λ, was chosen using cross validation.) (Note that Sup-
+port Vector machines were not considered because we
+needed a probability of puncture output for the purposes
+of the combined classiﬁer explained in section V.) Fi-
+nally, the eﬀect of adding in quadratic combinations of
+features were considered. The results of diﬀerent com-
+binations of these options are shown in ﬁgure IV, with
+speciﬁcity and sensitivity as the error metrics in order
+manage eﬀects of class imbalance. The best results were
+obtained using raw (normalized) force values combined
+with quadratic combinations of these values, and a regu-
+larized logistic regression classiﬁer. Once these parame-
+ters were chosen, we considered the eﬀect of window size
+for force data. Again, 10-Fold cross validation was used
+to guide our decision process (ﬁgure 4). Based on this
+experiment, a window size of 7 time steps was selected.
+
+V. POSITION DATA
+
+IV. FORCE TIME SERIES CLASSIFICATION
+
+From each time series collected in these experiments
+several windows of force data were extracted to form a
+
+Intuitively, we expect d(t), the estimated distance be-
+tween the needle tip and target to be near zero when
+puncture occurs. Due to position noise, elasticity in
+the target, and mechanical movement, d(t) is not a reli-
+
+−20−10010203000.511.522.5Distance to Target (mm)Force Magnitude (N)Force Magnitude, f(d)CS 229 Project
+
+3
+
+FIG. 3. In this plot, the eﬀect of diﬀerent combinations of features and classiﬁers were considered on classiﬁer performance
+using 10-Fold cross validation on our data. Each plot contains a label r = a, l = b, q = c where a, b, c ∈ {0, 1}. r = 0 corresponds
+to using slope ratio features and r = 1 corresponds to raw force values on a window centered around the point to be classiﬁed.
+l = 0, 1 correspond to using non-regularized and regularized logistic regression, respectively. Finally, q = 0, 1 correspond to
+adding quadratic combinations of features (either slope ratios or raw force values depending on the value of r), respectively.
+The x-axis of these plots correspond to the weighting used on positive examples to address class imbalance (i.e. an x-axis value
+of 5 corresponds to positive examples being weighted by 5 times over negative examples in the classiﬁer objective function.)
+Based on these plots, raw force values were used, with regularized logistic regression and quadratic features.
+
+curs.
+Therefore, we seek to encode this relation-
+ship between d(t) into our classiﬁer. To do this, we
+model the conditional structure of the random variables
+ρ(t), φ
+, d(t) as a Bayesian net-
+
+(cid:17)
+
+work (ﬁgure 6). Assuming the structure between punc-
+ture, force, and distance given by the Bayesian network,
+we can write the joint probability of these variables as
+
+P
+
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+(cid:16)
+(cid:17)
+(cid:16)
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+(cid:17)
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+(cid:17)(cid:17)
+
+ρ(t) = 1, φ(··· ), d(t)
+d(t) | ρ(t) = 1
+
+that we
+
+(cid:17)
+
+(cid:16)
+
+=
+
+P
+
+P
+
+are
+
+, d(t)
+
+ρ(t) | φ
+
+interested in the quantity
+Given,
+P
+, we would
+like to compute this quantity in terms of the two con-
+ditional distributions we are training, P (d(t) | ρ(t)) and
+P
+Using Bayes
+Rule and the conditional independence assumptions of
+the Bayesian network structure in ﬁgure 6 we arrive at
+the following formula
+
+ρ(t) | φ
+
+.
+
+ρ(t) = 1 | φ(··· )
+
+(cid:17)
+
+(cid:17)
+
+(cid:16)
+(cid:16)
+
+(cid:17)
+(cid:17)
+
+(cid:16)
+(cid:88)
+
+P
+
+(cid:16)
+
+ρ(t) | d(t), φ(··· )
+d(t) | ρ(t)
+
+P
+
+(cid:16)
+
+P
+
+P
+d(t) | ρ(t)
+
+ρ(t)∈{0,1}
+
+(cid:17)
+
+(cid:16)
+(cid:17)
+
+=
+ρ | φ(··· )
+
+(cid:16)
+
+ρ(t) | φ(··· )
+
+P
+
+(cid:17)
+
+(1)
+
+The log likelihood of the joint probability of puncture,
+distance, and force takes the following form, which is the
+
+FIG. 4. The eﬀect of changing window size on performance
+of logistic regression classiﬁer using raw force features. Error
+rates are obtained by 10 fold cross validation. A window size
+of 7 is selected.
+
+able indicator by itself, however it is useful for classiﬁca-
+tion. There are two ways to include this data for clas-
+siﬁcation. The simplest way is to include d(t) alongside
+
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+
+and train a discriminative
+
+(cid:17)
+
+φ
+classiﬁer to model
+
+(cid:16)
+
+ρ | φ
+
+P
+
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+
+(cid:17)
+
+(cid:17)
+
+, d(t)
+
+directly. However, as stated before, we know more
+about the relationship between d(t) and ρ(t). Namely,
+we expect d(t) to be near zero when puncture oc-
+
+5101520250.80.91r=0, l=0, q=0sensitivityspecificity5101520250.80.91r=0, l=0, q=15101520250.80.91r=0, l=1, q=05101520250.80.91r=0, l=1, q=15101520250.80.91r=1, l=0, q=05101520250.80.91r=1, l=0, q=15101520250.80.91r=1, l=1, q=05101520250.80.91r=1, l=1, q=1010203040506000.050.25WindowSizeErrorRateFalseNegativeRateFalsePositiveRateCrossVValidatedVErrorCS 229 Project
+
+FIG. 5. Experimentally obtained probability distributions of
+distance given puncture, and distance given no puncture. A
+Gaussian distribution was ﬁt to the distribution of distance
+given puncture, and a uniform distribution was used to ap-
+proximate the distance to the target if there was no puncture.
+Note that the mean of the probability given puncture is past
+zero because of the elasticity of the membrane.
+
+(cid:16)
+
+(cid:16)
+
+ρ(t) | φ
+
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+(cid:17)(cid:17)
+
+(cid:17)(cid:17)
+
+FIG. 6.
+joint probability of
+
+Bayesian network structure governing the
+.
+
+ρ(t), d(t), φ
+
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+
+classiﬁer
+
+is calculated using
+p
+a discriminative
+regression.
+P (d(t) | ρ(t) = 1) is modeled as a normal distribution with
+mean µ and variance σ2. This encodes our knowledge and
+uncertainty about the relationship between puncture and dis-
+tance.
+
+such as
+
+logistic
+
+4
+
+(cid:16)
+
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+(cid:17)(cid:17)
+
+ρ(t) | φ
+
+where θ are the parameters that govern the classiﬁer
+P
+. This shows that
+in order to ﬁt parameters ˆθ, ˆµ, ˆσ that maximize the joint
+likelihood of our data, we can separately train the force
+classiﬁer and Gaussian parameters. The force classiﬁer
+was discussed in section IV and the maximum likelihood
+mean and standard deviation governing the distance dis-
+tribution are found to correspond to the sample mean and
+variance of distances corresponding to puncture events in
+the training data set, as shown in ﬁgure 5 and given by:
+
+µ,σ
+
+(ˆµ, ˆσ) = argmax
+
+M pos =
+
+l(θ, µ, σ)
+
+M(cid:88)
+1{y(i) = 1}
+(cid:80)M
+i=1 1{y(i) = 1}d(i)
+(cid:80)M
+i=1 1{y(i) = 1}(d(i) − ˆµ)2
+
+M pos
+
+i=1
+
+ˆµ =
+
+M pos
+
+ˆσ2 =
+
+Note that,
+
+Finally, to make a prediction using this Bayesian network
+structure, and optimized parameters, equation 1 is used.
+in this work, we chose to maximize the
+joint probability, P (ρ(t), φ(··· ), d(t)), due to the sim-
+plistic objective function decomposition that allows us
+to separately maximize the force and distance proba-
+bility distributions. Another option is to directly max-
+imize the conditional probability we are interested in,
+P (ρ(t) | φ(··· ), d(t)). This trade oﬀ is discussed in
+further detail by Roos et al.6 in the general context of
+Bayesian networks.
+
+VI. PERFORMANCE OF COMBINED CLASSIFIER
+
+To qualitatively test the performance of the force clas-
+siﬁer on the measured data, both the classiﬁer that uses
+force only, and the classiﬁer that incorporates force and
+distance were used on the liver data. For this test, a
+moving window was run across all of the data, with the
+probability of puncture being calculated for each point.
+Figure 7 shows the time series along with the probability
+of puncture as computed by the force only classiﬁer and
+force/position classiﬁer. The force only classiﬁer is ac-
+curate at classifying nearly all peaks as puncture events,
+even the peaks that occur before the actual puncture.
+The use of the classiﬁer that includes the position esti-
+mate prevents peaks away from the puncture from being
+classiﬁed as the puncture event. The position data en-
+abled the algorithm to discriminate between a generic
+puncture event, and a puncture event that signals when
+the needle has reached the target region.
+
+sum over training examples 1, . . . , M
+
+(cid:16)
+
+(cid:16)
+
+l(θ, µ, σ) =
+
+log
+
+P
+
+ρ(i), d(i), φ(i); µ, σ, θ
+
+(cid:17)(cid:17)
+
+=
+
+i=1
+
+M(cid:88)
+(cid:16)
+(cid:16)
+
+(cid:16)
+(cid:16)
+
+P
+
+P
+
+M(cid:88)
+M(cid:88)
+
+i=1
+
+i=1
+
+log
+
+log
+
+(cid:124)
+
+(cid:17)(cid:17)
+M(cid:88)
+
+i=1
+
+(cid:17)(cid:17)
+(cid:125)
+
+ρ(i), d(i), φ(i); µ, σ, θ
+
+d(i) | ρ(i); µ, σ
+
++
+
+(cid:123)(cid:122)
+
+(cid:16)
+
+(cid:16)
+
+P
+
+=
+
+log
+
+(cid:124)
+
+ρ(i) | φ(i); θ
+
+(cid:123)(cid:122)
+
+(cid:17)(cid:17)
+(cid:125)
+
+VII. CONCLUSION
+
+A regularized logistic regression classiﬁer is developed
+to detect a puncture event using normalized values from
+the force time series as features. Despite using training
+data obtained from a gelatin phantom, the classiﬁer was
+
+only depends on µ,σ
+
+only depends on θ
+
+−40−200204000.10.2PuncturesSamplesFit Probability−40−200204000.0050.010.015Distance to Target (mm)Non PuncturesCS 229 Project
+
+Needle Tumor Puncture Detection Using a Force and Position Sensor
+
+Joey Greer and Nathan Usevitch
+
+(Dated: 11 December 2015)
+
+Preforming a tumor ablation procedure involves precisely positioning an ablation probe in
+a tumor. Limited sensing accuracy and variations in tissue properties require that surgeons
+often identify when they have correctly positioned the probe through their sense of touch.
+In this paper, supervised learning is used to detect the point at which a needle has entered
+a tumor using a combination of force and position data. A classiﬁer is developed that uses
+force data to detect a puncture event, and a Bayesian network that incorporates a position
+estimate to distinguish between puncture events that may occur because of tissue variations,
+and puncture events that indicate the target has been reached.
+
+I.
+
+INTRODUCTION
+
+Tumor ablation is a minimally invasive technique to
+treat cancer.
+It involves guiding the tip of an electric
+probe to the tumor to be treated and running a current
+through the probe once the tip of the probe has been
+positioned in the tumor. The electric current destroys
+the cancerous tissue through heat. Often times it is diﬃ-
+cult for the clinician to know that he or she has success-
+fully reached the tumor, even with the aid of intraopera-
+tive imaging such as ultrasound or computed tomography
+(CT). When this happens, the clinician falls back on his
+or her sense of touch to know that they have success-
+fully reached their target, since often times the tumor is
+stiﬀer than the surrounding, non-cancerous tissue. This
+project applies machine learning to the problem of detect-
+ing when the ablation probe has successfully been placed
+inside a tumor, using a combination of position data ob-
+tained from imaging, as well as force data gathered from
+an instrumented needle. Enabling an instrumented nee-
+dle to autonomously detect tumor penetration would en-
+able robotically steered needles to be used in procedures
+where puncture detection had previously necessitated a
+human operator. In addition, this classiﬁer could be used
+as a tool by physicians to more conﬁdently identify when
+they have reached a tumor. Ideally, the classiﬁer making
+this prediction would be able to classify tumors in ma-
+terials of a variety of properties, as material properties
+of human tissue can vary between people and based on
+location in the body.
+
+II. PRIOR WORK
+
+Analyzing the forces of needle insertion has been a
+topic of interest in the medical robotics community for
+around a decade. Previous work has focused on mechan-
+ics modeling and prediction5,7, which analyze the forces
+of needle insertion in terms of tissue friction, tissue stiﬀ-
+ness, and transient events such as membrane puncture,
+which is of particular interest in this work. Recently,
+Elayaperumal et al.1 designed a custom needle sensor to
+measure forces at the needle tip and play these forces
+back via haptic actuators to the clinician. Finally, Go-
+nenc et al.2 recently used a custom force sensor to detect
+vein puncture for retinal surgery in the eye, but relied on
+heuristic to perform the detection, rather than machine
+learning techniques.
+
+FIG. 1. Expeirmental setup. The needle steering device, (a) is
+used to insert the needle, shown in (d), at a constant insertion
+velocity. Two tissue phantoms were used: a cow liver on top of
+a layer of EcoFlex 00-30 silicone rubber (simulating cancerous
+tissue), shown in (c), and a block of Polyvinyl Chloride on top
+of silicone rubber, which was used for collection of training
+data. (d) Shows a zoomed in picture of the ATI Industrial
+Automation Nano 17 Force Sensor attached to the base of the
+needle used for data collection in this paper.)
+
+In this work, we are using time series data as one input
+modality for classiﬁcation. Times series oﬀer a unique set
+of challenges for classiﬁcation and several approaches ex-
+ist to using this data, which is covered well in a survey
+by Keogh et al.3. Popular methods include using Hidden
+Markov Models for time series segmentation, where the
+latent variables correspond to segment labels4 and time
+series transforms such as the Discrete Fourier Transform
+
+CS 229 Project
+
+2
+
+and various forms of the Wavelet Transform to reduce
+the dimensionality of the time series for classiﬁcation.
+In this work, we use a sliding window approach, where a
+window of force values, centered around the point in time
+to be classiﬁed are transformed by a featurization func-
+tion φ(··· ) (section III) and used for classiﬁcation. This
+method was chosen due to it simplicity and eﬀectiveness
+on our data.
+
+III. EXPERIMENTAL SETUP AND DATA
+
+Data was collected using a custom needle insertion
+device (Figure 1(a)) with an insertion stage powered
+by a DC motor. A straight needle, used to simulate
+an ablation probe, was mounted on the insertion stage
+and an ATI Industrial Automation Nano 17 force sen-
+sor (Figure 1(d)) and Asenscion technologies electromag-
+netic tracker were mounted at the base of the needle.
+Two data modalities were collected over the course of an
+insertion: axial force magnitude, f (t) and estimated dis-
+tance between target and needle, d(t). The goal of this
+work is to develop an algorithm that can detect puncture
+events in near real-time using force and distance data by
+estimating
+
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+(cid:17)
+
+(cid:16)
+
+ρ(t) = 1 | φ
+
+P
+
+(cid:17)
+
+, d(t)
+
+using supervised learning. ρ(t) = 1 corresponds to the
+event that a puncture occurred at time t, and ρ(t) = 0
+corresponds to no puncture at time t. φ : R2W +1 → Rn
+corresponds to a featurization of a window of force data
+(section IV).
+
+Two types of tissue phantoms were used. The ﬁrst was
+for testing purposes and consisted of a cow liver, on top
+of a silicone membrane, which was resting on a slab of
+gelatin (Figure 1(c)). The silicone membrane and slab of
+gelatin were used to simulate a tumor to be punctured.
+Another tissue phantom was used for training data col-
+lection, and consisted of a slab of homogeneous gelatin
+tissue on top of a silicone membrane, which was on top of
+another slab of gelatin tissue of diﬀerent stiﬀness. Again,
+the silicone membrane and second slab of gelatin tissue
+were used to simulate a tumor to be punctured. The sec-
+ond tissue phantom was used to collect training data due
+to its greater re-usability, which allowed for more data
+collection.
+
+Before each test, the needle steering apparatus was re-
+oriented to provide a diﬀerent insertion angle and con-
+trolled to insert the needle into the tumor phantom at
+a constant velocity between 2 mm/s and 6 mm/s. The
+training set used in this project contains 100 diﬀerent
+puncture events in which angle of insertion as well as
+insertion velocity were varied between tests. A typical
+force-distance time series collected from a single inser-
+tion through the liver and into a silicone membrane is
+shown in ﬁgure 2.
+
+FIG. 2. A typical force and position time series collected from
+a single insertion through the cow liver and silicone layer. A
+ﬁrst puncture type event occurs when the needle punctured
+the liver capsule. The tumor puncture occurs at a distance
+past the estimated distance to target because the membrane
+deﬂects before the needle punctures through the membrane.
+
+training data set. The windows centered on the punc-
+ture along with N other random intervals were selected
+as training data for the classiﬁer. Parameters to con-
+sider when designing the force classiﬁer were feature type,
+classiﬁer type, training data weighting (to address class
+imbalance), and window size. To guide these decisions,
+10-fold cross validation was used.
+
+Several parameters were analyzed to design the force
+classiﬁer. Two types of features were considered for a
+particular window of force values: raw force values that
+were normalized (so as to make the classiﬁer able to gen-
+eralize) and combinations of diﬀerent slope values (ﬁrst
+half slope, second half slope, ﬁrst quarter slope, last quar-
+ter slope). In addition two types of classiﬁers were con-
+sidered: logistic regression and regularized logistic regres-
+sion (a lasso penalty was used and the penalty parameter,
+λ, was chosen using cross validation.) (Note that Sup-
+port Vector machines were not considered because we
+needed a probability of puncture output for the purposes
+of the combined classiﬁer explained in section V.) Fi-
+nally, the eﬀect of adding in quadratic combinations of
+features were considered. The results of diﬀerent com-
+binations of these options are shown in ﬁgure IV, with
+speciﬁcity and sensitivity as the error metrics in order
+manage eﬀects of class imbalance. The best results were
+obtained using raw (normalized) force values combined
+with quadratic combinations of these values, and a regu-
+larized logistic regression classiﬁer. Once these parame-
+ters were chosen, we considered the eﬀect of window size
+for force data. Again, 10-Fold cross validation was used
+to guide our decision process (ﬁgure 4). Based on this
+experiment, a window size of 7 time steps was selected.
+
+V. POSITION DATA
+
+IV. FORCE TIME SERIES CLASSIFICATION
+
+From each time series collected in these experiments
+several windows of force data were extracted to form a
+
+Intuitively, we expect d(t), the estimated distance be-
+tween the needle tip and target to be near zero when
+puncture occurs. Due to position noise, elasticity in
+the target, and mechanical movement, d(t) is not a reli-
+
+−20−10010203000.511.522.5Distance to Target (mm)Force Magnitude (N)Force Magnitude, f(d)CS 229 Project
+
+3
+
+FIG. 3. In this plot, the eﬀect of diﬀerent combinations of features and classiﬁers were considered on classiﬁer performance
+using 10-Fold cross validation on our data. Each plot contains a label r = a, l = b, q = c where a, b, c ∈ {0, 1}. r = 0 corresponds
+to using slope ratio features and r = 1 corresponds to raw force values on a window centered around the point to be classiﬁed.
+l = 0, 1 correspond to using non-regularized and regularized logistic regression, respectively. Finally, q = 0, 1 correspond to
+adding quadratic combinations of features (either slope ratios or raw force values depending on the value of r), respectively.
+The x-axis of these plots correspond to the weighting used on positive examples to address class imbalance (i.e. an x-axis value
+of 5 corresponds to positive examples being weighted by 5 times over negative examples in the classiﬁer objective function.)
+Based on these plots, raw force values were used, with regularized logistic regression and quadratic features.
+
+curs.
+Therefore, we seek to encode this relation-
+ship between d(t) into our classiﬁer. To do this, we
+model the conditional structure of the random variables
+ρ(t), φ
+, d(t) as a Bayesian net-
+
+(cid:17)
+
+work (ﬁgure 6). Assuming the structure between punc-
+ture, force, and distance given by the Bayesian network,
+we can write the joint probability of these variables as
+
+P
+
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+(cid:16)
+(cid:17)
+(cid:16)
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+(cid:17)
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+(cid:17)(cid:17)
+
+ρ(t) = 1, φ(··· ), d(t)
+d(t) | ρ(t) = 1
+
+that we
+
+(cid:17)
+
+(cid:16)
+
+=
+
+P
+
+P
+
+are
+
+, d(t)
+
+ρ(t) | φ
+
+interested in the quantity
+Given,
+P
+, we would
+like to compute this quantity in terms of the two con-
+ditional distributions we are training, P (d(t) | ρ(t)) and
+P
+Using Bayes
+Rule and the conditional independence assumptions of
+the Bayesian network structure in ﬁgure 6 we arrive at
+the following formula
+
+ρ(t) | φ
+
+.
+
+ρ(t) = 1 | φ(··· )
+
+(cid:17)
+
+(cid:17)
+
+(cid:16)
+(cid:16)
+
+(cid:17)
+(cid:17)
+
+(cid:16)
+(cid:88)
+
+P
+
+(cid:16)
+
+ρ(t) | d(t), φ(··· )
+d(t) | ρ(t)
+
+P
+
+(cid:16)
+
+P
+
+P
+d(t) | ρ(t)
+
+ρ(t)∈{0,1}
+
+(cid:17)
+
+(cid:16)
+(cid:17)
+
+=
+ρ | φ(··· )
+
+(cid:16)
+
+ρ(t) | φ(··· )
+
+P
+
+(cid:17)
+
+(1)
+
+The log likelihood of the joint probability of puncture,
+distance, and force takes the following form, which is the
+
+FIG. 4. The eﬀect of changing window size on performance
+of logistic regression classiﬁer using raw force features. Error
+rates are obtained by 10 fold cross validation. A window size
+of 7 is selected.
+
+able indicator by itself, however it is useful for classiﬁca-
+tion. There are two ways to include this data for clas-
+siﬁcation. The simplest way is to include d(t) alongside
+
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+
+and train a discriminative
+
+(cid:17)
+
+φ
+classiﬁer to model
+
+(cid:16)
+
+ρ | φ
+
+P
+
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+
+(cid:17)
+
+(cid:17)
+
+, d(t)
+
+directly. However, as stated before, we know more
+about the relationship between d(t) and ρ(t). Namely,
+we expect d(t) to be near zero when puncture oc-
+
+5101520250.80.91r=0, l=0, q=0sensitivityspecificity5101520250.80.91r=0, l=0, q=15101520250.80.91r=0, l=1, q=05101520250.80.91r=0, l=1, q=15101520250.80.91r=1, l=0, q=05101520250.80.91r=1, l=0, q=15101520250.80.91r=1, l=1, q=05101520250.80.91r=1, l=1, q=1010203040506000.050.25WindowSizeErrorRateFalseNegativeRateFalsePositiveRateCrossVValidatedVErrorCS 229 Project
+
+FIG. 5. Experimentally obtained probability distributions of
+distance given puncture, and distance given no puncture. A
+Gaussian distribution was ﬁt to the distribution of distance
+given puncture, and a uniform distribution was used to ap-
+proximate the distance to the target if there was no puncture.
+Note that the mean of the probability given puncture is past
+zero because of the elasticity of the membrane.
+
+(cid:16)
+
+(cid:16)
+
+ρ(t) | φ
+
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+(cid:17)(cid:17)
+
+(cid:17)(cid:17)
+
+FIG. 6.
+joint probability of
+
+Bayesian network structure governing the
+.
+
+ρ(t), d(t), φ
+
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+
+classiﬁer
+
+is calculated using
+p
+a discriminative
+regression.
+P (d(t) | ρ(t) = 1) is modeled as a normal distribution with
+mean µ and variance σ2. This encodes our knowledge and
+uncertainty about the relationship between puncture and dis-
+tance.
+
+such as
+
+logistic
+
+4
+
+(cid:16)
+
+(cid:16) (cid:126)f (t − W ), . . . , (cid:126)f (t + W )
+(cid:17)(cid:17)
+
+ρ(t) | φ
+
+where θ are the parameters that govern the classiﬁer
+P
+. This shows that
+in order to ﬁt parameters ˆθ, ˆµ, ˆσ that maximize the joint
+likelihood of our data, we can separately train the force
+classiﬁer and Gaussian parameters. The force classiﬁer
+was discussed in section IV and the maximum likelihood
+mean and standard deviation governing the distance dis-
+tribution are found to correspond to the sample mean and
+variance of distances corresponding to puncture events in
+the training data set, as shown in ﬁgure 5 and given by:
+
+µ,σ
+
+(ˆµ, ˆσ) = argmax
+
+M pos =
+
+l(θ, µ, σ)
+
+M(cid:88)
+1{y(i) = 1}
+(cid:80)M
+i=1 1{y(i) = 1}d(i)
+(cid:80)M
+i=1 1{y(i) = 1}(d(i) − ˆµ)2
+
+M pos
+
+i=1
+
+ˆµ =
+
+M pos
+
+ˆσ2 =
+
+Note that,
+
+Finally, to make a prediction using this Bayesian network
+structure, and optimized parameters, equation 1 is used.
+in this work, we chose to maximize the
+joint probability, P (ρ(t), φ(··· ), d(t)), due to the sim-
+plistic objective function decomposition that allows us
+to separately maximize the force and distance proba-
+bility distributions. Another option is to directly max-
+imize the conditional probability we are interested in,
+P (ρ(t) | φ(··· ), d(t)). This trade oﬀ is discussed in
+further detail by Roos et al.6 in the general context of
+Bayesian networks.
+
+VI. PERFORMANCE OF COMBINED CLASSIFIER
+
+To qualitatively test the performance of the force clas-
+siﬁer on the measured data, both the classiﬁer that uses
+force only, and the classiﬁer that incorporates force and
+distance were used on the liver data. For this test, a
+moving window was run across all of the data, with the
+probability of puncture being calculated for each point.
+Figure 7 shows the time series along with the probability
+of puncture as computed by the force only classiﬁer and
+force/position classiﬁer. The force only classiﬁer is ac-
+curate at classifying nearly all peaks as puncture events,
+even the peaks that occur before the actual puncture.
+The use of the classiﬁer that includes the position esti-
+mate prevents peaks away from the puncture from being
+classiﬁed as the puncture event. The position data en-
+abled the algorithm to discriminate between a generic
+puncture event, and a puncture event that signals when
+the needle has reached the target region.
+
+sum over training examples 1, . . . , M
+
+(cid:16)
+
+(cid:16)
+
+l(θ, µ, σ) =
+
+log
+
+P
+
+ρ(i), d(i), φ(i); µ, σ, θ
+
+(cid:17)(cid:17)
+
+=
+
+i=1
+
+M(cid:88)
+(cid:16)
+(cid:16)
+
+(cid:16)
+(cid:16)
+
+P
+
+P
+
+M(cid:88)
+M(cid:88)
+
+i=1
+
+i=1
+
+log
+
+log
+
+(cid:124)
+
+(cid:17)(cid:17)
+M(cid:88)
+
+i=1
+
+(cid:17)(cid:17)
+(cid:125)
+
+ρ(i), d(i), φ(i); µ, σ, θ
+
+d(i) | ρ(i); µ, σ
+
++
+
+(cid:123)(cid:122)
+
+(cid:16)
+
+(cid:16)
+
+P
+
+=
+
+log
+
+(cid:124)
+
+ρ(i) | φ(i); θ
+
+(cid:123)(cid:122)
+
+(cid:17)(cid:17)
+(cid:125)
+
+VII. CONCLUSION
+
+A regularized logistic regression classiﬁer is developed
+to detect a puncture event using normalized values from
+the force time series as features. Despite using training
+data obtained from a gelatin phantom, the classiﬁer was
+
+only depends on µ,σ
+
+only depends on θ
+
+−40−200204000.10.2PuncturesSamplesFit Probability−40−200204000.0050.010.015Distance to Target (mm)Non PuncturesCS 229 Project
+
+5
+
+FIG. 7. Results of classiﬁcation on liver data when using only the force classiﬁer (green), and when using the combined force
+and position classiﬁer (red). The combined classiﬁer is able to prune false positives based on position.
+
+able to detect puncture-type events during testing in cow
+liver. Inclusion of data giving a position estimate through
+a Bayesian network allowed the classiﬁer to distinguish
+between puncture type events that occurred as the nee-
+dle passed through liver tissue, and the puncture of the
+target. This Bayesian network proved an eﬀective way to
+combine two diﬀerent modalities of data. This classiﬁer
+could give physicians an extra tool in identifying when a
+needle has reached a target during an operation such as
+a tumor ablation procedure. In addition, this classiﬁer
+could enable robotically steered needles to perform pro-
+cedures in which some sort of force information is needed
+to identify when a target area has been reached, which
+previously was only possible with a human surgeon.
+
+VIII. BIBLIOGRAPHY
+
+1S. Elayaperumal, J. H. Bae, B. Daniel, and M. Cutkosky. Detec-
+tion of membrane puncture with haptic feedback using a tip-force
+sensing needle. In Intelligent Robots and Systems (IROS 2014),
+2014 IEEE/RSJ International Conference on, Sept 2014.
+2B. Gonenc, S. Member, N. Tran, C. N. Riviere, S. Member,
+P. Gehlbach, R. H. Taylor, I. Iordachita, and S. Member. Force-
+Based Puncture Detection and Active Position Holding for As-
+sisted Retinal Vein Cannulation *. 2015.
+3E. Keogh and S. Chu. Segmenting Time Series : A Survey and
+Novel Approach.
+4S. Kim. Segmental Hidden Markov Models with Random Eﬀects
+for Waveform Modeling. 1:1–27, 2000.
+5A. M. Okamura, C. Simone, and M. D. O’Leary. Force mod-
+eling for needle insertion into soft tissue.
+IEEE transactions
+on bio-medical engineering, 51, 2004.
+doi:
+10.1109/TBME.2004.831542.
+6T. Roos, H. Wettig, P. Grnwald, P. Myllymki, and H. Tirri. On
+discriminative bayesian network classiﬁers and logistic regression.
+Machine Learning, 59(3):267–296, 2005.
+7T. Washio and K. Chinzei. Needle force sensor, robust and sen-
+sitive detection of the instant of needle puncture. 3217, 2004.
+doi:10.1007/978-3-540-30136-3˙15.
+
+ISSN 0018-9294.
+
+

@@ -1,0 +1,1075 @@
+On the CCA (in)security of MTProto
+
+Jakob Jakobsen and Claudio Orlandi
+
+Aarhus University, {jakjak,orlandi}@cs.au.dk
+
+Abstract. Telegram is a popular messaging app which supports end-
+to-end encrypted communication. In Spring 2015 we performed an audit
+of Telegram’s source code. This short paper summarizes our ﬁndings.
+Our main discovery is that the symmetric encryption scheme used in
+Telegram – known as MTProto – is not IND-CCA secure, since it is
+possible to turn any ciphertext into a diﬀerent ciphertext that decrypts
+to the same message.
+We stress that this is a theoretical attack on the deﬁnition of security and
+we do not see any way of turning the attack into a full plaintext-recovery
+attack. At the same time, we see no reason why one should use a less
+secure encryption scheme when more secure (and at least as eﬃcient)
+solutions exist.
+The take-home message (once again) is that well-studied, provably se-
+cure encryption schemes that achieve strong deﬁnitions of security (e.g.,
+authenticated-encryption) are to be preferred to home-brewed encryption
+schemes.
+
+1
+
+Introduction
+
+Telegram. Telegram is an instant messaging service designed for mobile devices,
+that has had (as of May 2015) 62 million monthly active users1 and is used to
+deliver 1010 messages daily2. It oﬀers two modes, the ﬁrst being the regular chat
+mode in which all messages can be read by the server and are stored, allowing
+for synchronization between devices and group chats. The second mode, called
+secret chat, is an end-to-end encrypted chat which supports at most two parties.
+Messages are sent through the server in encrypted form only, and are claimed
+not to be stored.
+
+The oﬃcial Telegram client application is open source, allowing for full audit-
+ing, but the server software is not. According to the Electronic Frontier Founda-
+tion3, Telegram was audited in February 2015 and the secret chat mode achieved
+full marks for its security.
+
+1 http://techcrunch.com/2015/05/13/telegram-says-its-hit-62-maus-and-
+
+messaging-activity-has-doubled/.
+
+2 https://telegram.org/blog/10-billion.
+3 https://www.eff.org/secure-messaging-scorecard.
+
+On the CCA (in)security of MTProto
+
+Jakob Jakobsen and Claudio Orlandi
+
+Aarhus University, {jakjak,orlandi}@cs.au.dk
+
+Abstract. Telegram is a popular messaging app which supports end-
+to-end encrypted communication. In Spring 2015 we performed an audit
+of Telegram’s source code. This short paper summarizes our ﬁndings.
+Our main discovery is that the symmetric encryption scheme used in
+Telegram – known as MTProto – is not IND-CCA secure, since it is
+possible to turn any ciphertext into a diﬀerent ciphertext that decrypts
+to the same message.
+We stress that this is a theoretical attack on the deﬁnition of security and
+we do not see any way of turning the attack into a full plaintext-recovery
+attack. At the same time, we see no reason why one should use a less
+secure encryption scheme when more secure (and at least as eﬃcient)
+solutions exist.
+The take-home message (once again) is that well-studied, provably se-
+cure encryption schemes that achieve strong deﬁnitions of security (e.g.,
+authenticated-encryption) are to be preferred to home-brewed encryption
+schemes.
+
+1
+
+Introduction
+
+Telegram. Telegram is an instant messaging service designed for mobile devices,
+that has had (as of May 2015) 62 million monthly active users1 and is used to
+deliver 1010 messages daily2. It oﬀers two modes, the ﬁrst being the regular chat
+mode in which all messages can be read by the server and are stored, allowing
+for synchronization between devices and group chats. The second mode, called
+secret chat, is an end-to-end encrypted chat which supports at most two parties.
+Messages are sent through the server in encrypted form only, and are claimed
+not to be stored.
+
+The oﬃcial Telegram client application is open source, allowing for full audit-
+ing, but the server software is not. According to the Electronic Frontier Founda-
+tion3, Telegram was audited in February 2015 and the secret chat mode achieved
+full marks for its security.
+
+1 http://techcrunch.com/2015/05/13/telegram-says-its-hit-62-maus-and-
+
+messaging-activity-has-doubled/.
+
+2 https://telegram.org/blog/10-billion.
+3 https://www.eff.org/secure-messaging-scorecard.
+
+Our Analysis. In Spring 2015 we performed an independent audit of the Tele-
+gram source code. The analysis is based on the oﬃcial Telegram source code for
+version 2.7.0, downloaded in mid April 2015 from github4.
+
+Instead of using proven cryptographic constructs, Telegram opted to create
+its own original protocol for symmetric encryption, known as MTProto. Our
+main ﬁnding is that MTProto does not satisfy the deﬁnitions of authenticated
+encryption (AE) or indistinguishability under chosen-ciphertext attack (IND-
+CCA) [KL14]. Those deﬁnitions are designed to guarantee security of symmetric
+encryption schemes in the presence of active attacks (i.e., attacks where the
+adversary freely manipulates ciphertexts and has access to a decryption ora-
+cle). We note that MTProto includes some kind of integrity mechanism, which
+means that active attacks are included in Telegram’s threat-model. Alas, the
+non-standard way in which MTProto implements this is not enough to satisfy
+current standards for security of encryption schemes.
+
+In a nutshell, MTProto uses a block-cipher structure and therefore includes
+padding. Unfortunately, neither the length nor the content of the padding are
+checked for integrity during decryption. This means that given any ciphertext it
+is possible to create diﬀerent ciphertexts that decrypt to the same message, thus
+breaking the deﬁnition of security. In fact, we found two ways of doing this: either
+by adding a random block at the end of the ciphertext or by replacing the last
+block with a random block. The ﬁrst method produces a ciphertext which decrypts
+correctly with probability 1, while the second method produces a ciphertext
+which decrypts correctly with probability exponentially small in the amount of
+payload contained in the last block (i.e., the block length minus the padding
+length).
+
+Our ﬁndings were communicated to the Telegram team on the 3rd of Septem-
+
+ber 2015.
+
+2 MTProto
+
+From a high-level point of view, Telegram allows two devices to exchange a long
+term key using Diﬃe-Hellman key exchange. Afterwards, the two devices can use
+this key to exchange encrypted messages using a symmetric encryption scheme
+known as MTProto. In a nutshell MTProto is a combination of:
+
+1. A lesser known mode of operation, namely Inﬁnite Garble Extension (IGE);
+2. A short term key derivation mechanism;
+3. An integrity check on the plaintext;
+
+Here is an abstract description of MTProto:
+
+2.1 MTProto Encryption
+
+Long-Term key: The sender and the receiver share a long term-key K of length
+λ. (In MTProto λ = 2048 bits and the key is obtained by running the Diﬃe-
+Hellman Key-Exchange over Z∗
+p);
+
+4 https://github.com/DrKLO/Telegram.
+
+On the CCA (in)security of MTProto
+
+Jakob Jakobsen and Claudio Orlandi
+
+Aarhus University, {jakjak,orlandi}@cs.au.dk
+
+Abstract. Telegram is a popular messaging app which supports end-
+to-end encrypted communication. In Spring 2015 we performed an audit
+of Telegram’s source code. This short paper summarizes our ﬁndings.
+Our main discovery is that the symmetric encryption scheme used in
+Telegram – known as MTProto – is not IND-CCA secure, since it is
+possible to turn any ciphertext into a diﬀerent ciphertext that decrypts
+to the same message.
+We stress that this is a theoretical attack on the deﬁnition of security and
+we do not see any way of turning the attack into a full plaintext-recovery
+attack. At the same time, we see no reason why one should use a less
+secure encryption scheme when more secure (and at least as eﬃcient)
+solutions exist.
+The take-home message (once again) is that well-studied, provably se-
+cure encryption schemes that achieve strong deﬁnitions of security (e.g.,
+authenticated-encryption) are to be preferred to home-brewed encryption
+schemes.
+
+1
+
+Introduction
+
+Telegram. Telegram is an instant messaging service designed for mobile devices,
+that has had (as of May 2015) 62 million monthly active users1 and is used to
+deliver 1010 messages daily2. It oﬀers two modes, the ﬁrst being the regular chat
+mode in which all messages can be read by the server and are stored, allowing
+for synchronization between devices and group chats. The second mode, called
+secret chat, is an end-to-end encrypted chat which supports at most two parties.
+Messages are sent through the server in encrypted form only, and are claimed
+not to be stored.
+
+The oﬃcial Telegram client application is open source, allowing for full audit-
+ing, but the server software is not. According to the Electronic Frontier Founda-
+tion3, Telegram was audited in February 2015 and the secret chat mode achieved
+full marks for its security.
+
+1 http://techcrunch.com/2015/05/13/telegram-says-its-hit-62-maus-and-
+
+messaging-activity-has-doubled/.
+
+2 https://telegram.org/blog/10-billion.
+3 https://www.eff.org/secure-messaging-scorecard.
+
+Our Analysis. In Spring 2015 we performed an independent audit of the Tele-
+gram source code. The analysis is based on the oﬃcial Telegram source code for
+version 2.7.0, downloaded in mid April 2015 from github4.
+
+Instead of using proven cryptographic constructs, Telegram opted to create
+its own original protocol for symmetric encryption, known as MTProto. Our
+main ﬁnding is that MTProto does not satisfy the deﬁnitions of authenticated
+encryption (AE) or indistinguishability under chosen-ciphertext attack (IND-
+CCA) [KL14]. Those deﬁnitions are designed to guarantee security of symmetric
+encryption schemes in the presence of active attacks (i.e., attacks where the
+adversary freely manipulates ciphertexts and has access to a decryption ora-
+cle). We note that MTProto includes some kind of integrity mechanism, which
+means that active attacks are included in Telegram’s threat-model. Alas, the
+non-standard way in which MTProto implements this is not enough to satisfy
+current standards for security of encryption schemes.
+
+In a nutshell, MTProto uses a block-cipher structure and therefore includes
+padding. Unfortunately, neither the length nor the content of the padding are
+checked for integrity during decryption. This means that given any ciphertext it
+is possible to create diﬀerent ciphertexts that decrypt to the same message, thus
+breaking the deﬁnition of security. In fact, we found two ways of doing this: either
+by adding a random block at the end of the ciphertext or by replacing the last
+block with a random block. The ﬁrst method produces a ciphertext which decrypts
+correctly with probability 1, while the second method produces a ciphertext
+which decrypts correctly with probability exponentially small in the amount of
+payload contained in the last block (i.e., the block length minus the padding
+length).
+
+Our ﬁndings were communicated to the Telegram team on the 3rd of Septem-
+
+ber 2015.
+
+2 MTProto
+
+From a high-level point of view, Telegram allows two devices to exchange a long
+term key using Diﬃe-Hellman key exchange. Afterwards, the two devices can use
+this key to exchange encrypted messages using a symmetric encryption scheme
+known as MTProto. In a nutshell MTProto is a combination of:
+
+1. A lesser known mode of operation, namely Inﬁnite Garble Extension (IGE);
+2. A short term key derivation mechanism;
+3. An integrity check on the plaintext;
+
+Here is an abstract description of MTProto:
+
+2.1 MTProto Encryption
+
+Long-Term key: The sender and the receiver share a long term-key K of length
+λ. (In MTProto λ = 2048 bits and the key is obtained by running the Diﬃe-
+Hellman Key-Exchange over Z∗
+p);
+
+4 https://github.com/DrKLO/Telegram.
+
+Payload: The payload x = (aux, rnd, msg, pad) is obtained by concatenating:
+
+1. some auxiliary information aux;
+2. a random value rnd (in MTProto this has length 128 bits);
+3. the message msg;
+4. some arbitrary padding pad such that |x| mod B = 0, where B is the
+block length; For technical reasons this is never more than 96 bits (and
+not 120 bits as described by the oﬃcial documentation).
+
+Authentication Tag: MTProto employs a hash function
+
+Tag : {0, 1}∗ → {0, 1}h
+
+for authentication purposes. This is used to compute
+
+tag = Tag(aux, rnd, msg)
+
+(crucially, pad is not part of the input of the authentication tag). In MTProto
+Tag = SHA-1 and h = 128 bits;
+
+Short-Term Key Derivation: MTProto employs a hash function
+
+KDF : {0, 1}λ+h → {0, 1}κ+2B
+
+for key derivation purposes. This is used to compute
+
+(k, x0, y0) = KDF(K, tag)
+
+of length (κ, B, B) respectively. In MTProto the output of KDF is obtained
+by (a permutation of) the output of four SHA-1 invocations, which in turn
+take as input (a permutation of) the tag and (diﬀerent) portions of the long
+term key K.
+
+IGE Encryption: MTProto employs an eﬃciently invertible pseudorandom
+
+permutation
+
+F, F−1 : {0, 1}κ × {0, 1}B → {0, 1}B
+
+to implement the IGE mode of operation. Let x1, . . . , x(cid:96) be the (cid:96) blocks of
+the payload, each of length B, then IGE computes
+yi = Fk(xi ⊕ yi−1) ⊕ xi−1
+
+(where x0, y0 are deﬁned in the previous step). In MTProto F =AES with
+κ = 256 bits and B = 128 bits;
+
+Resulting Ciphertext: The output of MTProto is
+
+c = (tag, y1, . . . , y(cid:96))
+
+(as well as other information which is not relevant for our presentation).
+
+On the CCA (in)security of MTProto
+
+Jakob Jakobsen and Claudio Orlandi
+
+Aarhus University, {jakjak,orlandi}@cs.au.dk
+
+Abstract. Telegram is a popular messaging app which supports end-
+to-end encrypted communication. In Spring 2015 we performed an audit
+of Telegram’s source code. This short paper summarizes our ﬁndings.
+Our main discovery is that the symmetric encryption scheme used in
+Telegram – known as MTProto – is not IND-CCA secure, since it is
+possible to turn any ciphertext into a diﬀerent ciphertext that decrypts
+to the same message.
+We stress that this is a theoretical attack on the deﬁnition of security and
+we do not see any way of turning the attack into a full plaintext-recovery
+attack. At the same time, we see no reason why one should use a less
+secure encryption scheme when more secure (and at least as eﬃcient)
+solutions exist.
+The take-home message (once again) is that well-studied, provably se-
+cure encryption schemes that achieve strong deﬁnitions of security (e.g.,
+authenticated-encryption) are to be preferred to home-brewed encryption
+schemes.
+
+1
+
+Introduction
+
+Telegram. Telegram is an instant messaging service designed for mobile devices,
+that has had (as of May 2015) 62 million monthly active users1 and is used to
+deliver 1010 messages daily2. It oﬀers two modes, the ﬁrst being the regular chat
+mode in which all messages can be read by the server and are stored, allowing
+for synchronization between devices and group chats. The second mode, called
+secret chat, is an end-to-end encrypted chat which supports at most two parties.
+Messages are sent through the server in encrypted form only, and are claimed
+not to be stored.
+
+The oﬃcial Telegram client application is open source, allowing for full audit-
+ing, but the server software is not. According to the Electronic Frontier Founda-
+tion3, Telegram was audited in February 2015 and the secret chat mode achieved
+full marks for its security.
+
+1 http://techcrunch.com/2015/05/13/telegram-says-its-hit-62-maus-and-
+
+messaging-activity-has-doubled/.
+
+2 https://telegram.org/blog/10-billion.
+3 https://www.eff.org/secure-messaging-scorecard.
+
+Our Analysis. In Spring 2015 we performed an independent audit of the Tele-
+gram source code. The analysis is based on the oﬃcial Telegram source code for
+version 2.7.0, downloaded in mid April 2015 from github4.
+
+Instead of using proven cryptographic constructs, Telegram opted to create
+its own original protocol for symmetric encryption, known as MTProto. Our
+main ﬁnding is that MTProto does not satisfy the deﬁnitions of authenticated
+encryption (AE) or indistinguishability under chosen-ciphertext attack (IND-
+CCA) [KL14]. Those deﬁnitions are designed to guarantee security of symmetric
+encryption schemes in the presence of active attacks (i.e., attacks where the
+adversary freely manipulates ciphertexts and has access to a decryption ora-
+cle). We note that MTProto includes some kind of integrity mechanism, which
+means that active attacks are included in Telegram’s threat-model. Alas, the
+non-standard way in which MTProto implements this is not enough to satisfy
+current standards for security of encryption schemes.
+
+In a nutshell, MTProto uses a block-cipher structure and therefore includes
+padding. Unfortunately, neither the length nor the content of the padding are
+checked for integrity during decryption. This means that given any ciphertext it
+is possible to create diﬀerent ciphertexts that decrypt to the same message, thus
+breaking the deﬁnition of security. In fact, we found two ways of doing this: either
+by adding a random block at the end of the ciphertext or by replacing the last
+block with a random block. The ﬁrst method produces a ciphertext which decrypts
+correctly with probability 1, while the second method produces a ciphertext
+which decrypts correctly with probability exponentially small in the amount of
+payload contained in the last block (i.e., the block length minus the padding
+length).
+
+Our ﬁndings were communicated to the Telegram team on the 3rd of Septem-
+
+ber 2015.
+
+2 MTProto
+
+From a high-level point of view, Telegram allows two devices to exchange a long
+term key using Diﬃe-Hellman key exchange. Afterwards, the two devices can use
+this key to exchange encrypted messages using a symmetric encryption scheme
+known as MTProto. In a nutshell MTProto is a combination of:
+
+1. A lesser known mode of operation, namely Inﬁnite Garble Extension (IGE);
+2. A short term key derivation mechanism;
+3. An integrity check on the plaintext;
+
+Here is an abstract description of MTProto:
+
+2.1 MTProto Encryption
+
+Long-Term key: The sender and the receiver share a long term-key K of length
+λ. (In MTProto λ = 2048 bits and the key is obtained by running the Diﬃe-
+Hellman Key-Exchange over Z∗
+p);
+
+4 https://github.com/DrKLO/Telegram.
+
+Payload: The payload x = (aux, rnd, msg, pad) is obtained by concatenating:
+
+1. some auxiliary information aux;
+2. a random value rnd (in MTProto this has length 128 bits);
+3. the message msg;
+4. some arbitrary padding pad such that |x| mod B = 0, where B is the
+block length; For technical reasons this is never more than 96 bits (and
+not 120 bits as described by the oﬃcial documentation).
+
+Authentication Tag: MTProto employs a hash function
+
+Tag : {0, 1}∗ → {0, 1}h
+
+for authentication purposes. This is used to compute
+
+tag = Tag(aux, rnd, msg)
+
+(crucially, pad is not part of the input of the authentication tag). In MTProto
+Tag = SHA-1 and h = 128 bits;
+
+Short-Term Key Derivation: MTProto employs a hash function
+
+KDF : {0, 1}λ+h → {0, 1}κ+2B
+
+for key derivation purposes. This is used to compute
+
+(k, x0, y0) = KDF(K, tag)
+
+of length (κ, B, B) respectively. In MTProto the output of KDF is obtained
+by (a permutation of) the output of four SHA-1 invocations, which in turn
+take as input (a permutation of) the tag and (diﬀerent) portions of the long
+term key K.
+
+IGE Encryption: MTProto employs an eﬃciently invertible pseudorandom
+
+permutation
+
+F, F−1 : {0, 1}κ × {0, 1}B → {0, 1}B
+
+to implement the IGE mode of operation. Let x1, . . . , x(cid:96) be the (cid:96) blocks of
+the payload, each of length B, then IGE computes
+yi = Fk(xi ⊕ yi−1) ⊕ xi−1
+
+(where x0, y0 are deﬁned in the previous step). In MTProto F =AES with
+κ = 256 bits and B = 128 bits;
+
+Resulting Ciphertext: The output of MTProto is
+
+c = (tag, y1, . . . , y(cid:96))
+
+(as well as other information which is not relevant for our presentation).
+
+2.2 MTProto Decryption
+
+Input Parsing: The ciphertext c is parsed as
+
+c = (tag, y1, . . . , y(cid:96))
+
+Short-Term Key Recomputation: The short-term key and the initialization
+
+blocks are recomputed as
+
+(k, x0, y0) = KDF(K, tag)
+
+IGE Decryption: The payload is recovered by computing:
+
+k (yi ⊕ xi−1)
+and (x1, . . . , x(cid:96)) is parsed as (aux, rnd, msg, pad).
+
+xi = yi−1 ⊕ F−1
+
+Tag Veriﬁcation: The decryption checks if
+
+tag ?= Tag(aux, rnd, msg)
+
+and, if so, outputs msg (or ⊥ otherwise).
+
+Interestingly, if a Telegram client receives an ill-formed ciphertext, it simply
+drops the message and does not notify the sender about the error. This implies
+that it is very hard for a network attacker to detect whether a decryption was
+performed successfully or not (and therefore it does not seem possible to run
+a Bleichenbacher-style attack [Ble98]). However, we cannot exclude that an at-
+tacker which sits on the same client and shares resources (such as memory, CPU,
+etc.) might be able to detect if (and how) decryption fails using other channels.
+
+3 MTProto is not IND-CCA secure
+
+Here we brieﬂy present the two attacks that show that MTProto is not IND-
+CCA secure. We assume the reader to be familiar with the notion of IND-CCA
+security. More details on the attacks (and experimental validations) can be found
+in [Jak15].
+
+Once again, we stress that the attacks are only of theoretical nature and we
+do not see a way of turning them into full-plaintext recovery. Yet, we believe
+that these attacks are yet another proof (see e.g., [JN15]) that designing your
+own crypto rarely is a good idea.
+
+3.1 Attack #1: Padding-Length Extension
+
+Given a ciphertext
+
+which encrypts a payload
+
+c = (tag, y1, . . . , y(cid:96))
+
+x = (aux, rnd, msg, pad)
+
+On the CCA (in)security of MTProto
+
+Jakob Jakobsen and Claudio Orlandi
+
+Aarhus University, {jakjak,orlandi}@cs.au.dk
+
+Abstract. Telegram is a popular messaging app which supports end-
+to-end encrypted communication. In Spring 2015 we performed an audit
+of Telegram’s source code. This short paper summarizes our ﬁndings.
+Our main discovery is that the symmetric encryption scheme used in
+Telegram – known as MTProto – is not IND-CCA secure, since it is
+possible to turn any ciphertext into a diﬀerent ciphertext that decrypts
+to the same message.
+We stress that this is a theoretical attack on the deﬁnition of security and
+we do not see any way of turning the attack into a full plaintext-recovery
+attack. At the same time, we see no reason why one should use a less
+secure encryption scheme when more secure (and at least as eﬃcient)
+solutions exist.
+The take-home message (once again) is that well-studied, provably se-
+cure encryption schemes that achieve strong deﬁnitions of security (e.g.,
+authenticated-encryption) are to be preferred to home-brewed encryption
+schemes.
+
+1
+
+Introduction
+
+Telegram. Telegram is an instant messaging service designed for mobile devices,
+that has had (as of May 2015) 62 million monthly active users1 and is used to
+deliver 1010 messages daily2. It oﬀers two modes, the ﬁrst being the regular chat
+mode in which all messages can be read by the server and are stored, allowing
+for synchronization between devices and group chats. The second mode, called
+secret chat, is an end-to-end encrypted chat which supports at most two parties.
+Messages are sent through the server in encrypted form only, and are claimed
+not to be stored.
+
+The oﬃcial Telegram client application is open source, allowing for full audit-
+ing, but the server software is not. According to the Electronic Frontier Founda-
+tion3, Telegram was audited in February 2015 and the secret chat mode achieved
+full marks for its security.
+
+1 http://techcrunch.com/2015/05/13/telegram-says-its-hit-62-maus-and-
+
+messaging-activity-has-doubled/.
+
+2 https://telegram.org/blog/10-billion.
+3 https://www.eff.org/secure-messaging-scorecard.
+
+Our Analysis. In Spring 2015 we performed an independent audit of the Tele-
+gram source code. The analysis is based on the oﬃcial Telegram source code for
+version 2.7.0, downloaded in mid April 2015 from github4.
+
+Instead of using proven cryptographic constructs, Telegram opted to create
+its own original protocol for symmetric encryption, known as MTProto. Our
+main ﬁnding is that MTProto does not satisfy the deﬁnitions of authenticated
+encryption (AE) or indistinguishability under chosen-ciphertext attack (IND-
+CCA) [KL14]. Those deﬁnitions are designed to guarantee security of symmetric
+encryption schemes in the presence of active attacks (i.e., attacks where the
+adversary freely manipulates ciphertexts and has access to a decryption ora-
+cle). We note that MTProto includes some kind of integrity mechanism, which
+means that active attacks are included in Telegram’s threat-model. Alas, the
+non-standard way in which MTProto implements this is not enough to satisfy
+current standards for security of encryption schemes.
+
+In a nutshell, MTProto uses a block-cipher structure and therefore includes
+padding. Unfortunately, neither the length nor the content of the padding are
+checked for integrity during decryption. This means that given any ciphertext it
+is possible to create diﬀerent ciphertexts that decrypt to the same message, thus
+breaking the deﬁnition of security. In fact, we found two ways of doing this: either
+by adding a random block at the end of the ciphertext or by replacing the last
+block with a random block. The ﬁrst method produces a ciphertext which decrypts
+correctly with probability 1, while the second method produces a ciphertext
+which decrypts correctly with probability exponentially small in the amount of
+payload contained in the last block (i.e., the block length minus the padding
+length).
+
+Our ﬁndings were communicated to the Telegram team on the 3rd of Septem-
+
+ber 2015.
+
+2 MTProto
+
+From a high-level point of view, Telegram allows two devices to exchange a long
+term key using Diﬃe-Hellman key exchange. Afterwards, the two devices can use
+this key to exchange encrypted messages using a symmetric encryption scheme
+known as MTProto. In a nutshell MTProto is a combination of:
+
+1. A lesser known mode of operation, namely Inﬁnite Garble Extension (IGE);
+2. A short term key derivation mechanism;
+3. An integrity check on the plaintext;
+
+Here is an abstract description of MTProto:
+
+2.1 MTProto Encryption
+
+Long-Term key: The sender and the receiver share a long term-key K of length
+λ. (In MTProto λ = 2048 bits and the key is obtained by running the Diﬃe-
+Hellman Key-Exchange over Z∗
+p);
+
+4 https://github.com/DrKLO/Telegram.
+
+Payload: The payload x = (aux, rnd, msg, pad) is obtained by concatenating:
+
+1. some auxiliary information aux;
+2. a random value rnd (in MTProto this has length 128 bits);
+3. the message msg;
+4. some arbitrary padding pad such that |x| mod B = 0, where B is the
+block length; For technical reasons this is never more than 96 bits (and
+not 120 bits as described by the oﬃcial documentation).
+
+Authentication Tag: MTProto employs a hash function
+
+Tag : {0, 1}∗ → {0, 1}h
+
+for authentication purposes. This is used to compute
+
+tag = Tag(aux, rnd, msg)
+
+(crucially, pad is not part of the input of the authentication tag). In MTProto
+Tag = SHA-1 and h = 128 bits;
+
+Short-Term Key Derivation: MTProto employs a hash function
+
+KDF : {0, 1}λ+h → {0, 1}κ+2B
+
+for key derivation purposes. This is used to compute
+
+(k, x0, y0) = KDF(K, tag)
+
+of length (κ, B, B) respectively. In MTProto the output of KDF is obtained
+by (a permutation of) the output of four SHA-1 invocations, which in turn
+take as input (a permutation of) the tag and (diﬀerent) portions of the long
+term key K.
+
+IGE Encryption: MTProto employs an eﬃciently invertible pseudorandom
+
+permutation
+
+F, F−1 : {0, 1}κ × {0, 1}B → {0, 1}B
+
+to implement the IGE mode of operation. Let x1, . . . , x(cid:96) be the (cid:96) blocks of
+the payload, each of length B, then IGE computes
+yi = Fk(xi ⊕ yi−1) ⊕ xi−1
+
+(where x0, y0 are deﬁned in the previous step). In MTProto F =AES with
+κ = 256 bits and B = 128 bits;
+
+Resulting Ciphertext: The output of MTProto is
+
+c = (tag, y1, . . . , y(cid:96))
+
+(as well as other information which is not relevant for our presentation).
+
+2.2 MTProto Decryption
+
+Input Parsing: The ciphertext c is parsed as
+
+c = (tag, y1, . . . , y(cid:96))
+
+Short-Term Key Recomputation: The short-term key and the initialization
+
+blocks are recomputed as
+
+(k, x0, y0) = KDF(K, tag)
+
+IGE Decryption: The payload is recovered by computing:
+
+k (yi ⊕ xi−1)
+and (x1, . . . , x(cid:96)) is parsed as (aux, rnd, msg, pad).
+
+xi = yi−1 ⊕ F−1
+
+Tag Veriﬁcation: The decryption checks if
+
+tag ?= Tag(aux, rnd, msg)
+
+and, if so, outputs msg (or ⊥ otherwise).
+
+Interestingly, if a Telegram client receives an ill-formed ciphertext, it simply
+drops the message and does not notify the sender about the error. This implies
+that it is very hard for a network attacker to detect whether a decryption was
+performed successfully or not (and therefore it does not seem possible to run
+a Bleichenbacher-style attack [Ble98]). However, we cannot exclude that an at-
+tacker which sits on the same client and shares resources (such as memory, CPU,
+etc.) might be able to detect if (and how) decryption fails using other channels.
+
+3 MTProto is not IND-CCA secure
+
+Here we brieﬂy present the two attacks that show that MTProto is not IND-
+CCA secure. We assume the reader to be familiar with the notion of IND-CCA
+security. More details on the attacks (and experimental validations) can be found
+in [Jak15].
+
+Once again, we stress that the attacks are only of theoretical nature and we
+do not see a way of turning them into full-plaintext recovery. Yet, we believe
+that these attacks are yet another proof (see e.g., [JN15]) that designing your
+own crypto rarely is a good idea.
+
+3.1 Attack #1: Padding-Length Extension
+
+Given a ciphertext
+
+which encrypts a payload
+
+c = (tag, y1, . . . , y(cid:96))
+
+x = (aux, rnd, msg, pad)
+
+the attacker picks a random block r ← {0, 1}B and outputs
+
+c(cid:48) = (tag, y1, . . . , y(cid:96), r)
+
+When this is run via the decryption process, the resulting payload is
+
+x(cid:48) = (aux, rnd, msg, pad(cid:48))
+
+where pad(cid:48) = (pad, pad∗) where: 1) pad∗ is randomly distributed and 2) the
+length of |pad(cid:48)| is larger than the block length B. However, since the length
+of the pad(cid:48) is not checked during decryption, and pad(cid:48) is not an input to the
+authentication function Tag, decryption outputs msg with probability 1.
+Mitigation. This attack can be mitigated simply by checking the length of pad(cid:48)
+during decryption, and letting decryption abort if this is larger than the block
+size. Note that since honest clients never produce ill-formed ciphertexts, patching
+the decryption process in this way will not prevent clients running older versions
+of the software to communicate with clients running the patched version.
+
+3.2 Attack #2: Last Block Substitution
+
+Given a ciphertext
+
+which encrypts a payload
+
+c = (tag, y1, . . . , y(cid:96))
+
+the attacker picks a random block r ← {0, 1}B and outputs
+
+x = (aux, rnd, msg, pad)
+
+c(cid:48) = (tag, y1, . . . , y(cid:96)−1, r)
+
+When this is run via the decryption process, the resulting payload is
+
+x(cid:48) = (aux, rnd, msg(cid:48), pad(cid:48))
+
+Let P = |pad| be the length of the original pad, then it holds that the last B− P
+bits of msg(cid:48) are randomly distributed (due to the use of the PRF in the IGE
+decryption). Hence we have msg(cid:48) = msg with probability 2P−B, and in this case
+the veriﬁcation of the authentication tag succeeds and the decryption outputs
+msg. According to the oﬃcial description of MTProto the padding length is
+between 0 and 120 bits, which means that in the best case scenario the above
+attack succeeds with probability 2−8. However experimental validation shows
+that this is not the case and the length of the padding is in fact between 0 and
+96 bits (this is due to the way the objects are serialized in Java).
+So we conclude that in the best case this attack succeeds with probability
+2−32 which, while still being too high to satisfy the deﬁnition of security, makes
+this attack more cumbersome than expected.
+
+On the CCA (in)security of MTProto
+
+Jakob Jakobsen and Claudio Orlandi
+
+Aarhus University, {jakjak,orlandi}@cs.au.dk
+
+Abstract. Telegram is a popular messaging app which supports end-
+to-end encrypted communication. In Spring 2015 we performed an audit
+of Telegram’s source code. This short paper summarizes our ﬁndings.
+Our main discovery is that the symmetric encryption scheme used in
+Telegram – known as MTProto – is not IND-CCA secure, since it is
+possible to turn any ciphertext into a diﬀerent ciphertext that decrypts
+to the same message.
+We stress that this is a theoretical attack on the deﬁnition of security and
+we do not see any way of turning the attack into a full plaintext-recovery
+attack. At the same time, we see no reason why one should use a less
+secure encryption scheme when more secure (and at least as eﬃcient)
+solutions exist.
+The take-home message (once again) is that well-studied, provably se-
+cure encryption schemes that achieve strong deﬁnitions of security (e.g.,
+authenticated-encryption) are to be preferred to home-brewed encryption
+schemes.
+
+1
+
+Introduction
+
+Telegram. Telegram is an instant messaging service designed for mobile devices,
+that has had (as of May 2015) 62 million monthly active users1 and is used to
+deliver 1010 messages daily2. It oﬀers two modes, the ﬁrst being the regular chat
+mode in which all messages can be read by the server and are stored, allowing
+for synchronization between devices and group chats. The second mode, called
+secret chat, is an end-to-end encrypted chat which supports at most two parties.
+Messages are sent through the server in encrypted form only, and are claimed
+not to be stored.
+
+The oﬃcial Telegram client application is open source, allowing for full audit-
+ing, but the server software is not. According to the Electronic Frontier Founda-
+tion3, Telegram was audited in February 2015 and the secret chat mode achieved
+full marks for its security.
+
+1 http://techcrunch.com/2015/05/13/telegram-says-its-hit-62-maus-and-
+
+messaging-activity-has-doubled/.
+
+2 https://telegram.org/blog/10-billion.
+3 https://www.eff.org/secure-messaging-scorecard.
+
+Our Analysis. In Spring 2015 we performed an independent audit of the Tele-
+gram source code. The analysis is based on the oﬃcial Telegram source code for
+version 2.7.0, downloaded in mid April 2015 from github4.
+
+Instead of using proven cryptographic constructs, Telegram opted to create
+its own original protocol for symmetric encryption, known as MTProto. Our
+main ﬁnding is that MTProto does not satisfy the deﬁnitions of authenticated
+encryption (AE) or indistinguishability under chosen-ciphertext attack (IND-
+CCA) [KL14]. Those deﬁnitions are designed to guarantee security of symmetric
+encryption schemes in the presence of active attacks (i.e., attacks where the
+adversary freely manipulates ciphertexts and has access to a decryption ora-
+cle). We note that MTProto includes some kind of integrity mechanism, which
+means that active attacks are included in Telegram’s threat-model. Alas, the
+non-standard way in which MTProto implements this is not enough to satisfy
+current standards for security of encryption schemes.
+
+In a nutshell, MTProto uses a block-cipher structure and therefore includes
+padding. Unfortunately, neither the length nor the content of the padding are
+checked for integrity during decryption. This means that given any ciphertext it
+is possible to create diﬀerent ciphertexts that decrypt to the same message, thus
+breaking the deﬁnition of security. In fact, we found two ways of doing this: either
+by adding a random block at the end of the ciphertext or by replacing the last
+block with a random block. The ﬁrst method produces a ciphertext which decrypts
+correctly with probability 1, while the second method produces a ciphertext
+which decrypts correctly with probability exponentially small in the amount of
+payload contained in the last block (i.e., the block length minus the padding
+length).
+
+Our ﬁndings were communicated to the Telegram team on the 3rd of Septem-
+
+ber 2015.
+
+2 MTProto
+
+From a high-level point of view, Telegram allows two devices to exchange a long
+term key using Diﬃe-Hellman key exchange. Afterwards, the two devices can use
+this key to exchange encrypted messages using a symmetric encryption scheme
+known as MTProto. In a nutshell MTProto is a combination of:
+
+1. A lesser known mode of operation, namely Inﬁnite Garble Extension (IGE);
+2. A short term key derivation mechanism;
+3. An integrity check on the plaintext;
+
+Here is an abstract description of MTProto:
+
+2.1 MTProto Encryption
+
+Long-Term key: The sender and the receiver share a long term-key K of length
+λ. (In MTProto λ = 2048 bits and the key is obtained by running the Diﬃe-
+Hellman Key-Exchange over Z∗
+p);
+
+4 https://github.com/DrKLO/Telegram.
+
+Payload: The payload x = (aux, rnd, msg, pad) is obtained by concatenating:
+
+1. some auxiliary information aux;
+2. a random value rnd (in MTProto this has length 128 bits);
+3. the message msg;
+4. some arbitrary padding pad such that |x| mod B = 0, where B is the
+block length; For technical reasons this is never more than 96 bits (and
+not 120 bits as described by the oﬃcial documentation).
+
+Authentication Tag: MTProto employs a hash function
+
+Tag : {0, 1}∗ → {0, 1}h
+
+for authentication purposes. This is used to compute
+
+tag = Tag(aux, rnd, msg)
+
+(crucially, pad is not part of the input of the authentication tag). In MTProto
+Tag = SHA-1 and h = 128 bits;
+
+Short-Term Key Derivation: MTProto employs a hash function
+
+KDF : {0, 1}λ+h → {0, 1}κ+2B
+
+for key derivation purposes. This is used to compute
+
+(k, x0, y0) = KDF(K, tag)
+
+of length (κ, B, B) respectively. In MTProto the output of KDF is obtained
+by (a permutation of) the output of four SHA-1 invocations, which in turn
+take as input (a permutation of) the tag and (diﬀerent) portions of the long
+term key K.
+
+IGE Encryption: MTProto employs an eﬃciently invertible pseudorandom
+
+permutation
+
+F, F−1 : {0, 1}κ × {0, 1}B → {0, 1}B
+
+to implement the IGE mode of operation. Let x1, . . . , x(cid:96) be the (cid:96) blocks of
+the payload, each of length B, then IGE computes
+yi = Fk(xi ⊕ yi−1) ⊕ xi−1
+
+(where x0, y0 are deﬁned in the previous step). In MTProto F =AES with
+κ = 256 bits and B = 128 bits;
+
+Resulting Ciphertext: The output of MTProto is
+
+c = (tag, y1, . . . , y(cid:96))
+
+(as well as other information which is not relevant for our presentation).
+
+2.2 MTProto Decryption
+
+Input Parsing: The ciphertext c is parsed as
+
+c = (tag, y1, . . . , y(cid:96))
+
+Short-Term Key Recomputation: The short-term key and the initialization
+
+blocks are recomputed as
+
+(k, x0, y0) = KDF(K, tag)
+
+IGE Decryption: The payload is recovered by computing:
+
+k (yi ⊕ xi−1)
+and (x1, . . . , x(cid:96)) is parsed as (aux, rnd, msg, pad).
+
+xi = yi−1 ⊕ F−1
+
+Tag Veriﬁcation: The decryption checks if
+
+tag ?= Tag(aux, rnd, msg)
+
+and, if so, outputs msg (or ⊥ otherwise).
+
+Interestingly, if a Telegram client receives an ill-formed ciphertext, it simply
+drops the message and does not notify the sender about the error. This implies
+that it is very hard for a network attacker to detect whether a decryption was
+performed successfully or not (and therefore it does not seem possible to run
+a Bleichenbacher-style attack [Ble98]). However, we cannot exclude that an at-
+tacker which sits on the same client and shares resources (such as memory, CPU,
+etc.) might be able to detect if (and how) decryption fails using other channels.
+
+3 MTProto is not IND-CCA secure
+
+Here we brieﬂy present the two attacks that show that MTProto is not IND-
+CCA secure. We assume the reader to be familiar with the notion of IND-CCA
+security. More details on the attacks (and experimental validations) can be found
+in [Jak15].
+
+Once again, we stress that the attacks are only of theoretical nature and we
+do not see a way of turning them into full-plaintext recovery. Yet, we believe
+that these attacks are yet another proof (see e.g., [JN15]) that designing your
+own crypto rarely is a good idea.
+
+3.1 Attack #1: Padding-Length Extension
+
+Given a ciphertext
+
+which encrypts a payload
+
+c = (tag, y1, . . . , y(cid:96))
+
+x = (aux, rnd, msg, pad)
+
+the attacker picks a random block r ← {0, 1}B and outputs
+
+c(cid:48) = (tag, y1, . . . , y(cid:96), r)
+
+When this is run via the decryption process, the resulting payload is
+
+x(cid:48) = (aux, rnd, msg, pad(cid:48))
+
+where pad(cid:48) = (pad, pad∗) where: 1) pad∗ is randomly distributed and 2) the
+length of |pad(cid:48)| is larger than the block length B. However, since the length
+of the pad(cid:48) is not checked during decryption, and pad(cid:48) is not an input to the
+authentication function Tag, decryption outputs msg with probability 1.
+Mitigation. This attack can be mitigated simply by checking the length of pad(cid:48)
+during decryption, and letting decryption abort if this is larger than the block
+size. Note that since honest clients never produce ill-formed ciphertexts, patching
+the decryption process in this way will not prevent clients running older versions
+of the software to communicate with clients running the patched version.
+
+3.2 Attack #2: Last Block Substitution
+
+Given a ciphertext
+
+which encrypts a payload
+
+c = (tag, y1, . . . , y(cid:96))
+
+the attacker picks a random block r ← {0, 1}B and outputs
+
+x = (aux, rnd, msg, pad)
+
+c(cid:48) = (tag, y1, . . . , y(cid:96)−1, r)
+
+When this is run via the decryption process, the resulting payload is
+
+x(cid:48) = (aux, rnd, msg(cid:48), pad(cid:48))
+
+Let P = |pad| be the length of the original pad, then it holds that the last B− P
+bits of msg(cid:48) are randomly distributed (due to the use of the PRF in the IGE
+decryption). Hence we have msg(cid:48) = msg with probability 2P−B, and in this case
+the veriﬁcation of the authentication tag succeeds and the decryption outputs
+msg. According to the oﬃcial description of MTProto the padding length is
+between 0 and 120 bits, which means that in the best case scenario the above
+attack succeeds with probability 2−8. However experimental validation shows
+that this is not the case and the length of the padding is in fact between 0 and
+96 bits (this is due to the way the objects are serialized in Java).
+So we conclude that in the best case this attack succeeds with probability
+2−32 which, while still being too high to satisfy the deﬁnition of security, makes
+this attack more cumbersome than expected.
+
+Mitigation. This attack can be mitigated by adding pad to the computation of
+the authentication tag. However, since this requires to change the encryption
+process as well, patched clients will not be able to communicate with unpatched
+clients.
+
+4 Conclusion
+
+We described two simple attacks which show that MTProto, the symmetric en-
+cryption scheme used by Telegram, fails to achieve desirable notions of security
+such as indistinguishability under chosen-ciphertext attack or authenticated en-
+cryption. While the ﬁrst attack can be mitigated by applying a patch which does
+not aﬀect backward compatibility with unpatched (but honest) senders, the sec-
+ond one can only be patched in a way that only allows communication between
+patched clients. Therefore it is fair to ask whether the next version of Telegram
+should use a patched version of MTProto or a better studied mode of operation
+which provably implements authenticated encryption.
+
+We believe that the second option is the only sensible choice since while a
+patched version of MTProto would not be susceptible to the attacks described
+in this note, this gives no guarantees that no other attacks exist. On the other
+hand well studied authenticated encryption schemes oﬀer much stronger security
+guarantees. In addition, MTProto does not seem to be more eﬃcient than the
+many available options for authenticated encryption such as e.g., encrypt-then-
+MAC using AES in counter mode (which can be parallelized better than IGE)
+together with e.g., HMAC.
+
+References
+
+Ble98. Daniel Bleichenbacher. Chosen ciphertext attacks against protocols based on
+the RSA encryption standard PKCS #1. In Advances in Cryptology - CRYPTO
+’98, 18th Annual International Cryptology Conference, Santa Barbara, Califor-
+nia, USA, August 23-27, 1998, Proceedings, pages 1–12, 1998.
+
+Jak15. Jakob Jakobsen. A practical cryptanalysis of the Telegram messaging protocol.
+
+Master Thesis, Aarhus University (Available on request)., 2015.
+
+JN15. Philipp Jovanovic and Samuel Neves. Dumb crypto in smart grids: Practical
+cryptanalysis of the open smart grid protocol. FSE, 2015. http://eprint.
+iacr.org/2015/428.
+
+KL14. Jonathan Katz and Yehuda Lindell. Introduction to modern cryptography. CRC
+
+Press, 2014.
+
+

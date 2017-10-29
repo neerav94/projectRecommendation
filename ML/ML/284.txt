@@ -1,0 +1,986 @@
+CarveML: application of machine
+
+learning to ﬁle fragment classiﬁcation
+
+Andrew Duffy
+Stanford University
+agd@cs.stanford.edu
+
+Abstract
+
+We present a learning algorithmic approach to the problem of recognzing the ﬁle types of ﬁle fragments,
+with the purpose of applying this to “ﬁle carving”, the reconstruction of partially erased ﬁles on disk
+into whole ﬁles. We do so through the use of 257 calculated features of an input fragment, applying the
+Support Vector Machine, Multinomial Naive Bayes, and Linear Discriminant Analysis models to our
+problem to see which produces the most accurate method of classiﬁcation.
+
+I.
+
+Introduction
+
+In the forensics community, a common sce-
+nario faced by digital forensic investigators is
+piecing back together useful information from
+a disk image. Digital forensic investigators
+examine these disk images in an attempt to
+uncover any suspicious activity, including any
+traces of digital materials that can be used as
+evidence. However, this is often challenging,
+as perpetrators may “delete” information off
+of their hard disk. These sorts of deletions,
+though, are not permanent: they simply mark
+each block of the ﬁle as unallocated and avail-
+able for use in other ﬁles [1]. These unallocated
+ﬁle blocks can be recovered using a tool called
+a “ﬁle carver”, an application which can take
+these fragments and write them back out to
+disk.
+
+Most ﬁle carvers depend on header and
+footer information speciﬁc to certain ﬁletypes
+[1]. For example, when we look at JPEG im-
+ages, we know that all JPEGs begin with the
+byte sequence 0xFF 0xD8, so a header-footer
+based carver will look for fragments that con-
+tain this pair of bytes near their start to de-
+termine that a fragment is a JPEG. While this
+might be a good method for classifying frag-
+ments towards the start or end of a ﬁle, it will
+fail for classifying the internal fragments. Be-
+cause of this, it often becomes necessary to
+
+have carving methods which examine the frag-
+ment contents. Keeping in mind that differ-
+ent ﬁle types have different formats, and there
+is not much consistency between formats, we
+must derive some statistical similarity mea-
+sures to tell how similar or different two frag-
+ments are from one another. Having derived
+these features, we would then apply any of
+our array of classiﬁcation algorithms to try and
+train a model on our fragment data, and see
+how well we perform at prediction new frag-
+ments’ types.
+
+We begin our dissection of our research
+with a description of the dataset we used, a
+walkthrough of the set of derived features that
+we calculated per fragment, the statistical mod-
+els we used to represent the data, and end with
+a discussion of our results and possible future
+work.
+
+II. Data Set
+
+We draw our data from the govdocs1 cor-
+pora, a 1 million ﬁle dataset developed by
+Garﬁnkel et al. [4]. The corpus was developed
+by crawling through various .gov sites, which
+means the dataset is in the public domain and
+freely distributable. This is uncommon in the
+forensics ﬁeld, as many researchers will use
+either difﬁcult to reproduce datasets or com-
+pletely private datasets [3]. Thus, performing
+
+1
+
+1
+
+CarveML: application of machine
+
+learning to ﬁle fragment classiﬁcation
+
+Andrew Duffy
+Stanford University
+agd@cs.stanford.edu
+
+Abstract
+
+We present a learning algorithmic approach to the problem of recognzing the ﬁle types of ﬁle fragments,
+with the purpose of applying this to “ﬁle carving”, the reconstruction of partially erased ﬁles on disk
+into whole ﬁles. We do so through the use of 257 calculated features of an input fragment, applying the
+Support Vector Machine, Multinomial Naive Bayes, and Linear Discriminant Analysis models to our
+problem to see which produces the most accurate method of classiﬁcation.
+
+I.
+
+Introduction
+
+In the forensics community, a common sce-
+nario faced by digital forensic investigators is
+piecing back together useful information from
+a disk image. Digital forensic investigators
+examine these disk images in an attempt to
+uncover any suspicious activity, including any
+traces of digital materials that can be used as
+evidence. However, this is often challenging,
+as perpetrators may “delete” information off
+of their hard disk. These sorts of deletions,
+though, are not permanent: they simply mark
+each block of the ﬁle as unallocated and avail-
+able for use in other ﬁles [1]. These unallocated
+ﬁle blocks can be recovered using a tool called
+a “ﬁle carver”, an application which can take
+these fragments and write them back out to
+disk.
+
+Most ﬁle carvers depend on header and
+footer information speciﬁc to certain ﬁletypes
+[1]. For example, when we look at JPEG im-
+ages, we know that all JPEGs begin with the
+byte sequence 0xFF 0xD8, so a header-footer
+based carver will look for fragments that con-
+tain this pair of bytes near their start to de-
+termine that a fragment is a JPEG. While this
+might be a good method for classifying frag-
+ments towards the start or end of a ﬁle, it will
+fail for classifying the internal fragments. Be-
+cause of this, it often becomes necessary to
+
+have carving methods which examine the frag-
+ment contents. Keeping in mind that differ-
+ent ﬁle types have different formats, and there
+is not much consistency between formats, we
+must derive some statistical similarity mea-
+sures to tell how similar or different two frag-
+ments are from one another. Having derived
+these features, we would then apply any of
+our array of classiﬁcation algorithms to try and
+train a model on our fragment data, and see
+how well we perform at prediction new frag-
+ments’ types.
+
+We begin our dissection of our research
+with a description of the dataset we used, a
+walkthrough of the set of derived features that
+we calculated per fragment, the statistical mod-
+els we used to represent the data, and end with
+a discussion of our results and possible future
+work.
+
+II. Data Set
+
+We draw our data from the govdocs1 cor-
+pora, a 1 million ﬁle dataset developed by
+Garﬁnkel et al. [4]. The corpus was developed
+by crawling through various .gov sites, which
+means the dataset is in the public domain and
+freely distributable. This is uncommon in the
+forensics ﬁeld, as many researchers will use
+either difﬁcult to reproduce datasets or com-
+pletely private datasets [3]. Thus, performing
+
+1
+
+1
+
+our research against a widely available freely
+distributable corpus allows anyone to compare
+our results to others using the same set of ﬁles.
+While we are forunate to have such a large
+corpus, it also makes training and testing on
+the entire corpus unfeasible, leading to ques-
+tions of data sampling. Luckily, the maintain-
+ers of the dataset have gone and created 1000
+pre-packaged “threads”, 1000-ﬁle randomly
+generated subsets of the main corpora specif-
+ically meant for further use in research. Our
+training thread was composed of 983 ﬁles with
+28 different labels, and we tested on a set of
+973 ﬁles, with one randomly chosen fragment
+of random size from each ﬁle, to echo the envi-
+ronment we might see in a real disk dump.
+
+While we performed our testing on ﬁle frag-
+ments, for parameter estimation we trained
+each model on entire ﬁles. This was done with
+the goal in mind of creating models that could
+recognize whole ﬁles, and then assume that
+fragments we give it will have the same dis-
+tributions (in general) as whole-ﬁles with the
+corresponding type. This method performed
+fairly well at allowing us to classify the ran-
+dom testing fragments, as we show below in
+the Results section.
+
+III. Features
+
+We did not use any direct features of the
+ﬁles or fragments. Rather, we calculated a 257-
+dimensional feature vector for each training
+and testing input, and used those to represent
+each ﬁle to our learning models.
+
+These 257 features came from two sources.
+The ﬁrst 256 features consist of the byte his-
+togram, where for each of the 256 possible byte
+values (0-255) we had one real-valued feature
+that represented the proportion of fragment
+bytes that took on that speciﬁc value. This
+has been used by other researchers with strong
+results [3]. The other measure that we chose
+to extract from each input source is the Shan-
+non entropy. The formula for calculating the
+Shannon entropy, H, of a ﬁle or fragment is:
+
+2
+
+H = − 255∑
+
+i=0
+
+p(x = i) log2 p(x = i)
+
+Where p(x = i) is the probability of any
+single byte in the fragment taking on value i.
+It becomes immediately clear that these prob-
+abilities are simply the byte proportions we
+calculate for our ﬁrst 256 features, so our code
+for calculating Shannon entropy becomes some-
+thing like:
+
+def shannon_entropy ( bytes ):
+
+hist = byte_histogram ( bytes ) #
+
+Returns a dictionary of
+byte_value => probability
+
+sum = 0
+for i in range (256) :
+
+sum += hist [i] * math . log (
+
+hist [i], 2)
+
+return -1* sum
+
+One can think of Shannon entropy as a mea-
+sure of the amount of information packed into
+some size of bytes.
+It does not correspond
+directly to "information per bit", but its val-
+ues do correlate strongly with ﬁle type. We
+found in our research that for text ﬁles such
+as .html, .txt and .tmp, the calculated en-
+tropy was somewhere between 1.0 - 1.8, while
+for more compressed formats, including .jpeg,
+.pdf, and .gz formats, this measure was closer
+to 8.0. Other research used a combination of
+these features and others, including byte n-
+grams which take into account byte ordering,
+whereas we instead treat each input as a “bag
+of bytes” similar to the “bag of words” model
+we normally associate with text classiﬁcation
+[3]. While this is making a very strong assump-
+tion about our dataset, it in no way hampered
+our ability to realize fairly strong results using
+just this minimum set of features.
+
+IV. Models
+
+For this application, because the goal was
+classiﬁcation, we had the universe of classiﬁ-
+cation methods at our disposal. As the work
+
+CarveML: application of machine
+
+learning to ﬁle fragment classiﬁcation
+
+Andrew Duffy
+Stanford University
+agd@cs.stanford.edu
+
+Abstract
+
+We present a learning algorithmic approach to the problem of recognzing the ﬁle types of ﬁle fragments,
+with the purpose of applying this to “ﬁle carving”, the reconstruction of partially erased ﬁles on disk
+into whole ﬁles. We do so through the use of 257 calculated features of an input fragment, applying the
+Support Vector Machine, Multinomial Naive Bayes, and Linear Discriminant Analysis models to our
+problem to see which produces the most accurate method of classiﬁcation.
+
+I.
+
+Introduction
+
+In the forensics community, a common sce-
+nario faced by digital forensic investigators is
+piecing back together useful information from
+a disk image. Digital forensic investigators
+examine these disk images in an attempt to
+uncover any suspicious activity, including any
+traces of digital materials that can be used as
+evidence. However, this is often challenging,
+as perpetrators may “delete” information off
+of their hard disk. These sorts of deletions,
+though, are not permanent: they simply mark
+each block of the ﬁle as unallocated and avail-
+able for use in other ﬁles [1]. These unallocated
+ﬁle blocks can be recovered using a tool called
+a “ﬁle carver”, an application which can take
+these fragments and write them back out to
+disk.
+
+Most ﬁle carvers depend on header and
+footer information speciﬁc to certain ﬁletypes
+[1]. For example, when we look at JPEG im-
+ages, we know that all JPEGs begin with the
+byte sequence 0xFF 0xD8, so a header-footer
+based carver will look for fragments that con-
+tain this pair of bytes near their start to de-
+termine that a fragment is a JPEG. While this
+might be a good method for classifying frag-
+ments towards the start or end of a ﬁle, it will
+fail for classifying the internal fragments. Be-
+cause of this, it often becomes necessary to
+
+have carving methods which examine the frag-
+ment contents. Keeping in mind that differ-
+ent ﬁle types have different formats, and there
+is not much consistency between formats, we
+must derive some statistical similarity mea-
+sures to tell how similar or different two frag-
+ments are from one another. Having derived
+these features, we would then apply any of
+our array of classiﬁcation algorithms to try and
+train a model on our fragment data, and see
+how well we perform at prediction new frag-
+ments’ types.
+
+We begin our dissection of our research
+with a description of the dataset we used, a
+walkthrough of the set of derived features that
+we calculated per fragment, the statistical mod-
+els we used to represent the data, and end with
+a discussion of our results and possible future
+work.
+
+II. Data Set
+
+We draw our data from the govdocs1 cor-
+pora, a 1 million ﬁle dataset developed by
+Garﬁnkel et al. [4]. The corpus was developed
+by crawling through various .gov sites, which
+means the dataset is in the public domain and
+freely distributable. This is uncommon in the
+forensics ﬁeld, as many researchers will use
+either difﬁcult to reproduce datasets or com-
+pletely private datasets [3]. Thus, performing
+
+1
+
+1
+
+our research against a widely available freely
+distributable corpus allows anyone to compare
+our results to others using the same set of ﬁles.
+While we are forunate to have such a large
+corpus, it also makes training and testing on
+the entire corpus unfeasible, leading to ques-
+tions of data sampling. Luckily, the maintain-
+ers of the dataset have gone and created 1000
+pre-packaged “threads”, 1000-ﬁle randomly
+generated subsets of the main corpora specif-
+ically meant for further use in research. Our
+training thread was composed of 983 ﬁles with
+28 different labels, and we tested on a set of
+973 ﬁles, with one randomly chosen fragment
+of random size from each ﬁle, to echo the envi-
+ronment we might see in a real disk dump.
+
+While we performed our testing on ﬁle frag-
+ments, for parameter estimation we trained
+each model on entire ﬁles. This was done with
+the goal in mind of creating models that could
+recognize whole ﬁles, and then assume that
+fragments we give it will have the same dis-
+tributions (in general) as whole-ﬁles with the
+corresponding type. This method performed
+fairly well at allowing us to classify the ran-
+dom testing fragments, as we show below in
+the Results section.
+
+III. Features
+
+We did not use any direct features of the
+ﬁles or fragments. Rather, we calculated a 257-
+dimensional feature vector for each training
+and testing input, and used those to represent
+each ﬁle to our learning models.
+
+These 257 features came from two sources.
+The ﬁrst 256 features consist of the byte his-
+togram, where for each of the 256 possible byte
+values (0-255) we had one real-valued feature
+that represented the proportion of fragment
+bytes that took on that speciﬁc value. This
+has been used by other researchers with strong
+results [3]. The other measure that we chose
+to extract from each input source is the Shan-
+non entropy. The formula for calculating the
+Shannon entropy, H, of a ﬁle or fragment is:
+
+2
+
+H = − 255∑
+
+i=0
+
+p(x = i) log2 p(x = i)
+
+Where p(x = i) is the probability of any
+single byte in the fragment taking on value i.
+It becomes immediately clear that these prob-
+abilities are simply the byte proportions we
+calculate for our ﬁrst 256 features, so our code
+for calculating Shannon entropy becomes some-
+thing like:
+
+def shannon_entropy ( bytes ):
+
+hist = byte_histogram ( bytes ) #
+
+Returns a dictionary of
+byte_value => probability
+
+sum = 0
+for i in range (256) :
+
+sum += hist [i] * math . log (
+
+hist [i], 2)
+
+return -1* sum
+
+One can think of Shannon entropy as a mea-
+sure of the amount of information packed into
+some size of bytes.
+It does not correspond
+directly to "information per bit", but its val-
+ues do correlate strongly with ﬁle type. We
+found in our research that for text ﬁles such
+as .html, .txt and .tmp, the calculated en-
+tropy was somewhere between 1.0 - 1.8, while
+for more compressed formats, including .jpeg,
+.pdf, and .gz formats, this measure was closer
+to 8.0. Other research used a combination of
+these features and others, including byte n-
+grams which take into account byte ordering,
+whereas we instead treat each input as a “bag
+of bytes” similar to the “bag of words” model
+we normally associate with text classiﬁcation
+[3]. While this is making a very strong assump-
+tion about our dataset, it in no way hampered
+our ability to realize fairly strong results using
+just this minimum set of features.
+
+IV. Models
+
+For this application, because the goal was
+classiﬁcation, we had the universe of classiﬁ-
+cation methods at our disposal. As the work
+
+in this area has been somewhat limited and
+no specialized algorithms were found for this
+topic, in this paper we only consider the use
+of Support Vector Machine, Mulitnomial Naive
+Bayes and Linear Discriminant Analysis mod-
+els.
+
+Because the research in this ﬁeld is limited,
+and no specialized algorithms exist to solve
+the fragment classiﬁcation problem, we chose
+SVMs because they are generally a good can-
+didate for any classiﬁcation problem. Naive
+Bayes was used to see how well we could
+model this problem like a text classiﬁcation
+problem, treating each of the bytes as if they
+were randomly occuring words in some text
+stream. LDA was used just as a method of com-
+parison to the other two, as it is also a generally
+strong classiﬁcation algorithm. It assumes that
+the conditional distribution of features are dis-
+tributed Gaussian, but we see in the results
+section that this does not harm our classiﬁca-
+tion accuracy.
+
+For the Support Vector model, we use the
+linear kernel, and apply L1 regularization
+with a parameter C = 100 found empirically
+through multiple test runs. Our classiﬁcation
+accuracy appeared to drop for values less than
+100, and for values much higher than 100 we
+also found decreased accuracy, so 100 was
+found to be optimal within a few fractions of a
+percent.
+
+Also note that SVMs are not invariant to
+scaling [5][3], so we improve our results by
+clamping our features in the range of [0, 1). We
+do this for our 256-dimensional byte histogram,
+possibly contributing to our strong results.
+
+V. Results
+
+After training our models and testing
+against 973 distinct fragments, we found the
+following results, which we show in tabular
+form:
+
+SVM
+
+Multinomial Naive Bayes
+
+LDA
+
+Accuracy
+75.03%
+47.90%
+69.01%
+
+We can see that our Support Vector Ma-
+
+3
+
+chine model had the strongest performance in
+our tests, exceeding maximums set by other
+scientiﬁc work with the same corpus [3]. It was
+initially surprising that the Naive Bayes model
+performed so much more poorly than our Sup-
+port Vector Machine. However, it is likely the
+case that the Naive Bayes assumptions may
+have been too strong to correctly model our
+dataset, at least with our given set of features.
+Meanwhile, Support Vector Machines, of-
+ten the favorite for a variety of classiﬁcation
+problems, were unsurprisingly successful in
+this scenario.
+
+Here you can see the confusion matrix for
+the SVM. Note how the diagonal entries are
+the brightest, and the bright off-diagonals indi-
+cate ﬁle types that were often mis-classiﬁed as
+another type by the SVM (ex. HTML ﬁles were
+often misclassiﬁed as Python ﬁles, etc.)
+
+While we initially only used LDA as a
+comparison, we can see that it performed
+even better than Naive Bayes, our secondary
+model. Considering that our features are all
+real-valued and can be considered more or less
+random, though, it makes sense that LDA’s
+Gaussian assumption will actually perform rel-
+atively well at ﬁnding a linear boundary be-
+tween classes.
+
+For readers interested in pursuing this re-
+search further: LDA might be interesting to
+look into for this task as more features are
+calculated and included in the feature vector.
+While most works we consulted seemed to rely
+on SVMs, these results imply that use of LDA
+in this setting shows some promise for future
+
+CarveML: application of machine
+
+learning to ﬁle fragment classiﬁcation
+
+Andrew Duffy
+Stanford University
+agd@cs.stanford.edu
+
+Abstract
+
+We present a learning algorithmic approach to the problem of recognzing the ﬁle types of ﬁle fragments,
+with the purpose of applying this to “ﬁle carving”, the reconstruction of partially erased ﬁles on disk
+into whole ﬁles. We do so through the use of 257 calculated features of an input fragment, applying the
+Support Vector Machine, Multinomial Naive Bayes, and Linear Discriminant Analysis models to our
+problem to see which produces the most accurate method of classiﬁcation.
+
+I.
+
+Introduction
+
+In the forensics community, a common sce-
+nario faced by digital forensic investigators is
+piecing back together useful information from
+a disk image. Digital forensic investigators
+examine these disk images in an attempt to
+uncover any suspicious activity, including any
+traces of digital materials that can be used as
+evidence. However, this is often challenging,
+as perpetrators may “delete” information off
+of their hard disk. These sorts of deletions,
+though, are not permanent: they simply mark
+each block of the ﬁle as unallocated and avail-
+able for use in other ﬁles [1]. These unallocated
+ﬁle blocks can be recovered using a tool called
+a “ﬁle carver”, an application which can take
+these fragments and write them back out to
+disk.
+
+Most ﬁle carvers depend on header and
+footer information speciﬁc to certain ﬁletypes
+[1]. For example, when we look at JPEG im-
+ages, we know that all JPEGs begin with the
+byte sequence 0xFF 0xD8, so a header-footer
+based carver will look for fragments that con-
+tain this pair of bytes near their start to de-
+termine that a fragment is a JPEG. While this
+might be a good method for classifying frag-
+ments towards the start or end of a ﬁle, it will
+fail for classifying the internal fragments. Be-
+cause of this, it often becomes necessary to
+
+have carving methods which examine the frag-
+ment contents. Keeping in mind that differ-
+ent ﬁle types have different formats, and there
+is not much consistency between formats, we
+must derive some statistical similarity mea-
+sures to tell how similar or different two frag-
+ments are from one another. Having derived
+these features, we would then apply any of
+our array of classiﬁcation algorithms to try and
+train a model on our fragment data, and see
+how well we perform at prediction new frag-
+ments’ types.
+
+We begin our dissection of our research
+with a description of the dataset we used, a
+walkthrough of the set of derived features that
+we calculated per fragment, the statistical mod-
+els we used to represent the data, and end with
+a discussion of our results and possible future
+work.
+
+II. Data Set
+
+We draw our data from the govdocs1 cor-
+pora, a 1 million ﬁle dataset developed by
+Garﬁnkel et al. [4]. The corpus was developed
+by crawling through various .gov sites, which
+means the dataset is in the public domain and
+freely distributable. This is uncommon in the
+forensics ﬁeld, as many researchers will use
+either difﬁcult to reproduce datasets or com-
+pletely private datasets [3]. Thus, performing
+
+1
+
+1
+
+our research against a widely available freely
+distributable corpus allows anyone to compare
+our results to others using the same set of ﬁles.
+While we are forunate to have such a large
+corpus, it also makes training and testing on
+the entire corpus unfeasible, leading to ques-
+tions of data sampling. Luckily, the maintain-
+ers of the dataset have gone and created 1000
+pre-packaged “threads”, 1000-ﬁle randomly
+generated subsets of the main corpora specif-
+ically meant for further use in research. Our
+training thread was composed of 983 ﬁles with
+28 different labels, and we tested on a set of
+973 ﬁles, with one randomly chosen fragment
+of random size from each ﬁle, to echo the envi-
+ronment we might see in a real disk dump.
+
+While we performed our testing on ﬁle frag-
+ments, for parameter estimation we trained
+each model on entire ﬁles. This was done with
+the goal in mind of creating models that could
+recognize whole ﬁles, and then assume that
+fragments we give it will have the same dis-
+tributions (in general) as whole-ﬁles with the
+corresponding type. This method performed
+fairly well at allowing us to classify the ran-
+dom testing fragments, as we show below in
+the Results section.
+
+III. Features
+
+We did not use any direct features of the
+ﬁles or fragments. Rather, we calculated a 257-
+dimensional feature vector for each training
+and testing input, and used those to represent
+each ﬁle to our learning models.
+
+These 257 features came from two sources.
+The ﬁrst 256 features consist of the byte his-
+togram, where for each of the 256 possible byte
+values (0-255) we had one real-valued feature
+that represented the proportion of fragment
+bytes that took on that speciﬁc value. This
+has been used by other researchers with strong
+results [3]. The other measure that we chose
+to extract from each input source is the Shan-
+non entropy. The formula for calculating the
+Shannon entropy, H, of a ﬁle or fragment is:
+
+2
+
+H = − 255∑
+
+i=0
+
+p(x = i) log2 p(x = i)
+
+Where p(x = i) is the probability of any
+single byte in the fragment taking on value i.
+It becomes immediately clear that these prob-
+abilities are simply the byte proportions we
+calculate for our ﬁrst 256 features, so our code
+for calculating Shannon entropy becomes some-
+thing like:
+
+def shannon_entropy ( bytes ):
+
+hist = byte_histogram ( bytes ) #
+
+Returns a dictionary of
+byte_value => probability
+
+sum = 0
+for i in range (256) :
+
+sum += hist [i] * math . log (
+
+hist [i], 2)
+
+return -1* sum
+
+One can think of Shannon entropy as a mea-
+sure of the amount of information packed into
+some size of bytes.
+It does not correspond
+directly to "information per bit", but its val-
+ues do correlate strongly with ﬁle type. We
+found in our research that for text ﬁles such
+as .html, .txt and .tmp, the calculated en-
+tropy was somewhere between 1.0 - 1.8, while
+for more compressed formats, including .jpeg,
+.pdf, and .gz formats, this measure was closer
+to 8.0. Other research used a combination of
+these features and others, including byte n-
+grams which take into account byte ordering,
+whereas we instead treat each input as a “bag
+of bytes” similar to the “bag of words” model
+we normally associate with text classiﬁcation
+[3]. While this is making a very strong assump-
+tion about our dataset, it in no way hampered
+our ability to realize fairly strong results using
+just this minimum set of features.
+
+IV. Models
+
+For this application, because the goal was
+classiﬁcation, we had the universe of classiﬁ-
+cation methods at our disposal. As the work
+
+in this area has been somewhat limited and
+no specialized algorithms were found for this
+topic, in this paper we only consider the use
+of Support Vector Machine, Mulitnomial Naive
+Bayes and Linear Discriminant Analysis mod-
+els.
+
+Because the research in this ﬁeld is limited,
+and no specialized algorithms exist to solve
+the fragment classiﬁcation problem, we chose
+SVMs because they are generally a good can-
+didate for any classiﬁcation problem. Naive
+Bayes was used to see how well we could
+model this problem like a text classiﬁcation
+problem, treating each of the bytes as if they
+were randomly occuring words in some text
+stream. LDA was used just as a method of com-
+parison to the other two, as it is also a generally
+strong classiﬁcation algorithm. It assumes that
+the conditional distribution of features are dis-
+tributed Gaussian, but we see in the results
+section that this does not harm our classiﬁca-
+tion accuracy.
+
+For the Support Vector model, we use the
+linear kernel, and apply L1 regularization
+with a parameter C = 100 found empirically
+through multiple test runs. Our classiﬁcation
+accuracy appeared to drop for values less than
+100, and for values much higher than 100 we
+also found decreased accuracy, so 100 was
+found to be optimal within a few fractions of a
+percent.
+
+Also note that SVMs are not invariant to
+scaling [5][3], so we improve our results by
+clamping our features in the range of [0, 1). We
+do this for our 256-dimensional byte histogram,
+possibly contributing to our strong results.
+
+V. Results
+
+After training our models and testing
+against 973 distinct fragments, we found the
+following results, which we show in tabular
+form:
+
+SVM
+
+Multinomial Naive Bayes
+
+LDA
+
+Accuracy
+75.03%
+47.90%
+69.01%
+
+We can see that our Support Vector Ma-
+
+3
+
+chine model had the strongest performance in
+our tests, exceeding maximums set by other
+scientiﬁc work with the same corpus [3]. It was
+initially surprising that the Naive Bayes model
+performed so much more poorly than our Sup-
+port Vector Machine. However, it is likely the
+case that the Naive Bayes assumptions may
+have been too strong to correctly model our
+dataset, at least with our given set of features.
+Meanwhile, Support Vector Machines, of-
+ten the favorite for a variety of classiﬁcation
+problems, were unsurprisingly successful in
+this scenario.
+
+Here you can see the confusion matrix for
+the SVM. Note how the diagonal entries are
+the brightest, and the bright off-diagonals indi-
+cate ﬁle types that were often mis-classiﬁed as
+another type by the SVM (ex. HTML ﬁles were
+often misclassiﬁed as Python ﬁles, etc.)
+
+While we initially only used LDA as a
+comparison, we can see that it performed
+even better than Naive Bayes, our secondary
+model. Considering that our features are all
+real-valued and can be considered more or less
+random, though, it makes sense that LDA’s
+Gaussian assumption will actually perform rel-
+atively well at ﬁnding a linear boundary be-
+tween classes.
+
+For readers interested in pursuing this re-
+search further: LDA might be interesting to
+look into for this task as more features are
+calculated and included in the feature vector.
+While most works we consulted seemed to rely
+on SVMs, these results imply that use of LDA
+in this setting shows some promise for future
+
+research.
+
+VI. Discussion and Future Work
+
+The ﬁelds of computer forensics and com-
+puter security are quite large.
+There’s a
+plethora of ongoing research in both of these
+areas, but despite all the attention it gets, ma-
+chine learning has scarcely been applied to it.
+We found very few sources that cited the use of
+machine learning techniques for security and
+forensic applications, and those that did were
+usually in relation to anomaly-detection based
+Intrusion Detection Systems.
+
+More common techniques for solving the
+fragment classiﬁcation problem were system-
+atic, and required an intimate knowledge of the
+format of each type of ﬁle, such as the header-
+footer method of ﬁle type detection described
+at the top. While this works for a small enough
+group of ﬁle formats, for general classiﬁcation
+machine learning is surely more scalable, as
+hard-coding of headers and footers is unnec-
+essary, and indeed impossible for recognizing
+some formats (JSON, etc.).
+
+Our results are a promising sign that ma-
+chine learning has a strong future in forensic
+and security applications, and can compete
+with less “intelligent” methods of classiﬁcation
+and estimation, which is necessary if we wish
+to scale up to not just a few dozen, but hun-
+dreds or even thousands of ﬁle types.
+
+There were a few issues with our dataset
+that may skew our results. The ﬁrst is that the
+extensions of some ﬁles in the dataset are inac-
+curate, and while this does not give cause to
+disregard our results wholly, it does mean that
+there is some amount of error in our approx-
+imations. Considering the size of the dataset,
+
+fraction of mislabeled ﬁles has never been in-
+vestigated, but after the author’s individual
+probing, we found that most of the ﬁles we
+opened by hand matched their expected for-
+mat, the most variance between actual and la-
+beled format being between different plaintext
+ﬁles. For example, there were a few simple
+text ﬁles encountered that were labeled with a
+.html extension.
+
+The other issue with the dataset is that in
+the end, the number of ﬁle types we train on
+does not even come close to the total nubmer
+of ﬁle types availabe “out in the wild”. While
+it might not be feasible, or even useful, to try
+and build a classiﬁer that recognizes all the
+thousands of ﬁle types, a mere 28 is not quite
+enough to cut it. While most research we con-
+sulted for this project had a similar or lesser
+number of ﬁle classes, eventually this work
+should be extended to include at least 100 com-
+mon ﬁle formats for the tool to be at all practi-
+cally useful.
+
+For future research, the classiﬁcation per-
+formed here is far from optimal, and lacks in-
+telligence to distinguish well between multiple
+different types of the same format. For exam-
+ple, the classiﬁer often misclassiﬁed .html ﬁles
+as .py ﬁles. This is in part due to the issues
+with the dataset as noted above, but in theory
+we can add a set of features for plaintext ﬁles
+which are calculated from syntax analysis of
+the text. This will allow us to eventually be-
+come even more precise in our classiﬁcations,
+as opposed to the accuracy that we were able
+to realize.
+
+Eventually, this fragmentations process will
+not only be more accurate, but fully automat-
+able and combinable with an algorithm to per-
+form the fragment reassembly phase to achieve
+full carving capabilities.
+
+References
+
+[1] C. Beek, “Introduction to File Carving”, McAfee Foundstone Professional Services, 2014.
+
+[2] D. Ariu et al., Machine Learning in computer forensics (and the lessons learned from machine learning in computer security), Proceedings of the 4th ACM workshop on Security and artiﬁcial
+
+intelligence, 2011.
+
+[3] S. Fitzgerald et al., Using NLP techniques for ﬁle fragment classiﬁcation, Digital Investigation, Vol. 9, 2012.
+
+[4] S. Garﬁnkel et al., Bringing science to digital forensics with standardized forensic corpora, Digital Investigation, Vol. 6, 2009.
+
+[5] Pedregosa et al., Scikit-learn: Machine Learning in Python, JMLR 12, pp. 2825-2830, 2011.
+
+4
+
+

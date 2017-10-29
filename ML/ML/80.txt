@@ -1,0 +1,1986 @@
+Spacecraft Navigation in Cluttered,
+
+Dynamic Environments Using 3D Lidar
+
+Andrew Bylard1 and Shreyasha Paudel2
+
+Abstract— Many new classes of deep-space and on-orbit
+missions require efﬁcient navigation of environments having
+untracked dynamic obstacles. Space probes will need to au-
+tonomously identify and classify these objects for purposes of
+localization, collision avoidance, and identiﬁcation of targets
+having high value (scientiﬁc or otherwise). In addition, lidar
+is becoming a key sensing tool for close proximity space
+operations. We implement a lidar simulation for cluttered space
+environments and explore (i) a k-d tree-based algorithm for
+clustering and identifying obstacles in 3D lidar point clouds and
+(ii) Naive Bayes and SVM algorithms for classifying lidar point
+clusters into obstacle types. The SVM classiﬁer was found to
+perform better with an overall accuracy of 22-73%, depending
+on the obstacle type, compared to Naive Bayes which had an
+accuracy of 15-62%.
+
+I. INTRODUCTION
+
+Future operations in space may require autonomous space-
+craft to navigate uncertain environments with dynamic ob-
+stacles in order to complete their goals. Examples include
+probes collecting samples of scientiﬁc interest in Saturns ice-
+and rock-ﬁlled rings, and manipulator spacecraft navigating
+and performing tasks in a large-scale on-orbit construction
+project. In the absence of external sources of tracking data,
+the spacecraft would need to rely on its own sensors to
+estimate the size, position, and movement of nearby obstacles
+for obstacle avoidance. The spacecraft would also need to
+classify these obstacles for localization and identiﬁcation of
+scientiﬁc opportunities.
+
+Traditional sensors such as optical, ultrasonic, and radar-
+based systems have met with mixed success, but 3D lidar is
+emerging as a low-power, cost-effective solution for onboard
+sensing of a spacecrafts surrounding environment. Thus, this
+paper targets the identiﬁcation and classiﬁcation aspect of
+a cluttered space environment sensing using 3D lidar. We
+explore using machine learning techniques to (i) cluster
+simulated lidar point cloud data in order to identify obstacles
+and (ii) classify them into a fundamental set of known
+obstacle shapes.
+
+II. RELATED WORK
+
+3D lidar-based perception is becoming increasingly popu-
+lar and various approaches have been proposed to effectively
+segment and classify the resulting point clouds. For example,
+in [1], a regression-based method is used to classify static
+
+*This work was partially supported by NASA Space Technology Re-
+
+search Fellowship Grant NNX15AP67H.
+
+1A. Bylard is with Department of Aeronautics and Astronautics, Stanford
+
+University, Stanford, CA bylard at stanford dot edu
+
+2S. Paudel is with Department of Aeronautics and Astronautics, Stanford
+
+University, Stanford, CA spaudel2 at stanford dot edu
+
+Fig. 1. Close observation and sample retrieval from Saturn’s rings will
+require accurate environment sensing for localization, object identiﬁcation,
+and obstacle avoidance.
+
+point clouds into basic geometric shapes, which are then
+classiﬁed into common household objects. A more common
+use of lidar is in autonomous driving [2], [3], [4]. In
+[2], a log-based estimator is used to classify objects seen
+by a car-based lidar system into relevant object classes.
+Similarly, in [4], the authors use the planar structure of
+the problem to segment objects in a 2 1
+2D occupancy grid
+and run classiﬁcation for previously deﬁned object classes.
+The classiﬁcation problem is addressed for RGB-generated
+point clouds in [5], which uses SVMs to classify common
+household objects based on edge feature data. However these
+algorithms are either trained to classify commonly available
+objects for which large training sets are easily available [1],
+[5] or use the inherent planar structure of the problem to
+simplify it [2], [3], [4].
+
+III. DATASETS AND FEATURES
+
+A. Lidar Data Generation
+
+The ﬁrst task of our project was to acquire a large amount
+of relevant training and test data. However, not much lidar
+data is freely available from spacecraft proximity operations,
+particularly for the cluttered scenarios we had in mind. In
+addition, lidar systems are currently very expensive, and
+since we did not have access to an existing lidar setup or
+a testbed that can model a dynamic, cluttered spacecraft
+environment, collecting data experimentally was out of the
+question.
+
+Instead, we developed a simulation which could model a
+variety of obstacles and generate artiﬁcial 3D lidar datasets.
+
+Spacecraft Navigation in Cluttered,
+
+Dynamic Environments Using 3D Lidar
+
+Andrew Bylard1 and Shreyasha Paudel2
+
+Abstract— Many new classes of deep-space and on-orbit
+missions require efﬁcient navigation of environments having
+untracked dynamic obstacles. Space probes will need to au-
+tonomously identify and classify these objects for purposes of
+localization, collision avoidance, and identiﬁcation of targets
+having high value (scientiﬁc or otherwise). In addition, lidar
+is becoming a key sensing tool for close proximity space
+operations. We implement a lidar simulation for cluttered space
+environments and explore (i) a k-d tree-based algorithm for
+clustering and identifying obstacles in 3D lidar point clouds and
+(ii) Naive Bayes and SVM algorithms for classifying lidar point
+clusters into obstacle types. The SVM classiﬁer was found to
+perform better with an overall accuracy of 22-73%, depending
+on the obstacle type, compared to Naive Bayes which had an
+accuracy of 15-62%.
+
+I. INTRODUCTION
+
+Future operations in space may require autonomous space-
+craft to navigate uncertain environments with dynamic ob-
+stacles in order to complete their goals. Examples include
+probes collecting samples of scientiﬁc interest in Saturns ice-
+and rock-ﬁlled rings, and manipulator spacecraft navigating
+and performing tasks in a large-scale on-orbit construction
+project. In the absence of external sources of tracking data,
+the spacecraft would need to rely on its own sensors to
+estimate the size, position, and movement of nearby obstacles
+for obstacle avoidance. The spacecraft would also need to
+classify these obstacles for localization and identiﬁcation of
+scientiﬁc opportunities.
+
+Traditional sensors such as optical, ultrasonic, and radar-
+based systems have met with mixed success, but 3D lidar is
+emerging as a low-power, cost-effective solution for onboard
+sensing of a spacecrafts surrounding environment. Thus, this
+paper targets the identiﬁcation and classiﬁcation aspect of
+a cluttered space environment sensing using 3D lidar. We
+explore using machine learning techniques to (i) cluster
+simulated lidar point cloud data in order to identify obstacles
+and (ii) classify them into a fundamental set of known
+obstacle shapes.
+
+II. RELATED WORK
+
+3D lidar-based perception is becoming increasingly popu-
+lar and various approaches have been proposed to effectively
+segment and classify the resulting point clouds. For example,
+in [1], a regression-based method is used to classify static
+
+*This work was partially supported by NASA Space Technology Re-
+
+search Fellowship Grant NNX15AP67H.
+
+1A. Bylard is with Department of Aeronautics and Astronautics, Stanford
+
+University, Stanford, CA bylard at stanford dot edu
+
+2S. Paudel is with Department of Aeronautics and Astronautics, Stanford
+
+University, Stanford, CA spaudel2 at stanford dot edu
+
+Fig. 1. Close observation and sample retrieval from Saturn’s rings will
+require accurate environment sensing for localization, object identiﬁcation,
+and obstacle avoidance.
+
+point clouds into basic geometric shapes, which are then
+classiﬁed into common household objects. A more common
+use of lidar is in autonomous driving [2], [3], [4]. In
+[2], a log-based estimator is used to classify objects seen
+by a car-based lidar system into relevant object classes.
+Similarly, in [4], the authors use the planar structure of
+the problem to segment objects in a 2 1
+2D occupancy grid
+and run classiﬁcation for previously deﬁned object classes.
+The classiﬁcation problem is addressed for RGB-generated
+point clouds in [5], which uses SVMs to classify common
+household objects based on edge feature data. However these
+algorithms are either trained to classify commonly available
+objects for which large training sets are easily available [1],
+[5] or use the inherent planar structure of the problem to
+simplify it [2], [3], [4].
+
+III. DATASETS AND FEATURES
+
+A. Lidar Data Generation
+
+The ﬁrst task of our project was to acquire a large amount
+of relevant training and test data. However, not much lidar
+data is freely available from spacecraft proximity operations,
+particularly for the cluttered scenarios we had in mind. In
+addition, lidar systems are currently very expensive, and
+since we did not have access to an existing lidar setup or
+a testbed that can model a dynamic, cluttered spacecraft
+environment, collecting data experimentally was out of the
+question.
+
+Instead, we developed a simulation which could model a
+variety of obstacles and generate artiﬁcial 3D lidar datasets.
+
+d
+e
+v
+r
+e
+s
+b
+O
+e
+g
+a
+t
+n
+e
+c
+r
+e
+P
+
+Rect.
+
+Ell.
+
+Cyl.
+
+Con.
+
+Feature Combination Index
+
+Fig. 3. Comparison of the frequency of the most prominent FPFH feature
+combinations (particular combinations of α, φ, and θ values) for each
+obstacle type. Each color represents a single training example.
+
+Fig. 4. Geometric representation of PFH descriptors
+
+1) Theoretical Primer: The computation of PFH relies
+on 3D coordinates and estimated surface normals [1]. Let pi
+and pj be two neighboring points, and ni and nj be their
+estimates surface normals respectively. Then, to compute
+the relative difference, we deﬁne a coordinate frame uvw
+centered on pi as shown:
+
+u = ni
+v = (pj − pi) × u
+w = u × v
+
+(1)
+
+Using this frame, the difference between ni and nj can be
+expressed as a set of angular features by:
+
+α = v · nj
+
+φ =
+
+θ = tan−1
+
+u · (pj − pi)
+||pj − pi||
+
+(cid:18) w · nj
+
+u · nj
+
+(cid:19)
+
+(2)
+
+The uvw frame, the normals, and the angles are shown
+geometrically in Fig. 4.
+
+FPFH descriptors simplify the computational complexity
+of PFH from O(n2) to O(nk) by only computing the α, φ,
+and θ corresponding to k nearest neighbors of a query point
+pi instead of every point in the cloud [6]. These angles are
+calculated and stored as a Simpliﬁed Point Feature Histogram
+
+Fig. 2.
+conical obstacles. Each blue point represents a captured lidar data point.
+
+Sample lidar scans of rectangular, ellipsoidal, cylindrical, and
+
+Our simulation was written in MATLAB, and we made
+use of a Spacecraft Motion Planning package to generate
+and keep track of sets of obstacle parameters for different
+obstacle types. Though the package supports many types of
+obstacles, including complex shapes such as spacecraft and
+solar panels, we focused on four fundamental 3D obstacle
+shapes: rectangular, ellipsoidal, cylindrical, and conical, as
+our test cases of interest.
+
+The simulation’s lidar scanning was modeled after the
+Velodyne HDL-32E, which has a 360◦ horizontal ﬁeld of
+view and a 40◦ vertical ﬁeld of view. The HDL-32E scanner
+has 32 lasers, each capturing a single point in a given vertical
+scan, and by its default settings, the HDL-32E will capture
+500 vertical scans per horizontal sweep. These parameters
+were replicated in our simulation.
+
+To generate training data, we randomly generated and
+scanned one obstacle at a time (example scans are shown in
+Figure 2. Parameters for these obstacles included the shape,
+proportions, size, rotation, and distance/angle from the lidar
+scanner. For our lidar test simulation, we modeled entire
+cluttered space environments by generating environments
+with dozens of randomly placed obstacles. To be within the
+ﬁeld of view of the lidar scanner, the obstacles were clustered
+close to a 2D plane with the lidar source at the center.
+
+B. Feature Extraction
+
+Lidar point clouds for each obstacle observation were dis-
+tilled into features using Point Feature Histograms (PFHs),
+a tool widely used in computer vision problems to encode
+a point or a pixels k-neighborhood geometrical properties.
+PFHs determine these properties by generalizing the mean
+curvature around the point using a multi-dimensional his-
+togram of values.
+
+For this project, we implemented a simpliﬁed version
+of PFH called Fast Point Feature Histogram (FPFH). The
+following subsections brieﬂy give a theoretical primer on
+PFH and then describe implemented algorithm for normal
+estimation and feature histogram.
+
+Spacecraft Navigation in Cluttered,
+
+Dynamic Environments Using 3D Lidar
+
+Andrew Bylard1 and Shreyasha Paudel2
+
+Abstract— Many new classes of deep-space and on-orbit
+missions require efﬁcient navigation of environments having
+untracked dynamic obstacles. Space probes will need to au-
+tonomously identify and classify these objects for purposes of
+localization, collision avoidance, and identiﬁcation of targets
+having high value (scientiﬁc or otherwise). In addition, lidar
+is becoming a key sensing tool for close proximity space
+operations. We implement a lidar simulation for cluttered space
+environments and explore (i) a k-d tree-based algorithm for
+clustering and identifying obstacles in 3D lidar point clouds and
+(ii) Naive Bayes and SVM algorithms for classifying lidar point
+clusters into obstacle types. The SVM classiﬁer was found to
+perform better with an overall accuracy of 22-73%, depending
+on the obstacle type, compared to Naive Bayes which had an
+accuracy of 15-62%.
+
+I. INTRODUCTION
+
+Future operations in space may require autonomous space-
+craft to navigate uncertain environments with dynamic ob-
+stacles in order to complete their goals. Examples include
+probes collecting samples of scientiﬁc interest in Saturns ice-
+and rock-ﬁlled rings, and manipulator spacecraft navigating
+and performing tasks in a large-scale on-orbit construction
+project. In the absence of external sources of tracking data,
+the spacecraft would need to rely on its own sensors to
+estimate the size, position, and movement of nearby obstacles
+for obstacle avoidance. The spacecraft would also need to
+classify these obstacles for localization and identiﬁcation of
+scientiﬁc opportunities.
+
+Traditional sensors such as optical, ultrasonic, and radar-
+based systems have met with mixed success, but 3D lidar is
+emerging as a low-power, cost-effective solution for onboard
+sensing of a spacecrafts surrounding environment. Thus, this
+paper targets the identiﬁcation and classiﬁcation aspect of
+a cluttered space environment sensing using 3D lidar. We
+explore using machine learning techniques to (i) cluster
+simulated lidar point cloud data in order to identify obstacles
+and (ii) classify them into a fundamental set of known
+obstacle shapes.
+
+II. RELATED WORK
+
+3D lidar-based perception is becoming increasingly popu-
+lar and various approaches have been proposed to effectively
+segment and classify the resulting point clouds. For example,
+in [1], a regression-based method is used to classify static
+
+*This work was partially supported by NASA Space Technology Re-
+
+search Fellowship Grant NNX15AP67H.
+
+1A. Bylard is with Department of Aeronautics and Astronautics, Stanford
+
+University, Stanford, CA bylard at stanford dot edu
+
+2S. Paudel is with Department of Aeronautics and Astronautics, Stanford
+
+University, Stanford, CA spaudel2 at stanford dot edu
+
+Fig. 1. Close observation and sample retrieval from Saturn’s rings will
+require accurate environment sensing for localization, object identiﬁcation,
+and obstacle avoidance.
+
+point clouds into basic geometric shapes, which are then
+classiﬁed into common household objects. A more common
+use of lidar is in autonomous driving [2], [3], [4]. In
+[2], a log-based estimator is used to classify objects seen
+by a car-based lidar system into relevant object classes.
+Similarly, in [4], the authors use the planar structure of
+the problem to segment objects in a 2 1
+2D occupancy grid
+and run classiﬁcation for previously deﬁned object classes.
+The classiﬁcation problem is addressed for RGB-generated
+point clouds in [5], which uses SVMs to classify common
+household objects based on edge feature data. However these
+algorithms are either trained to classify commonly available
+objects for which large training sets are easily available [1],
+[5] or use the inherent planar structure of the problem to
+simplify it [2], [3], [4].
+
+III. DATASETS AND FEATURES
+
+A. Lidar Data Generation
+
+The ﬁrst task of our project was to acquire a large amount
+of relevant training and test data. However, not much lidar
+data is freely available from spacecraft proximity operations,
+particularly for the cluttered scenarios we had in mind. In
+addition, lidar systems are currently very expensive, and
+since we did not have access to an existing lidar setup or
+a testbed that can model a dynamic, cluttered spacecraft
+environment, collecting data experimentally was out of the
+question.
+
+Instead, we developed a simulation which could model a
+variety of obstacles and generate artiﬁcial 3D lidar datasets.
+
+d
+e
+v
+r
+e
+s
+b
+O
+e
+g
+a
+t
+n
+e
+c
+r
+e
+P
+
+Rect.
+
+Ell.
+
+Cyl.
+
+Con.
+
+Feature Combination Index
+
+Fig. 3. Comparison of the frequency of the most prominent FPFH feature
+combinations (particular combinations of α, φ, and θ values) for each
+obstacle type. Each color represents a single training example.
+
+Fig. 4. Geometric representation of PFH descriptors
+
+1) Theoretical Primer: The computation of PFH relies
+on 3D coordinates and estimated surface normals [1]. Let pi
+and pj be two neighboring points, and ni and nj be their
+estimates surface normals respectively. Then, to compute
+the relative difference, we deﬁne a coordinate frame uvw
+centered on pi as shown:
+
+u = ni
+v = (pj − pi) × u
+w = u × v
+
+(1)
+
+Using this frame, the difference between ni and nj can be
+expressed as a set of angular features by:
+
+α = v · nj
+
+φ =
+
+θ = tan−1
+
+u · (pj − pi)
+||pj − pi||
+
+(cid:18) w · nj
+
+u · nj
+
+(cid:19)
+
+(2)
+
+The uvw frame, the normals, and the angles are shown
+geometrically in Fig. 4.
+
+FPFH descriptors simplify the computational complexity
+of PFH from O(n2) to O(nk) by only computing the α, φ,
+and θ corresponding to k nearest neighbors of a query point
+pi instead of every point in the cloud [6]. These angles are
+calculated and stored as a Simpliﬁed Point Feature Histogram
+
+Fig. 2.
+conical obstacles. Each blue point represents a captured lidar data point.
+
+Sample lidar scans of rectangular, ellipsoidal, cylindrical, and
+
+Our simulation was written in MATLAB, and we made
+use of a Spacecraft Motion Planning package to generate
+and keep track of sets of obstacle parameters for different
+obstacle types. Though the package supports many types of
+obstacles, including complex shapes such as spacecraft and
+solar panels, we focused on four fundamental 3D obstacle
+shapes: rectangular, ellipsoidal, cylindrical, and conical, as
+our test cases of interest.
+
+The simulation’s lidar scanning was modeled after the
+Velodyne HDL-32E, which has a 360◦ horizontal ﬁeld of
+view and a 40◦ vertical ﬁeld of view. The HDL-32E scanner
+has 32 lasers, each capturing a single point in a given vertical
+scan, and by its default settings, the HDL-32E will capture
+500 vertical scans per horizontal sweep. These parameters
+were replicated in our simulation.
+
+To generate training data, we randomly generated and
+scanned one obstacle at a time (example scans are shown in
+Figure 2. Parameters for these obstacles included the shape,
+proportions, size, rotation, and distance/angle from the lidar
+scanner. For our lidar test simulation, we modeled entire
+cluttered space environments by generating environments
+with dozens of randomly placed obstacles. To be within the
+ﬁeld of view of the lidar scanner, the obstacles were clustered
+close to a 2D plane with the lidar source at the center.
+
+B. Feature Extraction
+
+Lidar point clouds for each obstacle observation were dis-
+tilled into features using Point Feature Histograms (PFHs),
+a tool widely used in computer vision problems to encode
+a point or a pixels k-neighborhood geometrical properties.
+PFHs determine these properties by generalizing the mean
+curvature around the point using a multi-dimensional his-
+togram of values.
+
+For this project, we implemented a simpliﬁed version
+of PFH called Fast Point Feature Histogram (FPFH). The
+following subsections brieﬂy give a theoretical primer on
+PFH and then describe implemented algorithm for normal
+estimation and feature histogram.
+
+Algorithm 1 Pseudocode for clustering
+Form k-d tree from point cloud
+while count ≤ number of points do
+
+Randomly select pi from point cloud
+if pi has not been clustered then
+
+Add pi to queue Q
+while Q is not empty do
+
+pj = dequeue(Q)
+Add pj to current cluster
+Find all the neighbors of pj within range d that
+have not been processed, and add to Q
+
+end while
+Start a new cluster
+
+end if
+
+end while
+
+that were within a given range. Algorithm 1 presents the
+steps used in the clustering.
+
+For this implementation, we assumed that the space envi-
+ronment being explored is free of unwanted clutter so that
+all of the lidar readings correspond to objects of interest. In
+addition, the algorithm relies on a range d as the minimum
+distance between clusters, based on Euclidean distance. In
+practice, minimum spacing tends to hold true in space
+environments, both during on-orbit formation maneuvers and
+within Saturn’s rings, where most of the rocks are separated
+by meters.
+
+V. OBSTACLE CLASSIFICATION
+
+Two algorithms were explored for classifying lidar point
+clusters into obstacle types. In both cases, clusters with too
+few points to extract features were marked as unclassiﬁed.
+1) Naive Bayes Classiﬁer: For this classiﬁer, we assumed
+that each feature combination extracted from a given point
+cluster was an i.i.d. random variable. This leads to the
+following log-likelihood function:
+
+(cid:96)(q) = log
+
+p(xi = k|y = q)nk p(y = q)
+
+(5)
+
+(cid:33)
+
+(cid:32) N(cid:89)
+
+k=1
+
+where q represents a particular obstacle type, N is the
+number of possible feature combinations, and nk is the
+number of occurrences of the kth feature combination in x
+(where x is the list of feature combinations extracted from a
+point cloud, taken from a test obstacle of type y). Let φk|y=q
+and φy=q be estimates of p(xi = k|y = q) and p(y = q),
+respectively. Then (cid:96)(q) is approximately proportional to
+
+where we assume a uniform prior (φy=q = 1/4) and
+
+nklog(φk|y=q) + log(φy=q)
+
+m(cid:88)
+
+(cid:88)
+
+j=1
+
+i
+
+φk|y=q =
+
+1
+m
+
+1{x(j)
+
+i = k}
+
+(6)
+
+(7)
+
+N(cid:88)
+
+k=1
+
+Fig. 5. A 3D k-d tree. The ﬁrst split (red) cuts the root cell (white) into
+two subcells, each of which is then split (green) into two subcells. Finally,
+each of those four is split (blue) into two subcells.
+
+k(cid:88)
+
+j=1
+
+(SPFH). Finally, the FPFH is calculated as shown:
+
+F P F H(pi) = SP F H(pi) +
+
+1
+k
+
+1
+wk
+
+SP F H(pk)
+
+(3)
+
+(4)
+
+where, wik is the distance between pi and neighbor pk.
+
+2) Normal Estimation: The normals were estimated using
+unconstrained least squares as described in [7]. The closed-
+form solution for normal vector ni corresponding to point pi
+is
+
+where, Mi =(cid:80)k
+
+ni = M−1
+
+j and bi =(cid:80)k
+
+bi
+
+i
+
+j=1 pj. The pj’s in the
+sum correspond to the k-nearest neighbors of point pi. For
+this project, we chose k = 5.
+
+j=1 pjpT
+
+leading to a N = n3
+
+3) FPFH Implementation: Each feature was discretized
+into nf levels,
+f possible feature
+combination for each point. In our implementation, we chose
+nf = 12 and N = 1728. In addition,no features were
+extracted from point clouds which had fewer than 5 points.
+
+IV. OBSTACLE IDENTIFICATION
+
+To identify individual obstacles within a lidar scan of a
+cluttered space, it was necessary to ﬁnd clusters within the
+full point cloud. To this end, we implemented a clustering
+algorithm using k-d trees.
+
+A. k-d trees
+
+A k-d tree is a generalization of binary search tree to a
+higher dimensional space. Every non-leaf node of the tree
+divides the hyperplane into two halfspaces in one of the k-
+dimensions. For example 3D k-d tree is shown in Fig 5.
+
+Hence, a balanced k-d tree can be constructed by cycling
+through the axes used to select the splitting planes, and
+splitting the points by ﬁnding the median with respect to
+the axes selected.
+
+B. Clustering Implementation
+
+Using an inbuilt MATLAB function, we created a k-d tree
+representation of the full lidar point cloud. Then the point
+cloud was divided into clusters by grouping all the points
+
+where m is the number of training examples. After training,
+each test case was classiﬁed as the obstacle type resulting in
+the highest log-likelihood.
+
+Spacecraft Navigation in Cluttered,
+
+Dynamic Environments Using 3D Lidar
+
+Andrew Bylard1 and Shreyasha Paudel2
+
+Abstract— Many new classes of deep-space and on-orbit
+missions require efﬁcient navigation of environments having
+untracked dynamic obstacles. Space probes will need to au-
+tonomously identify and classify these objects for purposes of
+localization, collision avoidance, and identiﬁcation of targets
+having high value (scientiﬁc or otherwise). In addition, lidar
+is becoming a key sensing tool for close proximity space
+operations. We implement a lidar simulation for cluttered space
+environments and explore (i) a k-d tree-based algorithm for
+clustering and identifying obstacles in 3D lidar point clouds and
+(ii) Naive Bayes and SVM algorithms for classifying lidar point
+clusters into obstacle types. The SVM classiﬁer was found to
+perform better with an overall accuracy of 22-73%, depending
+on the obstacle type, compared to Naive Bayes which had an
+accuracy of 15-62%.
+
+I. INTRODUCTION
+
+Future operations in space may require autonomous space-
+craft to navigate uncertain environments with dynamic ob-
+stacles in order to complete their goals. Examples include
+probes collecting samples of scientiﬁc interest in Saturns ice-
+and rock-ﬁlled rings, and manipulator spacecraft navigating
+and performing tasks in a large-scale on-orbit construction
+project. In the absence of external sources of tracking data,
+the spacecraft would need to rely on its own sensors to
+estimate the size, position, and movement of nearby obstacles
+for obstacle avoidance. The spacecraft would also need to
+classify these obstacles for localization and identiﬁcation of
+scientiﬁc opportunities.
+
+Traditional sensors such as optical, ultrasonic, and radar-
+based systems have met with mixed success, but 3D lidar is
+emerging as a low-power, cost-effective solution for onboard
+sensing of a spacecrafts surrounding environment. Thus, this
+paper targets the identiﬁcation and classiﬁcation aspect of
+a cluttered space environment sensing using 3D lidar. We
+explore using machine learning techniques to (i) cluster
+simulated lidar point cloud data in order to identify obstacles
+and (ii) classify them into a fundamental set of known
+obstacle shapes.
+
+II. RELATED WORK
+
+3D lidar-based perception is becoming increasingly popu-
+lar and various approaches have been proposed to effectively
+segment and classify the resulting point clouds. For example,
+in [1], a regression-based method is used to classify static
+
+*This work was partially supported by NASA Space Technology Re-
+
+search Fellowship Grant NNX15AP67H.
+
+1A. Bylard is with Department of Aeronautics and Astronautics, Stanford
+
+University, Stanford, CA bylard at stanford dot edu
+
+2S. Paudel is with Department of Aeronautics and Astronautics, Stanford
+
+University, Stanford, CA spaudel2 at stanford dot edu
+
+Fig. 1. Close observation and sample retrieval from Saturn’s rings will
+require accurate environment sensing for localization, object identiﬁcation,
+and obstacle avoidance.
+
+point clouds into basic geometric shapes, which are then
+classiﬁed into common household objects. A more common
+use of lidar is in autonomous driving [2], [3], [4]. In
+[2], a log-based estimator is used to classify objects seen
+by a car-based lidar system into relevant object classes.
+Similarly, in [4], the authors use the planar structure of
+the problem to segment objects in a 2 1
+2D occupancy grid
+and run classiﬁcation for previously deﬁned object classes.
+The classiﬁcation problem is addressed for RGB-generated
+point clouds in [5], which uses SVMs to classify common
+household objects based on edge feature data. However these
+algorithms are either trained to classify commonly available
+objects for which large training sets are easily available [1],
+[5] or use the inherent planar structure of the problem to
+simplify it [2], [3], [4].
+
+III. DATASETS AND FEATURES
+
+A. Lidar Data Generation
+
+The ﬁrst task of our project was to acquire a large amount
+of relevant training and test data. However, not much lidar
+data is freely available from spacecraft proximity operations,
+particularly for the cluttered scenarios we had in mind. In
+addition, lidar systems are currently very expensive, and
+since we did not have access to an existing lidar setup or
+a testbed that can model a dynamic, cluttered spacecraft
+environment, collecting data experimentally was out of the
+question.
+
+Instead, we developed a simulation which could model a
+variety of obstacles and generate artiﬁcial 3D lidar datasets.
+
+d
+e
+v
+r
+e
+s
+b
+O
+e
+g
+a
+t
+n
+e
+c
+r
+e
+P
+
+Rect.
+
+Ell.
+
+Cyl.
+
+Con.
+
+Feature Combination Index
+
+Fig. 3. Comparison of the frequency of the most prominent FPFH feature
+combinations (particular combinations of α, φ, and θ values) for each
+obstacle type. Each color represents a single training example.
+
+Fig. 4. Geometric representation of PFH descriptors
+
+1) Theoretical Primer: The computation of PFH relies
+on 3D coordinates and estimated surface normals [1]. Let pi
+and pj be two neighboring points, and ni and nj be their
+estimates surface normals respectively. Then, to compute
+the relative difference, we deﬁne a coordinate frame uvw
+centered on pi as shown:
+
+u = ni
+v = (pj − pi) × u
+w = u × v
+
+(1)
+
+Using this frame, the difference between ni and nj can be
+expressed as a set of angular features by:
+
+α = v · nj
+
+φ =
+
+θ = tan−1
+
+u · (pj − pi)
+||pj − pi||
+
+(cid:18) w · nj
+
+u · nj
+
+(cid:19)
+
+(2)
+
+The uvw frame, the normals, and the angles are shown
+geometrically in Fig. 4.
+
+FPFH descriptors simplify the computational complexity
+of PFH from O(n2) to O(nk) by only computing the α, φ,
+and θ corresponding to k nearest neighbors of a query point
+pi instead of every point in the cloud [6]. These angles are
+calculated and stored as a Simpliﬁed Point Feature Histogram
+
+Fig. 2.
+conical obstacles. Each blue point represents a captured lidar data point.
+
+Sample lidar scans of rectangular, ellipsoidal, cylindrical, and
+
+Our simulation was written in MATLAB, and we made
+use of a Spacecraft Motion Planning package to generate
+and keep track of sets of obstacle parameters for different
+obstacle types. Though the package supports many types of
+obstacles, including complex shapes such as spacecraft and
+solar panels, we focused on four fundamental 3D obstacle
+shapes: rectangular, ellipsoidal, cylindrical, and conical, as
+our test cases of interest.
+
+The simulation’s lidar scanning was modeled after the
+Velodyne HDL-32E, which has a 360◦ horizontal ﬁeld of
+view and a 40◦ vertical ﬁeld of view. The HDL-32E scanner
+has 32 lasers, each capturing a single point in a given vertical
+scan, and by its default settings, the HDL-32E will capture
+500 vertical scans per horizontal sweep. These parameters
+were replicated in our simulation.
+
+To generate training data, we randomly generated and
+scanned one obstacle at a time (example scans are shown in
+Figure 2. Parameters for these obstacles included the shape,
+proportions, size, rotation, and distance/angle from the lidar
+scanner. For our lidar test simulation, we modeled entire
+cluttered space environments by generating environments
+with dozens of randomly placed obstacles. To be within the
+ﬁeld of view of the lidar scanner, the obstacles were clustered
+close to a 2D plane with the lidar source at the center.
+
+B. Feature Extraction
+
+Lidar point clouds for each obstacle observation were dis-
+tilled into features using Point Feature Histograms (PFHs),
+a tool widely used in computer vision problems to encode
+a point or a pixels k-neighborhood geometrical properties.
+PFHs determine these properties by generalizing the mean
+curvature around the point using a multi-dimensional his-
+togram of values.
+
+For this project, we implemented a simpliﬁed version
+of PFH called Fast Point Feature Histogram (FPFH). The
+following subsections brieﬂy give a theoretical primer on
+PFH and then describe implemented algorithm for normal
+estimation and feature histogram.
+
+Algorithm 1 Pseudocode for clustering
+Form k-d tree from point cloud
+while count ≤ number of points do
+
+Randomly select pi from point cloud
+if pi has not been clustered then
+
+Add pi to queue Q
+while Q is not empty do
+
+pj = dequeue(Q)
+Add pj to current cluster
+Find all the neighbors of pj within range d that
+have not been processed, and add to Q
+
+end while
+Start a new cluster
+
+end if
+
+end while
+
+that were within a given range. Algorithm 1 presents the
+steps used in the clustering.
+
+For this implementation, we assumed that the space envi-
+ronment being explored is free of unwanted clutter so that
+all of the lidar readings correspond to objects of interest. In
+addition, the algorithm relies on a range d as the minimum
+distance between clusters, based on Euclidean distance. In
+practice, minimum spacing tends to hold true in space
+environments, both during on-orbit formation maneuvers and
+within Saturn’s rings, where most of the rocks are separated
+by meters.
+
+V. OBSTACLE CLASSIFICATION
+
+Two algorithms were explored for classifying lidar point
+clusters into obstacle types. In both cases, clusters with too
+few points to extract features were marked as unclassiﬁed.
+1) Naive Bayes Classiﬁer: For this classiﬁer, we assumed
+that each feature combination extracted from a given point
+cluster was an i.i.d. random variable. This leads to the
+following log-likelihood function:
+
+(cid:96)(q) = log
+
+p(xi = k|y = q)nk p(y = q)
+
+(5)
+
+(cid:33)
+
+(cid:32) N(cid:89)
+
+k=1
+
+where q represents a particular obstacle type, N is the
+number of possible feature combinations, and nk is the
+number of occurrences of the kth feature combination in x
+(where x is the list of feature combinations extracted from a
+point cloud, taken from a test obstacle of type y). Let φk|y=q
+and φy=q be estimates of p(xi = k|y = q) and p(y = q),
+respectively. Then (cid:96)(q) is approximately proportional to
+
+where we assume a uniform prior (φy=q = 1/4) and
+
+nklog(φk|y=q) + log(φy=q)
+
+m(cid:88)
+
+(cid:88)
+
+j=1
+
+i
+
+φk|y=q =
+
+1
+m
+
+1{x(j)
+
+i = k}
+
+(6)
+
+(7)
+
+N(cid:88)
+
+k=1
+
+Fig. 5. A 3D k-d tree. The ﬁrst split (red) cuts the root cell (white) into
+two subcells, each of which is then split (green) into two subcells. Finally,
+each of those four is split (blue) into two subcells.
+
+k(cid:88)
+
+j=1
+
+(SPFH). Finally, the FPFH is calculated as shown:
+
+F P F H(pi) = SP F H(pi) +
+
+1
+k
+
+1
+wk
+
+SP F H(pk)
+
+(3)
+
+(4)
+
+where, wik is the distance between pi and neighbor pk.
+
+2) Normal Estimation: The normals were estimated using
+unconstrained least squares as described in [7]. The closed-
+form solution for normal vector ni corresponding to point pi
+is
+
+where, Mi =(cid:80)k
+
+ni = M−1
+
+j and bi =(cid:80)k
+
+bi
+
+i
+
+j=1 pj. The pj’s in the
+sum correspond to the k-nearest neighbors of point pi. For
+this project, we chose k = 5.
+
+j=1 pjpT
+
+leading to a N = n3
+
+3) FPFH Implementation: Each feature was discretized
+into nf levels,
+f possible feature
+combination for each point. In our implementation, we chose
+nf = 12 and N = 1728. In addition,no features were
+extracted from point clouds which had fewer than 5 points.
+
+IV. OBSTACLE IDENTIFICATION
+
+To identify individual obstacles within a lidar scan of a
+cluttered space, it was necessary to ﬁnd clusters within the
+full point cloud. To this end, we implemented a clustering
+algorithm using k-d trees.
+
+A. k-d trees
+
+A k-d tree is a generalization of binary search tree to a
+higher dimensional space. Every non-leaf node of the tree
+divides the hyperplane into two halfspaces in one of the k-
+dimensions. For example 3D k-d tree is shown in Fig 5.
+
+Hence, a balanced k-d tree can be constructed by cycling
+through the axes used to select the splitting planes, and
+splitting the points by ﬁnding the median with respect to
+the axes selected.
+
+B. Clustering Implementation
+
+Using an inbuilt MATLAB function, we created a k-d tree
+representation of the full lidar point cloud. Then the point
+cloud was divided into clusters by grouping all the points
+
+where m is the number of training examples. After training,
+each test case was classiﬁed as the obstacle type resulting in
+the highest log-likelihood.
+
+(a) Original obstacle set
+
+(b) Clustered lidar cloud
+
+(c) Classiﬁed obstacle set
+
+Fig. 6.
+Full process of identifying and classifying the obstacles. Lidar
+source is located at the center red circle. (c) Classiﬁcation output labeled
+by color (red = Rect; blue = Ell; magenta = Cyl; green = Con). The blue
+circle represents the maximum distance within which training examples
+were generated.
+
+2) SVM Classiﬁer: The SVM classiﬁer was implemented
+using the MATLAB wrapper for the libsvm package. This
+allowed us to easily vary kernel functions, regularization
+parameters and training size. After 5-fold cross-validation,
+a Gaussian kernel with γ = 3 was selected. The results
+from training and testing are described in more detail in the
+following section.
+
+VI. EXPERIMENTS AND RESULTS
+
+The classiﬁcation algorithms were trained using 2000
+examples for each of the obstacle types. Plots of the resulting
+FPFH data for each type are shown in Fig. 3. For testing,
+cluttered environments were randomly generated, using one
+obstacle type per set
+to permit straightforward accuracy
+measurements while maintaining the key dynamic of obstacle
+occlusion during lidar scanning. To check for overﬁtting,
+we tested the classiﬁer using increasing numbers of training
+examples, as shown in Fig. 7. The accuracy leveled off
+quickly, ruling out overﬁtting and showing that more training
+examples were not needed.
+
+The resulting confusion matrices for each algorithm are
+shown in Tables I and II. SVM clearly outperformed Naive
+Bayes for each obstacle type. This may be due to Naive
+Bayes assumption of independence between feature combi-
+nations, which is not in fact correct. However, even SVM
+overall it did not perform as well as might be desired. That
+being said, as shown in Fig. 6c, classiﬁcation performed very
+well on obstacles within the maximum distance from the lidar
+source in which training examples were generated.
+
+Predicted
+Ell
+Cyl
+
+Con
+Rec
+62% 11% 12% 15%
+11% 46% 32% 11%
+25% 12% 47% 16%
+34% 15% 36% 15%
+
+l
+a
+u
+t
+c
+A
+
+Rec
+Ell
+Cyl
+Con
+
+TABLE I
+
+NAIVE BAYES CONFUSION MATRIX
+
+l
+a
+u
+t
+c
+A
+
+Rec
+Ell
+Cyl
+Con
+
+Predicted
+Con
+Cyl
+Rec
+Ell
+73% 5%
+4%
+18%
+12% 72% 7%
+9%
+20% 15% 51% 14%
+27% 22%
+44%
+
+7%
+
+TABLE II
+
+SVM CONFUSION MATRIX
+
+1 Con
+Cyl
+Ell
+
+s
+s
+a
+l
+C
+
+Class 2
+
+Ell
+
+Rec
+Cyl
+88% 90% 67%
+87% 86%
+98%
+TABLE III
+
+SVM TWO-CLASS CLASSIFICATION
+
+To gain further insight into the relatively low accuracy re-
+sults of SVM, we restricted and trained the classiﬁer on only
+two obstacles at a time, and ran the tests again. The results
+in Table III show that SVM mostly performs quite well, and
+that distinguishing cylinders and cones was the most difﬁcult
+classiﬁcation task. This can be explained by the myopic k-
+nearest simpliﬁcation in the FPFH algorithm, which fails to
+capture feature information on obstacle surfaces across long
+distances. Thus, both the curved and ﬂat surfaces of a cone
+can easily be mistaken for those of a cylinder, and vice versa.
+
+VII. CONCLUSIONS AND FUTURE WORK
+
+The results of our clustering algorithm for identifying
+obstacles in lidar point clouds are very promising. In a
+project developed alongside this for AA 228: Decision-
+Making Under Uncertainty, we showed that safe navigation
+is possible in a highly cluttered and dynamic environment
+using only 8 lasers to detect obstacle surfaces. Thus, we
+are conﬁdent that the obstacle positions identiﬁed by the
+clustering algorithm will be more than sufﬁcient for safe
+navigation.
+
+For classiﬁcation, we showed that SVM outperforms Naive
+Bayes. Future work may be to extract more complex features,
+e.g. using View-Point Features. Such features could also be
+used to estimate the size, position, and velocity of obstacles.
+
+Spacecraft Navigation in Cluttered,
+
+Dynamic Environments Using 3D Lidar
+
+Andrew Bylard1 and Shreyasha Paudel2
+
+Abstract— Many new classes of deep-space and on-orbit
+missions require efﬁcient navigation of environments having
+untracked dynamic obstacles. Space probes will need to au-
+tonomously identify and classify these objects for purposes of
+localization, collision avoidance, and identiﬁcation of targets
+having high value (scientiﬁc or otherwise). In addition, lidar
+is becoming a key sensing tool for close proximity space
+operations. We implement a lidar simulation for cluttered space
+environments and explore (i) a k-d tree-based algorithm for
+clustering and identifying obstacles in 3D lidar point clouds and
+(ii) Naive Bayes and SVM algorithms for classifying lidar point
+clusters into obstacle types. The SVM classiﬁer was found to
+perform better with an overall accuracy of 22-73%, depending
+on the obstacle type, compared to Naive Bayes which had an
+accuracy of 15-62%.
+
+I. INTRODUCTION
+
+Future operations in space may require autonomous space-
+craft to navigate uncertain environments with dynamic ob-
+stacles in order to complete their goals. Examples include
+probes collecting samples of scientiﬁc interest in Saturns ice-
+and rock-ﬁlled rings, and manipulator spacecraft navigating
+and performing tasks in a large-scale on-orbit construction
+project. In the absence of external sources of tracking data,
+the spacecraft would need to rely on its own sensors to
+estimate the size, position, and movement of nearby obstacles
+for obstacle avoidance. The spacecraft would also need to
+classify these obstacles for localization and identiﬁcation of
+scientiﬁc opportunities.
+
+Traditional sensors such as optical, ultrasonic, and radar-
+based systems have met with mixed success, but 3D lidar is
+emerging as a low-power, cost-effective solution for onboard
+sensing of a spacecrafts surrounding environment. Thus, this
+paper targets the identiﬁcation and classiﬁcation aspect of
+a cluttered space environment sensing using 3D lidar. We
+explore using machine learning techniques to (i) cluster
+simulated lidar point cloud data in order to identify obstacles
+and (ii) classify them into a fundamental set of known
+obstacle shapes.
+
+II. RELATED WORK
+
+3D lidar-based perception is becoming increasingly popu-
+lar and various approaches have been proposed to effectively
+segment and classify the resulting point clouds. For example,
+in [1], a regression-based method is used to classify static
+
+*This work was partially supported by NASA Space Technology Re-
+
+search Fellowship Grant NNX15AP67H.
+
+1A. Bylard is with Department of Aeronautics and Astronautics, Stanford
+
+University, Stanford, CA bylard at stanford dot edu
+
+2S. Paudel is with Department of Aeronautics and Astronautics, Stanford
+
+University, Stanford, CA spaudel2 at stanford dot edu
+
+Fig. 1. Close observation and sample retrieval from Saturn’s rings will
+require accurate environment sensing for localization, object identiﬁcation,
+and obstacle avoidance.
+
+point clouds into basic geometric shapes, which are then
+classiﬁed into common household objects. A more common
+use of lidar is in autonomous driving [2], [3], [4]. In
+[2], a log-based estimator is used to classify objects seen
+by a car-based lidar system into relevant object classes.
+Similarly, in [4], the authors use the planar structure of
+the problem to segment objects in a 2 1
+2D occupancy grid
+and run classiﬁcation for previously deﬁned object classes.
+The classiﬁcation problem is addressed for RGB-generated
+point clouds in [5], which uses SVMs to classify common
+household objects based on edge feature data. However these
+algorithms are either trained to classify commonly available
+objects for which large training sets are easily available [1],
+[5] or use the inherent planar structure of the problem to
+simplify it [2], [3], [4].
+
+III. DATASETS AND FEATURES
+
+A. Lidar Data Generation
+
+The ﬁrst task of our project was to acquire a large amount
+of relevant training and test data. However, not much lidar
+data is freely available from spacecraft proximity operations,
+particularly for the cluttered scenarios we had in mind. In
+addition, lidar systems are currently very expensive, and
+since we did not have access to an existing lidar setup or
+a testbed that can model a dynamic, cluttered spacecraft
+environment, collecting data experimentally was out of the
+question.
+
+Instead, we developed a simulation which could model a
+variety of obstacles and generate artiﬁcial 3D lidar datasets.
+
+d
+e
+v
+r
+e
+s
+b
+O
+e
+g
+a
+t
+n
+e
+c
+r
+e
+P
+
+Rect.
+
+Ell.
+
+Cyl.
+
+Con.
+
+Feature Combination Index
+
+Fig. 3. Comparison of the frequency of the most prominent FPFH feature
+combinations (particular combinations of α, φ, and θ values) for each
+obstacle type. Each color represents a single training example.
+
+Fig. 4. Geometric representation of PFH descriptors
+
+1) Theoretical Primer: The computation of PFH relies
+on 3D coordinates and estimated surface normals [1]. Let pi
+and pj be two neighboring points, and ni and nj be their
+estimates surface normals respectively. Then, to compute
+the relative difference, we deﬁne a coordinate frame uvw
+centered on pi as shown:
+
+u = ni
+v = (pj − pi) × u
+w = u × v
+
+(1)
+
+Using this frame, the difference between ni and nj can be
+expressed as a set of angular features by:
+
+α = v · nj
+
+φ =
+
+θ = tan−1
+
+u · (pj − pi)
+||pj − pi||
+
+(cid:18) w · nj
+
+u · nj
+
+(cid:19)
+
+(2)
+
+The uvw frame, the normals, and the angles are shown
+geometrically in Fig. 4.
+
+FPFH descriptors simplify the computational complexity
+of PFH from O(n2) to O(nk) by only computing the α, φ,
+and θ corresponding to k nearest neighbors of a query point
+pi instead of every point in the cloud [6]. These angles are
+calculated and stored as a Simpliﬁed Point Feature Histogram
+
+Fig. 2.
+conical obstacles. Each blue point represents a captured lidar data point.
+
+Sample lidar scans of rectangular, ellipsoidal, cylindrical, and
+
+Our simulation was written in MATLAB, and we made
+use of a Spacecraft Motion Planning package to generate
+and keep track of sets of obstacle parameters for different
+obstacle types. Though the package supports many types of
+obstacles, including complex shapes such as spacecraft and
+solar panels, we focused on four fundamental 3D obstacle
+shapes: rectangular, ellipsoidal, cylindrical, and conical, as
+our test cases of interest.
+
+The simulation’s lidar scanning was modeled after the
+Velodyne HDL-32E, which has a 360◦ horizontal ﬁeld of
+view and a 40◦ vertical ﬁeld of view. The HDL-32E scanner
+has 32 lasers, each capturing a single point in a given vertical
+scan, and by its default settings, the HDL-32E will capture
+500 vertical scans per horizontal sweep. These parameters
+were replicated in our simulation.
+
+To generate training data, we randomly generated and
+scanned one obstacle at a time (example scans are shown in
+Figure 2. Parameters for these obstacles included the shape,
+proportions, size, rotation, and distance/angle from the lidar
+scanner. For our lidar test simulation, we modeled entire
+cluttered space environments by generating environments
+with dozens of randomly placed obstacles. To be within the
+ﬁeld of view of the lidar scanner, the obstacles were clustered
+close to a 2D plane with the lidar source at the center.
+
+B. Feature Extraction
+
+Lidar point clouds for each obstacle observation were dis-
+tilled into features using Point Feature Histograms (PFHs),
+a tool widely used in computer vision problems to encode
+a point or a pixels k-neighborhood geometrical properties.
+PFHs determine these properties by generalizing the mean
+curvature around the point using a multi-dimensional his-
+togram of values.
+
+For this project, we implemented a simpliﬁed version
+of PFH called Fast Point Feature Histogram (FPFH). The
+following subsections brieﬂy give a theoretical primer on
+PFH and then describe implemented algorithm for normal
+estimation and feature histogram.
+
+Algorithm 1 Pseudocode for clustering
+Form k-d tree from point cloud
+while count ≤ number of points do
+
+Randomly select pi from point cloud
+if pi has not been clustered then
+
+Add pi to queue Q
+while Q is not empty do
+
+pj = dequeue(Q)
+Add pj to current cluster
+Find all the neighbors of pj within range d that
+have not been processed, and add to Q
+
+end while
+Start a new cluster
+
+end if
+
+end while
+
+that were within a given range. Algorithm 1 presents the
+steps used in the clustering.
+
+For this implementation, we assumed that the space envi-
+ronment being explored is free of unwanted clutter so that
+all of the lidar readings correspond to objects of interest. In
+addition, the algorithm relies on a range d as the minimum
+distance between clusters, based on Euclidean distance. In
+practice, minimum spacing tends to hold true in space
+environments, both during on-orbit formation maneuvers and
+within Saturn’s rings, where most of the rocks are separated
+by meters.
+
+V. OBSTACLE CLASSIFICATION
+
+Two algorithms were explored for classifying lidar point
+clusters into obstacle types. In both cases, clusters with too
+few points to extract features were marked as unclassiﬁed.
+1) Naive Bayes Classiﬁer: For this classiﬁer, we assumed
+that each feature combination extracted from a given point
+cluster was an i.i.d. random variable. This leads to the
+following log-likelihood function:
+
+(cid:96)(q) = log
+
+p(xi = k|y = q)nk p(y = q)
+
+(5)
+
+(cid:33)
+
+(cid:32) N(cid:89)
+
+k=1
+
+where q represents a particular obstacle type, N is the
+number of possible feature combinations, and nk is the
+number of occurrences of the kth feature combination in x
+(where x is the list of feature combinations extracted from a
+point cloud, taken from a test obstacle of type y). Let φk|y=q
+and φy=q be estimates of p(xi = k|y = q) and p(y = q),
+respectively. Then (cid:96)(q) is approximately proportional to
+
+where we assume a uniform prior (φy=q = 1/4) and
+
+nklog(φk|y=q) + log(φy=q)
+
+m(cid:88)
+
+(cid:88)
+
+j=1
+
+i
+
+φk|y=q =
+
+1
+m
+
+1{x(j)
+
+i = k}
+
+(6)
+
+(7)
+
+N(cid:88)
+
+k=1
+
+Fig. 5. A 3D k-d tree. The ﬁrst split (red) cuts the root cell (white) into
+two subcells, each of which is then split (green) into two subcells. Finally,
+each of those four is split (blue) into two subcells.
+
+k(cid:88)
+
+j=1
+
+(SPFH). Finally, the FPFH is calculated as shown:
+
+F P F H(pi) = SP F H(pi) +
+
+1
+k
+
+1
+wk
+
+SP F H(pk)
+
+(3)
+
+(4)
+
+where, wik is the distance between pi and neighbor pk.
+
+2) Normal Estimation: The normals were estimated using
+unconstrained least squares as described in [7]. The closed-
+form solution for normal vector ni corresponding to point pi
+is
+
+where, Mi =(cid:80)k
+
+ni = M−1
+
+j and bi =(cid:80)k
+
+bi
+
+i
+
+j=1 pj. The pj’s in the
+sum correspond to the k-nearest neighbors of point pi. For
+this project, we chose k = 5.
+
+j=1 pjpT
+
+leading to a N = n3
+
+3) FPFH Implementation: Each feature was discretized
+into nf levels,
+f possible feature
+combination for each point. In our implementation, we chose
+nf = 12 and N = 1728. In addition,no features were
+extracted from point clouds which had fewer than 5 points.
+
+IV. OBSTACLE IDENTIFICATION
+
+To identify individual obstacles within a lidar scan of a
+cluttered space, it was necessary to ﬁnd clusters within the
+full point cloud. To this end, we implemented a clustering
+algorithm using k-d trees.
+
+A. k-d trees
+
+A k-d tree is a generalization of binary search tree to a
+higher dimensional space. Every non-leaf node of the tree
+divides the hyperplane into two halfspaces in one of the k-
+dimensions. For example 3D k-d tree is shown in Fig 5.
+
+Hence, a balanced k-d tree can be constructed by cycling
+through the axes used to select the splitting planes, and
+splitting the points by ﬁnding the median with respect to
+the axes selected.
+
+B. Clustering Implementation
+
+Using an inbuilt MATLAB function, we created a k-d tree
+representation of the full lidar point cloud. Then the point
+cloud was divided into clusters by grouping all the points
+
+where m is the number of training examples. After training,
+each test case was classiﬁed as the obstacle type resulting in
+the highest log-likelihood.
+
+(a) Original obstacle set
+
+(b) Clustered lidar cloud
+
+(c) Classiﬁed obstacle set
+
+Fig. 6.
+Full process of identifying and classifying the obstacles. Lidar
+source is located at the center red circle. (c) Classiﬁcation output labeled
+by color (red = Rect; blue = Ell; magenta = Cyl; green = Con). The blue
+circle represents the maximum distance within which training examples
+were generated.
+
+2) SVM Classiﬁer: The SVM classiﬁer was implemented
+using the MATLAB wrapper for the libsvm package. This
+allowed us to easily vary kernel functions, regularization
+parameters and training size. After 5-fold cross-validation,
+a Gaussian kernel with γ = 3 was selected. The results
+from training and testing are described in more detail in the
+following section.
+
+VI. EXPERIMENTS AND RESULTS
+
+The classiﬁcation algorithms were trained using 2000
+examples for each of the obstacle types. Plots of the resulting
+FPFH data for each type are shown in Fig. 3. For testing,
+cluttered environments were randomly generated, using one
+obstacle type per set
+to permit straightforward accuracy
+measurements while maintaining the key dynamic of obstacle
+occlusion during lidar scanning. To check for overﬁtting,
+we tested the classiﬁer using increasing numbers of training
+examples, as shown in Fig. 7. The accuracy leveled off
+quickly, ruling out overﬁtting and showing that more training
+examples were not needed.
+
+The resulting confusion matrices for each algorithm are
+shown in Tables I and II. SVM clearly outperformed Naive
+Bayes for each obstacle type. This may be due to Naive
+Bayes assumption of independence between feature combi-
+nations, which is not in fact correct. However, even SVM
+overall it did not perform as well as might be desired. That
+being said, as shown in Fig. 6c, classiﬁcation performed very
+well on obstacles within the maximum distance from the lidar
+source in which training examples were generated.
+
+Predicted
+Ell
+Cyl
+
+Con
+Rec
+62% 11% 12% 15%
+11% 46% 32% 11%
+25% 12% 47% 16%
+34% 15% 36% 15%
+
+l
+a
+u
+t
+c
+A
+
+Rec
+Ell
+Cyl
+Con
+
+TABLE I
+
+NAIVE BAYES CONFUSION MATRIX
+
+l
+a
+u
+t
+c
+A
+
+Rec
+Ell
+Cyl
+Con
+
+Predicted
+Con
+Cyl
+Rec
+Ell
+73% 5%
+4%
+18%
+12% 72% 7%
+9%
+20% 15% 51% 14%
+27% 22%
+44%
+
+7%
+
+TABLE II
+
+SVM CONFUSION MATRIX
+
+1 Con
+Cyl
+Ell
+
+s
+s
+a
+l
+C
+
+Class 2
+
+Ell
+
+Rec
+Cyl
+88% 90% 67%
+87% 86%
+98%
+TABLE III
+
+SVM TWO-CLASS CLASSIFICATION
+
+To gain further insight into the relatively low accuracy re-
+sults of SVM, we restricted and trained the classiﬁer on only
+two obstacles at a time, and ran the tests again. The results
+in Table III show that SVM mostly performs quite well, and
+that distinguishing cylinders and cones was the most difﬁcult
+classiﬁcation task. This can be explained by the myopic k-
+nearest simpliﬁcation in the FPFH algorithm, which fails to
+capture feature information on obstacle surfaces across long
+distances. Thus, both the curved and ﬂat surfaces of a cone
+can easily be mistaken for those of a cylinder, and vice versa.
+
+VII. CONCLUSIONS AND FUTURE WORK
+
+The results of our clustering algorithm for identifying
+obstacles in lidar point clouds are very promising. In a
+project developed alongside this for AA 228: Decision-
+Making Under Uncertainty, we showed that safe navigation
+is possible in a highly cluttered and dynamic environment
+using only 8 lasers to detect obstacle surfaces. Thus, we
+are conﬁdent that the obstacle positions identiﬁed by the
+clustering algorithm will be more than sufﬁcient for safe
+navigation.
+
+For classiﬁcation, we showed that SVM outperforms Naive
+Bayes. Future work may be to extract more complex features,
+e.g. using View-Point Features. Such features could also be
+used to estimate the size, position, and velocity of obstacles.
+
+t
+c
+e
+r
+r
+o
+C
+
+t
+n
+e
+c
+r
+e
+P
+
+Number of Training Examples per Obstacle Type
+Fig. 7. Convergence of the SVM classiﬁer with increased training
+
+Additional future work to enable safe and efﬁcient naviga-
+tion in cluttered dynamic environments may be to (i) track
+obstacles using Kalman ﬁlter techniques, and (ii) improve
+on the related proof of concept from the AA 228 project,
+extending the work to POMDPs for planning under uncer-
+tainty.
+
+REFERENCES
+
+pp.
+
+11,
+
+[1] R. B. Rusu, Z. C. Marton, N. Blodow, M. Dolha,
+M. Beetz, “Towards 3D Point cloud based object maps
+household
+vol.
+56,
+http://dx.doi.org/10.1016/j.robot.2008.08.005
+
+and
+for
+Systems,
+[Online]. Available:
+
+environments,” Robotics
+927–941,
+no.
+
+and Autonomous
+2008.
+
+[2] A. Teichman, J. Levinson, and S. Thrun, “Towards 3D object recogni-
+tion via classiﬁcation of arbitrary object tracks,” Proceedings - IEEE
+International Conference on Robotics and Automation, pp. 4034–4041,
+2011.
+
+[3] B. Douillard, J. Underwood, N. Kuntz, V. Vlaskine, a. Quadros,
+P. Morton, and a. Frenkel, “On the segmentation of 3D lidar point
+clouds,” Proceedings - IEEE International Conference on Robotics and
+Automation, pp. 2798–2805, 2011.
+
+[4] M. Himmelsbach and T. Luettel, “Real-time object classiﬁcation
+histograms,”
+Available:
+
+in
+Iros,
+http://ieeexplore.ieee.org/xpls/abs all.jsp?arnumber=5354493
+
+using
+994–1000,
+
+feature
+[Online].
+
+point
+2009.
+
+clouds
+
+2009,
+
+point
+
+pp.
+
+3D
+
+and A. Saxena,
+Indoor Scenes,”
+[Online].
+
+[5] H. S. Koppula, A. Anand, T.
+
+Joachims,
+
+“Semantic Labeling of 3D Point Clouds
+Neural
+Available: http://pr.cs.cornell.edu/sceneunderstanding/nips 2011.pdf
+
+Information Processing Systems, pp. 1–9, 2011.
+
+for
+
+[6] R. B. Rusu, N. Blodow, and M. Beetz, “Fast Point Feature Histograms
+(FPFH) for 3D registration,” 2009 IEEE International Conference on
+Robotics and Automation, pp. 3212–3217, 2009.
+[7] H. Badino, D. Huber, Y. Park, and T. Kanade, “Fast and Accurate
+Computation of \nSurface Normals from Range Images,” no. May,
+2011.
+
+

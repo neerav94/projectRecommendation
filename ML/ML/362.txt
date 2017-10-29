@@ -1,0 +1,988 @@
+ 
+
+ 
+
+An EM-Derived Approach to Blind HRTF Estimation 
+
+ 
+
+ 
+
+Eric Schwenker and Griffin Romigh 
+
+CS 229 Final Project 
+December 12th, 2014 
+
+ 
+
+Abstract 
+
+Current  3D  audio  technology  used  for  virtual  and  augmented  reality  systems 
+lack the immersive qualities of real acoustic spaces. This limitation is rooted in 
+an  inability  to  easily  measure  individualized  head-related  transfer  functions 
+(HRTFs) in a commercial setting. This study shows how the iterative construct 
+of a joint-maximization EM algorithm can be applied to derive a novel method 
+for cheap, “portable” HRTF estimation that eliminates both head-tracking and/or 
+prior source location knowledge from the process.  
+
+Introduction  
+
+ 
+ 
+1 
+ 
+In  natural  listening  environments,  humans  use  a  unique  set  of  acoustic  cues  to  localize  incoming  sounds.  These 
+localization  cues,  collectively  represented  by  a  head  related  transfer  function  (HRTF),  describe  the  acoustic 
+transformations caused by interactions of a sound wave with a listener’s head, shoulders, and outer ears. In virtual 
+audio applications, an individually measured HRTF is essential because it is used to give headphone-based sounds a 
+realistic  virtual  spatial  origin  and  immersive  realism.  Accordingly,  if  the  HRTF  is  non-individualized  or  poorly 
+estimated,  it  has  the  tendency  to  cause  unwanted  distortions  and  undesirable  artifacts  in  the  sound’s  perceived 
+location when presented over headphones [1]. 
+ 
+Traditionally, HRTFs are measured acoustically, based on binaural (“two-ear”) recordings of a known test stimuli 
+that are played from loudspeakers in 3D space. In general, the HRTF is a 2D continuous function defined over the 
+unit sphere in 3D space, and a measurement for a given loudspeaker location represents a sample HRTF. It thus 
+follows that a full representation of an HRTF obtained via conventional discrete acoustic measurements, requires an 
+effective interpolation of collected sample HRTFs throughout all of space. Fortunately, with the development of a 
+spherical  harmonic  (SH)  based  HRTF  interpolation  technique  [2],  a  continuous  individualized  HRTF  can  be 
+estimated using  many spatially distributed samples. 
+ 
+While intepolation of a continuous HRTF is possible from discrete HRTF measurements, it requires knowledge of 
+each  sample  HRTF’s  location.  In  typical  laboratory  setups,  this  information  is  provided  by  knowing  a-priori  a 
+loudspeaker’s location relative to a listener’s fixed head position, or tracking a listener’s moving head while keeping 
+the loudspeakers fixed. Unfortunately, even though simple head tracking technology has recently become more cost 
+effective, it still presents a significant financial investment for the average potential consumer of virtual audio.  
+ 
+A  potential  solution  to  this  problem  would  be  to  try  to  estimate  a  continuous  HRTF  without  head-tracking  or 
+loudspeaker  arrays.  Consider  a  sample  HRTF  collected  without  knowledge  of  the  spatial  origin  of  the  recorded 
+stimulus. This observation has some interesting consequences for HRTF estimation in context of machine learning 
+paradigms  because  viewing  this  location  as  a  latent  variable  converts  HRTF  estimation  into  an  unsupervised 
+learning  problem.  Here,  the  goal  of  estimating  an  HRTF  could  be  approached  as  a  two-step  iterative  machine 
+learning algorithm: (1) binaural source localization based on knowledge of the underlying continuous HRTF and test 
+stimulus,  and  (2)  continuous  HRTF  interpolation  from  knowledge  of  several  sample  HRTFs  and  their  locations.  
+Figure 1 below illustrates the “chicken-versus-egg” nature of this two-step estimation problem. 
+
+ 
+
+ 
+
+An EM-Derived Approach to Blind HRTF Estimation 
+
+ 
+
+ 
+
+Eric Schwenker and Griffin Romigh 
+
+CS 229 Final Project 
+December 12th, 2014 
+
+ 
+
+Abstract 
+
+Current  3D  audio  technology  used  for  virtual  and  augmented  reality  systems 
+lack the immersive qualities of real acoustic spaces. This limitation is rooted in 
+an  inability  to  easily  measure  individualized  head-related  transfer  functions 
+(HRTFs) in a commercial setting. This study shows how the iterative construct 
+of a joint-maximization EM algorithm can be applied to derive a novel method 
+for cheap, “portable” HRTF estimation that eliminates both head-tracking and/or 
+prior source location knowledge from the process.  
+
+Introduction  
+
+ 
+ 
+1 
+ 
+In  natural  listening  environments,  humans  use  a  unique  set  of  acoustic  cues  to  localize  incoming  sounds.  These 
+localization  cues,  collectively  represented  by  a  head  related  transfer  function  (HRTF),  describe  the  acoustic 
+transformations caused by interactions of a sound wave with a listener’s head, shoulders, and outer ears. In virtual 
+audio applications, an individually measured HRTF is essential because it is used to give headphone-based sounds a 
+realistic  virtual  spatial  origin  and  immersive  realism.  Accordingly,  if  the  HRTF  is  non-individualized  or  poorly 
+estimated,  it  has  the  tendency  to  cause  unwanted  distortions  and  undesirable  artifacts  in  the  sound’s  perceived 
+location when presented over headphones [1]. 
+ 
+Traditionally, HRTFs are measured acoustically, based on binaural (“two-ear”) recordings of a known test stimuli 
+that are played from loudspeakers in 3D space. In general, the HRTF is a 2D continuous function defined over the 
+unit sphere in 3D space, and a measurement for a given loudspeaker location represents a sample HRTF. It thus 
+follows that a full representation of an HRTF obtained via conventional discrete acoustic measurements, requires an 
+effective interpolation of collected sample HRTFs throughout all of space. Fortunately, with the development of a 
+spherical  harmonic  (SH)  based  HRTF  interpolation  technique  [2],  a  continuous  individualized  HRTF  can  be 
+estimated using  many spatially distributed samples. 
+ 
+While intepolation of a continuous HRTF is possible from discrete HRTF measurements, it requires knowledge of 
+each  sample  HRTF’s  location.  In  typical  laboratory  setups,  this  information  is  provided  by  knowing  a-priori  a 
+loudspeaker’s location relative to a listener’s fixed head position, or tracking a listener’s moving head while keeping 
+the loudspeakers fixed. Unfortunately, even though simple head tracking technology has recently become more cost 
+effective, it still presents a significant financial investment for the average potential consumer of virtual audio.  
+ 
+A  potential  solution  to  this  problem  would  be  to  try  to  estimate  a  continuous  HRTF  without  head-tracking  or 
+loudspeaker  arrays.  Consider  a  sample  HRTF  collected  without  knowledge  of  the  spatial  origin  of  the  recorded 
+stimulus. This observation has some interesting consequences for HRTF estimation in context of machine learning 
+paradigms  because  viewing  this  location  as  a  latent  variable  converts  HRTF  estimation  into  an  unsupervised 
+learning  problem.  Here,  the  goal  of  estimating  an  HRTF  could  be  approached  as  a  two-step  iterative  machine 
+learning algorithm: (1) binaural source localization based on knowledge of the underlying continuous HRTF and test 
+stimulus,  and  (2)  continuous  HRTF  interpolation  from  knowledge  of  several  sample  HRTFs  and  their  locations.  
+Figure 1 below illustrates the “chicken-versus-egg” nature of this two-step estimation problem. 
+
+ 
+
+ 
+
+Figure 1: “Chicken-versus-egg” problem for HRTF estimation  
+
+refers to the fact that these binaural recordings were collected in a quiet anechoic chamber. As a pre-processing step 
+
+This study presents a novel method for HRTF estimation derived from Expectation-Maximization (EM) theory, by 
+collecting sample HRTF measurements on individuals varying their head rotation angle relative to a single fixed 
+speaker  without  explicit  knowledge  of  the  source  location.  The  goal  is  to  achieve  an  accurate  estimate  of  an 
+individual’s HRTF by eliminating any sort of head-tracking or prior source location knowledge from the process.  
+ 
+2 
+ 
+Datasets of binaural recordings containing approximately 277 non-redundant measurements (evenly distributed over 
+3D  space)  were  used  in  place  of  real-time  measurements  for  the  purpose  of  developing  and  refining  the  EM 
+algorithm.  Twelve  separate  datasets  were  collected  in  all,  representing  sets  of  binaural  recordings  collected  for 
+
+Data collection  
+
+ 
+3 
+ 
+EM is a prevailing methodology for maximum likelihood parameter estimation in models with hidden or unobserved 
+ denote a space 
+
+twelve different human subjects. Let 𝑅!(!)  represent a “clean” binaural recording at a given location 𝜃(!). “Clean” 
+before initialization of the algorithm, the collection of binaural recordings were converted to sample HRTFs,  𝑥(!), 
+computed as 𝑥(!)𝜔 =  𝑅!(!)𝜔 𝑠𝜔 , where 𝑠  was the source signal used in the recordings. Both 𝑅!(!)  and 𝑠 were 
+considered in the frequency domain so that a 𝑥(!) could be obtained through simple division.  
+dependencies. To formalize the HRTF estimation problem in context of EM, let 𝒳= 𝑥(!),…,𝑥(!) !
+of 𝑚  “unlabeled”  sample  HRTFs,  and  consider  that  if  a  set  of  known  sound  source  location  “labels” 
+Θ= 𝜃(!),…,𝜃(!) !
+  for 𝒳  existed,  finding  the  continuous  HRTF  parameters  𝑐,  would  become  the  standard 
+continuous HRTF interpolation procedure. Likewise, having complete prior knowledge of the continuous HRTF,  𝑐, 
+and 𝒳  would  trivialize  the  labeling  of  each  recording,  becoming  binaural  source  localization.  The  proposed 
+technique is an attempt at estimating the continuous HRTF,𝑐, having a dataset 𝒳, but no knowledge of Θ, hence the 
+algorithm becomes a joint maximization procedure that iteratively maximizes a function, ℱ𝑄,𝑐 , where 𝑐 is the  
+parameter described above, and 𝑄!(𝜃!) is an arbitrary distribution over the unobserved variables, given the support 
+𝑄!(𝜃!)=  𝑝𝜃! 𝑥(!);𝑐 . The iterative procedure is carried out in two alternating maximization steps on function, 
+ℱ𝑄,𝑐 , and proceeds as follows, repeating until convergence: 
+For each 𝑖, set 𝑄!!  to the 𝑄! that maximizes ℱ𝑄!,𝑐(!!!)  
+where 𝑐(!!!) is either the initial  𝑐!, or the updated 𝑐!  from previous iteration of M-Step 2. 
+
+HRTFs collected are “blind” to location. 
+ 
+For this application, it is useful to begin the formulation of an EM as a coordinate ascent process. With this, the 
+
+Joint maximization formulation   
+
+ 
+M-Step 1  
+
+ 
+  
+
+𝑄!! =arg  max!! ℱ𝑄!,𝑐(!!!)  
+
+ 
+
+ 
+
+An EM-Derived Approach to Blind HRTF Estimation 
+
+ 
+
+ 
+
+Eric Schwenker and Griffin Romigh 
+
+CS 229 Final Project 
+December 12th, 2014 
+
+ 
+
+Abstract 
+
+Current  3D  audio  technology  used  for  virtual  and  augmented  reality  systems 
+lack the immersive qualities of real acoustic spaces. This limitation is rooted in 
+an  inability  to  easily  measure  individualized  head-related  transfer  functions 
+(HRTFs) in a commercial setting. This study shows how the iterative construct 
+of a joint-maximization EM algorithm can be applied to derive a novel method 
+for cheap, “portable” HRTF estimation that eliminates both head-tracking and/or 
+prior source location knowledge from the process.  
+
+Introduction  
+
+ 
+ 
+1 
+ 
+In  natural  listening  environments,  humans  use  a  unique  set  of  acoustic  cues  to  localize  incoming  sounds.  These 
+localization  cues,  collectively  represented  by  a  head  related  transfer  function  (HRTF),  describe  the  acoustic 
+transformations caused by interactions of a sound wave with a listener’s head, shoulders, and outer ears. In virtual 
+audio applications, an individually measured HRTF is essential because it is used to give headphone-based sounds a 
+realistic  virtual  spatial  origin  and  immersive  realism.  Accordingly,  if  the  HRTF  is  non-individualized  or  poorly 
+estimated,  it  has  the  tendency  to  cause  unwanted  distortions  and  undesirable  artifacts  in  the  sound’s  perceived 
+location when presented over headphones [1]. 
+ 
+Traditionally, HRTFs are measured acoustically, based on binaural (“two-ear”) recordings of a known test stimuli 
+that are played from loudspeakers in 3D space. In general, the HRTF is a 2D continuous function defined over the 
+unit sphere in 3D space, and a measurement for a given loudspeaker location represents a sample HRTF. It thus 
+follows that a full representation of an HRTF obtained via conventional discrete acoustic measurements, requires an 
+effective interpolation of collected sample HRTFs throughout all of space. Fortunately, with the development of a 
+spherical  harmonic  (SH)  based  HRTF  interpolation  technique  [2],  a  continuous  individualized  HRTF  can  be 
+estimated using  many spatially distributed samples. 
+ 
+While intepolation of a continuous HRTF is possible from discrete HRTF measurements, it requires knowledge of 
+each  sample  HRTF’s  location.  In  typical  laboratory  setups,  this  information  is  provided  by  knowing  a-priori  a 
+loudspeaker’s location relative to a listener’s fixed head position, or tracking a listener’s moving head while keeping 
+the loudspeakers fixed. Unfortunately, even though simple head tracking technology has recently become more cost 
+effective, it still presents a significant financial investment for the average potential consumer of virtual audio.  
+ 
+A  potential  solution  to  this  problem  would  be  to  try  to  estimate  a  continuous  HRTF  without  head-tracking  or 
+loudspeaker  arrays.  Consider  a  sample  HRTF  collected  without  knowledge  of  the  spatial  origin  of  the  recorded 
+stimulus. This observation has some interesting consequences for HRTF estimation in context of machine learning 
+paradigms  because  viewing  this  location  as  a  latent  variable  converts  HRTF  estimation  into  an  unsupervised 
+learning  problem.  Here,  the  goal  of  estimating  an  HRTF  could  be  approached  as  a  two-step  iterative  machine 
+learning algorithm: (1) binaural source localization based on knowledge of the underlying continuous HRTF and test 
+stimulus,  and  (2)  continuous  HRTF  interpolation  from  knowledge  of  several  sample  HRTFs  and  their  locations.  
+Figure 1 below illustrates the “chicken-versus-egg” nature of this two-step estimation problem. 
+
+ 
+
+ 
+
+Figure 1: “Chicken-versus-egg” problem for HRTF estimation  
+
+refers to the fact that these binaural recordings were collected in a quiet anechoic chamber. As a pre-processing step 
+
+This study presents a novel method for HRTF estimation derived from Expectation-Maximization (EM) theory, by 
+collecting sample HRTF measurements on individuals varying their head rotation angle relative to a single fixed 
+speaker  without  explicit  knowledge  of  the  source  location.  The  goal  is  to  achieve  an  accurate  estimate  of  an 
+individual’s HRTF by eliminating any sort of head-tracking or prior source location knowledge from the process.  
+ 
+2 
+ 
+Datasets of binaural recordings containing approximately 277 non-redundant measurements (evenly distributed over 
+3D  space)  were  used  in  place  of  real-time  measurements  for  the  purpose  of  developing  and  refining  the  EM 
+algorithm.  Twelve  separate  datasets  were  collected  in  all,  representing  sets  of  binaural  recordings  collected  for 
+
+Data collection  
+
+ 
+3 
+ 
+EM is a prevailing methodology for maximum likelihood parameter estimation in models with hidden or unobserved 
+ denote a space 
+
+twelve different human subjects. Let 𝑅!(!)  represent a “clean” binaural recording at a given location 𝜃(!). “Clean” 
+before initialization of the algorithm, the collection of binaural recordings were converted to sample HRTFs,  𝑥(!), 
+computed as 𝑥(!)𝜔 =  𝑅!(!)𝜔 𝑠𝜔 , where 𝑠  was the source signal used in the recordings. Both 𝑅!(!)  and 𝑠 were 
+considered in the frequency domain so that a 𝑥(!) could be obtained through simple division.  
+dependencies. To formalize the HRTF estimation problem in context of EM, let 𝒳= 𝑥(!),…,𝑥(!) !
+of 𝑚  “unlabeled”  sample  HRTFs,  and  consider  that  if  a  set  of  known  sound  source  location  “labels” 
+Θ= 𝜃(!),…,𝜃(!) !
+  for 𝒳  existed,  finding  the  continuous  HRTF  parameters  𝑐,  would  become  the  standard 
+continuous HRTF interpolation procedure. Likewise, having complete prior knowledge of the continuous HRTF,  𝑐, 
+and 𝒳  would  trivialize  the  labeling  of  each  recording,  becoming  binaural  source  localization.  The  proposed 
+technique is an attempt at estimating the continuous HRTF,𝑐, having a dataset 𝒳, but no knowledge of Θ, hence the 
+algorithm becomes a joint maximization procedure that iteratively maximizes a function, ℱ𝑄,𝑐 , where 𝑐 is the  
+parameter described above, and 𝑄!(𝜃!) is an arbitrary distribution over the unobserved variables, given the support 
+𝑄!(𝜃!)=  𝑝𝜃! 𝑥(!);𝑐 . The iterative procedure is carried out in two alternating maximization steps on function, 
+ℱ𝑄,𝑐 , and proceeds as follows, repeating until convergence: 
+For each 𝑖, set 𝑄!!  to the 𝑄! that maximizes ℱ𝑄!,𝑐(!!!)  
+where 𝑐(!!!) is either the initial  𝑐!, or the updated 𝑐!  from previous iteration of M-Step 2. 
+
+HRTFs collected are “blind” to location. 
+ 
+For this application, it is useful to begin the formulation of an EM as a coordinate ascent process. With this, the 
+
+Joint maximization formulation   
+
+ 
+M-Step 1  
+
+ 
+  
+
+𝑄!! =arg  max!! ℱ𝑄!,𝑐(!!!)  
+
+interpolation  procedure  given  the  information  from  M-Step  1.  Using  similar  logic  and  considering  a  greedy 
+
+M-Step 2 
+
+Set 𝑐!  to the 𝑐 that maximizes ℱ𝑄!!,𝑐   𝑐! =arg  max!∈ℂℱ𝑄!!,𝑐  
+where  with  this  standard  coordinate  ascent  view,  the  resulting  algorithm  is  maximizing ℱ  in  a  process  akin  to 
+overall success of the individual M-Steps rather than successful attainment of the optimal joint distribution, ℱ. This 
+
+maximizing a tight lower bound to the true likelihood surface [3].   
+ 
+In this study, a broader view of the traditional EM algorithm is adopted, in which focus is placed on the strategy and 
+
+choice makes the formulation of the algorithm more amenable to the existing body of work on HRTF interpolation 
+and  binaural  source  localization,  as  practical  constructs  established  from  within  existing  research  can  be  used  to 
+approximate each M-Step. This is the topic of the proceeding section. 
+ 
+4 
+ 
+To  complete  the  formulation  of  the  EM-derived approach, consider that M-Step 2 and the process of continuous 
+
+EM-derived approach 
+
+probability of a source location corresponding to a given sample HRTF. Accordingly, it is logical to assume that an 
+effective  HRTF  interpolation  strategy  provides  a  sufficient  proxy  to  the  closed-form  solution  for  the  update  of 
+
+𝜃!(!)=arg  max! 𝑓!(!!!)𝜃(!),𝑥(!) ≈  ℱ𝑄!!,𝑐(!!!)  
+
+HRTF  interpolation  share  a  common  objective:  find  a 𝑐,  (continuous  HRTF  representation)  which  optimizes  the 
+parameter  𝑐.  Under  this  assumption,  M-Step  2  can  be  viewed  as  a  module  that  performs  some  sort  of  HRTF 
+distribution, 𝑄!𝜃!
+, (constrained so as to assign zero probability to all but one value of 𝜃! , so that 𝑄!𝜃! =
+  𝑝𝜃! 𝑥!;𝑐   =1 𝜃! =arg  max!   𝑓!𝜃!,𝑥!
+the machinery for identifying a 𝜃!  that maximizes 𝑄!(𝜃!). As such, the joint maximization of ℱ can be recast 
+For each 𝑖, set 𝜃!(!) to the 𝜃(!) that maximizes 𝑓!(!!!)𝜃(!),𝑥(!)  
+where 𝑐(!!!) is either the initial  𝑐!, or the updated 𝑐!  from a previous iteration of Module 2, and ℱ𝑄!!,𝑐(!!!)  
+represents  the  resulting  maximized  function  from  M-Step  1.  Note  that  the  initial  𝑐!  represents  the  average 
+The function 𝑓!(!!!)𝜃(!),𝑥(!)  computes the similarity between the spectra of 𝑐(!!!) at  𝜃(!) with 𝑥(!), thus for each 
+𝑥(!), the localizer tries to find a 𝜃(!) that maximizes their similarity. Note that with this modular formulation, any 
+Set 𝑐!  to the 𝑐 that minimizes 𝑓!! 𝑐,𝑥(!)  
+where 𝑓!! 𝑐,𝑥!
+measurement 𝑥! .  
+
+binaural  localization  algorithm  can  be  substituted  and  tested  in  Module  1  as  long  as  it  follows  the  same  general 
+construct as given above. 
+ 
+Module 2: Continuous HRTF Interpolation  
+
+  is  a  function  that  computes  the  mean  square  estimate  for 𝑐,  given  the  sample  HRTF 
+
+𝑐!  =arg  min!∈ℂ𝑓!! 𝑐,𝑥(!) ≈  ℱ𝑄!!,𝑐(!)  
+
+according to the module convention outlined above as: 
+ 
+Module 1: Binaural Source Localization  
+
+ ) [4], both M-Step 1 and binaural localization models function as 
+
+continuous HRTF from an existing database. 
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+ 
+ 
+ 
+
+ 
+
+ 
+
+An EM-Derived Approach to Blind HRTF Estimation 
+
+ 
+
+ 
+
+Eric Schwenker and Griffin Romigh 
+
+CS 229 Final Project 
+December 12th, 2014 
+
+ 
+
+Abstract 
+
+Current  3D  audio  technology  used  for  virtual  and  augmented  reality  systems 
+lack the immersive qualities of real acoustic spaces. This limitation is rooted in 
+an  inability  to  easily  measure  individualized  head-related  transfer  functions 
+(HRTFs) in a commercial setting. This study shows how the iterative construct 
+of a joint-maximization EM algorithm can be applied to derive a novel method 
+for cheap, “portable” HRTF estimation that eliminates both head-tracking and/or 
+prior source location knowledge from the process.  
+
+Introduction  
+
+ 
+ 
+1 
+ 
+In  natural  listening  environments,  humans  use  a  unique  set  of  acoustic  cues  to  localize  incoming  sounds.  These 
+localization  cues,  collectively  represented  by  a  head  related  transfer  function  (HRTF),  describe  the  acoustic 
+transformations caused by interactions of a sound wave with a listener’s head, shoulders, and outer ears. In virtual 
+audio applications, an individually measured HRTF is essential because it is used to give headphone-based sounds a 
+realistic  virtual  spatial  origin  and  immersive  realism.  Accordingly,  if  the  HRTF  is  non-individualized  or  poorly 
+estimated,  it  has  the  tendency  to  cause  unwanted  distortions  and  undesirable  artifacts  in  the  sound’s  perceived 
+location when presented over headphones [1]. 
+ 
+Traditionally, HRTFs are measured acoustically, based on binaural (“two-ear”) recordings of a known test stimuli 
+that are played from loudspeakers in 3D space. In general, the HRTF is a 2D continuous function defined over the 
+unit sphere in 3D space, and a measurement for a given loudspeaker location represents a sample HRTF. It thus 
+follows that a full representation of an HRTF obtained via conventional discrete acoustic measurements, requires an 
+effective interpolation of collected sample HRTFs throughout all of space. Fortunately, with the development of a 
+spherical  harmonic  (SH)  based  HRTF  interpolation  technique  [2],  a  continuous  individualized  HRTF  can  be 
+estimated using  many spatially distributed samples. 
+ 
+While intepolation of a continuous HRTF is possible from discrete HRTF measurements, it requires knowledge of 
+each  sample  HRTF’s  location.  In  typical  laboratory  setups,  this  information  is  provided  by  knowing  a-priori  a 
+loudspeaker’s location relative to a listener’s fixed head position, or tracking a listener’s moving head while keeping 
+the loudspeakers fixed. Unfortunately, even though simple head tracking technology has recently become more cost 
+effective, it still presents a significant financial investment for the average potential consumer of virtual audio.  
+ 
+A  potential  solution  to  this  problem  would  be  to  try  to  estimate  a  continuous  HRTF  without  head-tracking  or 
+loudspeaker  arrays.  Consider  a  sample  HRTF  collected  without  knowledge  of  the  spatial  origin  of  the  recorded 
+stimulus. This observation has some interesting consequences for HRTF estimation in context of machine learning 
+paradigms  because  viewing  this  location  as  a  latent  variable  converts  HRTF  estimation  into  an  unsupervised 
+learning  problem.  Here,  the  goal  of  estimating  an  HRTF  could  be  approached  as  a  two-step  iterative  machine 
+learning algorithm: (1) binaural source localization based on knowledge of the underlying continuous HRTF and test 
+stimulus,  and  (2)  continuous  HRTF  interpolation  from  knowledge  of  several  sample  HRTFs  and  their  locations.  
+Figure 1 below illustrates the “chicken-versus-egg” nature of this two-step estimation problem. 
+
+ 
+
+ 
+
+Figure 1: “Chicken-versus-egg” problem for HRTF estimation  
+
+refers to the fact that these binaural recordings were collected in a quiet anechoic chamber. As a pre-processing step 
+
+This study presents a novel method for HRTF estimation derived from Expectation-Maximization (EM) theory, by 
+collecting sample HRTF measurements on individuals varying their head rotation angle relative to a single fixed 
+speaker  without  explicit  knowledge  of  the  source  location.  The  goal  is  to  achieve  an  accurate  estimate  of  an 
+individual’s HRTF by eliminating any sort of head-tracking or prior source location knowledge from the process.  
+ 
+2 
+ 
+Datasets of binaural recordings containing approximately 277 non-redundant measurements (evenly distributed over 
+3D  space)  were  used  in  place  of  real-time  measurements  for  the  purpose  of  developing  and  refining  the  EM 
+algorithm.  Twelve  separate  datasets  were  collected  in  all,  representing  sets  of  binaural  recordings  collected  for 
+
+Data collection  
+
+ 
+3 
+ 
+EM is a prevailing methodology for maximum likelihood parameter estimation in models with hidden or unobserved 
+ denote a space 
+
+twelve different human subjects. Let 𝑅!(!)  represent a “clean” binaural recording at a given location 𝜃(!). “Clean” 
+before initialization of the algorithm, the collection of binaural recordings were converted to sample HRTFs,  𝑥(!), 
+computed as 𝑥(!)𝜔 =  𝑅!(!)𝜔 𝑠𝜔 , where 𝑠  was the source signal used in the recordings. Both 𝑅!(!)  and 𝑠 were 
+considered in the frequency domain so that a 𝑥(!) could be obtained through simple division.  
+dependencies. To formalize the HRTF estimation problem in context of EM, let 𝒳= 𝑥(!),…,𝑥(!) !
+of 𝑚  “unlabeled”  sample  HRTFs,  and  consider  that  if  a  set  of  known  sound  source  location  “labels” 
+Θ= 𝜃(!),…,𝜃(!) !
+  for 𝒳  existed,  finding  the  continuous  HRTF  parameters  𝑐,  would  become  the  standard 
+continuous HRTF interpolation procedure. Likewise, having complete prior knowledge of the continuous HRTF,  𝑐, 
+and 𝒳  would  trivialize  the  labeling  of  each  recording,  becoming  binaural  source  localization.  The  proposed 
+technique is an attempt at estimating the continuous HRTF,𝑐, having a dataset 𝒳, but no knowledge of Θ, hence the 
+algorithm becomes a joint maximization procedure that iteratively maximizes a function, ℱ𝑄,𝑐 , where 𝑐 is the  
+parameter described above, and 𝑄!(𝜃!) is an arbitrary distribution over the unobserved variables, given the support 
+𝑄!(𝜃!)=  𝑝𝜃! 𝑥(!);𝑐 . The iterative procedure is carried out in two alternating maximization steps on function, 
+ℱ𝑄,𝑐 , and proceeds as follows, repeating until convergence: 
+For each 𝑖, set 𝑄!!  to the 𝑄! that maximizes ℱ𝑄!,𝑐(!!!)  
+where 𝑐(!!!) is either the initial  𝑐!, or the updated 𝑐!  from previous iteration of M-Step 2. 
+
+HRTFs collected are “blind” to location. 
+ 
+For this application, it is useful to begin the formulation of an EM as a coordinate ascent process. With this, the 
+
+Joint maximization formulation   
+
+ 
+M-Step 1  
+
+ 
+  
+
+𝑄!! =arg  max!! ℱ𝑄!,𝑐(!!!)  
+
+interpolation  procedure  given  the  information  from  M-Step  1.  Using  similar  logic  and  considering  a  greedy 
+
+M-Step 2 
+
+Set 𝑐!  to the 𝑐 that maximizes ℱ𝑄!!,𝑐   𝑐! =arg  max!∈ℂℱ𝑄!!,𝑐  
+where  with  this  standard  coordinate  ascent  view,  the  resulting  algorithm  is  maximizing ℱ  in  a  process  akin  to 
+overall success of the individual M-Steps rather than successful attainment of the optimal joint distribution, ℱ. This 
+
+maximizing a tight lower bound to the true likelihood surface [3].   
+ 
+In this study, a broader view of the traditional EM algorithm is adopted, in which focus is placed on the strategy and 
+
+choice makes the formulation of the algorithm more amenable to the existing body of work on HRTF interpolation 
+and  binaural  source  localization,  as  practical  constructs  established  from  within  existing  research  can  be  used  to 
+approximate each M-Step. This is the topic of the proceeding section. 
+ 
+4 
+ 
+To  complete  the  formulation  of  the  EM-derived approach, consider that M-Step 2 and the process of continuous 
+
+EM-derived approach 
+
+probability of a source location corresponding to a given sample HRTF. Accordingly, it is logical to assume that an 
+effective  HRTF  interpolation  strategy  provides  a  sufficient  proxy  to  the  closed-form  solution  for  the  update  of 
+
+𝜃!(!)=arg  max! 𝑓!(!!!)𝜃(!),𝑥(!) ≈  ℱ𝑄!!,𝑐(!!!)  
+
+HRTF  interpolation  share  a  common  objective:  find  a 𝑐,  (continuous  HRTF  representation)  which  optimizes  the 
+parameter  𝑐.  Under  this  assumption,  M-Step  2  can  be  viewed  as  a  module  that  performs  some  sort  of  HRTF 
+distribution, 𝑄!𝜃!
+, (constrained so as to assign zero probability to all but one value of 𝜃! , so that 𝑄!𝜃! =
+  𝑝𝜃! 𝑥!;𝑐   =1 𝜃! =arg  max!   𝑓!𝜃!,𝑥!
+the machinery for identifying a 𝜃!  that maximizes 𝑄!(𝜃!). As such, the joint maximization of ℱ can be recast 
+For each 𝑖, set 𝜃!(!) to the 𝜃(!) that maximizes 𝑓!(!!!)𝜃(!),𝑥(!)  
+where 𝑐(!!!) is either the initial  𝑐!, or the updated 𝑐!  from a previous iteration of Module 2, and ℱ𝑄!!,𝑐(!!!)  
+represents  the  resulting  maximized  function  from  M-Step  1.  Note  that  the  initial  𝑐!  represents  the  average 
+The function 𝑓!(!!!)𝜃(!),𝑥(!)  computes the similarity between the spectra of 𝑐(!!!) at  𝜃(!) with 𝑥(!), thus for each 
+𝑥(!), the localizer tries to find a 𝜃(!) that maximizes their similarity. Note that with this modular formulation, any 
+Set 𝑐!  to the 𝑐 that minimizes 𝑓!! 𝑐,𝑥(!)  
+where 𝑓!! 𝑐,𝑥!
+measurement 𝑥! .  
+
+binaural  localization  algorithm  can  be  substituted  and  tested  in  Module  1  as  long  as  it  follows  the  same  general 
+construct as given above. 
+ 
+Module 2: Continuous HRTF Interpolation  
+
+  is  a  function  that  computes  the  mean  square  estimate  for 𝑐,  given  the  sample  HRTF 
+
+𝑐!  =arg  min!∈ℂ𝑓!! 𝑐,𝑥(!) ≈  ℱ𝑄!!,𝑐(!)  
+
+according to the module convention outlined above as: 
+ 
+Module 1: Binaural Source Localization  
+
+ ) [4], both M-Step 1 and binaural localization models function as 
+
+continuous HRTF from an existing database. 
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+ 
+ 
+ 
+
+ 
+
+ 
+
+Alternatively, 𝑐!  can be expressed as the least squares solution  
+𝑐! =(Y!Y)!!Y!Θ!  
+where Y represents a matrix of spherical harmonic (SH) basis functions (see [2] for more details), and Θ!  represents 
+a vector of 𝜃!(!) for all 𝑖 from Module 1. Remember, 𝜃!(!) has an 𝑥 dependence (from Module 1), thus the alternative 
+view is not an attempt to eliminate an 𝑥 dependence, but rather, it is motivated by the discussion of the results. The 
+basis functions contained in Y are indexed according to their order, a constant that determines the rate of spatial 
+and tested in Module 2 without forcing a re-derivation of the entire construct. Note that it is assumed that 𝑐!  is a 
+
+change of the basis function over the sphere, and this is presumed to have an effect on the interpolation scheme (and 
+therefore the proceeding localization). Again, with this design, other HRTF interpolation schemes can be substituted 
+
+Results and discussion 
+
+suitable approximation for the result of M-Step 2. 
+ 
+5 
+ 
+Twelve  separate  ground  truth  HRTFs  representing  twelve  individual  subjects  by  proxy  were  used  for  each 
+experiment; these HRTFs were custom measured on real human participants. The metrics used to define the success 
+of  the  algorithm  are  expressed  according  to  the  purpose  assigned  to  each  module.  Moreover,  the  purpose  of  the 
+
+binaural localizer in Module 1 is to find a 𝜃(!) that maximizes the similarity of the spectra under comparison, which 
+is analogous to minimizing the localization error for each given  𝑥(!). This localization error across all subjects (for 
+estimating the continuous HRTF parameter, 𝑐. 
+
+sets of random locations not contained in the training set) is measured with average angular error and is given in 
+Figure  2a  below  as  a  function  of  the  number  of  measurements  (number  of  discrete  binaural  recordings)  used  in 
+
+(a) 
+
+(b) 
+
+Order 
+
+ 
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+	  
+Figure  2:  (a)  Average  angular  error  (simulated  localization  with  final  c  estimate)  vs.  number  of  training  locations           
+(b) Spectral distortion vs number of training locations as a function of SH interpolation order 
+
+The results of Figure 2a indicate that the average angular error in the simulated localization (over “unseen” sample 
+locations)  decreases  rapidly  over  small  measurement  set  sizes.    This  means  that  the  localization  benefit  obtained 
+from a small measurement set size is well generalizable over all relevant locations, and that it is likely unnecessary 
+to consider any measurement set sizes over 100 as the localization benefit for those sizes appears negligible.  
+ 
+To evaluate the performance of Module 2, consider that a continuous HRTF that is sufficiently interpolated yields 
+minimal  spectral  distortion  when  compared  to  the  sample  HRTF  from  which  it  is  constructed.  Figure  2b  above 
+highlights  how  the  choice  of  order  in  the  continuous  HRTF  interpolation  (Module  2)  affects  spectral  distortion, 
+again is given as a function of the number of measurements used in the parameter estimation. The results show that 
+for  a  small  measurement  set  size  (<50  locations),  a  high  (14th  order)  representation  produces  a  less  distorted 
+estimation  of  ground  truth.  Since  the  higher  orders  in  the  spherical  harmonic  interpolation  strategy  represent  a 
+projection onto a basis with a large frequency over space, it is plausible that when given a sizable measurement set 
+size  (>50),  higher  orders  begin  over  fitting  the  data.  All  things  considered,  the  lower  (4th)  order  representation 
+appears to benefit most from the design of the algorithm and presents an interesting point of discussion, as Romigh 
+et. al [2] find that a 4th order SH representation achieved localization accuracy at a level of performance comparable 
+
+ 
+
+ 
+
+An EM-Derived Approach to Blind HRTF Estimation 
+
+ 
+
+ 
+
+Eric Schwenker and Griffin Romigh 
+
+CS 229 Final Project 
+December 12th, 2014 
+
+ 
+
+Abstract 
+
+Current  3D  audio  technology  used  for  virtual  and  augmented  reality  systems 
+lack the immersive qualities of real acoustic spaces. This limitation is rooted in 
+an  inability  to  easily  measure  individualized  head-related  transfer  functions 
+(HRTFs) in a commercial setting. This study shows how the iterative construct 
+of a joint-maximization EM algorithm can be applied to derive a novel method 
+for cheap, “portable” HRTF estimation that eliminates both head-tracking and/or 
+prior source location knowledge from the process.  
+
+Introduction  
+
+ 
+ 
+1 
+ 
+In  natural  listening  environments,  humans  use  a  unique  set  of  acoustic  cues  to  localize  incoming  sounds.  These 
+localization  cues,  collectively  represented  by  a  head  related  transfer  function  (HRTF),  describe  the  acoustic 
+transformations caused by interactions of a sound wave with a listener’s head, shoulders, and outer ears. In virtual 
+audio applications, an individually measured HRTF is essential because it is used to give headphone-based sounds a 
+realistic  virtual  spatial  origin  and  immersive  realism.  Accordingly,  if  the  HRTF  is  non-individualized  or  poorly 
+estimated,  it  has  the  tendency  to  cause  unwanted  distortions  and  undesirable  artifacts  in  the  sound’s  perceived 
+location when presented over headphones [1]. 
+ 
+Traditionally, HRTFs are measured acoustically, based on binaural (“two-ear”) recordings of a known test stimuli 
+that are played from loudspeakers in 3D space. In general, the HRTF is a 2D continuous function defined over the 
+unit sphere in 3D space, and a measurement for a given loudspeaker location represents a sample HRTF. It thus 
+follows that a full representation of an HRTF obtained via conventional discrete acoustic measurements, requires an 
+effective interpolation of collected sample HRTFs throughout all of space. Fortunately, with the development of a 
+spherical  harmonic  (SH)  based  HRTF  interpolation  technique  [2],  a  continuous  individualized  HRTF  can  be 
+estimated using  many spatially distributed samples. 
+ 
+While intepolation of a continuous HRTF is possible from discrete HRTF measurements, it requires knowledge of 
+each  sample  HRTF’s  location.  In  typical  laboratory  setups,  this  information  is  provided  by  knowing  a-priori  a 
+loudspeaker’s location relative to a listener’s fixed head position, or tracking a listener’s moving head while keeping 
+the loudspeakers fixed. Unfortunately, even though simple head tracking technology has recently become more cost 
+effective, it still presents a significant financial investment for the average potential consumer of virtual audio.  
+ 
+A  potential  solution  to  this  problem  would  be  to  try  to  estimate  a  continuous  HRTF  without  head-tracking  or 
+loudspeaker  arrays.  Consider  a  sample  HRTF  collected  without  knowledge  of  the  spatial  origin  of  the  recorded 
+stimulus. This observation has some interesting consequences for HRTF estimation in context of machine learning 
+paradigms  because  viewing  this  location  as  a  latent  variable  converts  HRTF  estimation  into  an  unsupervised 
+learning  problem.  Here,  the  goal  of  estimating  an  HRTF  could  be  approached  as  a  two-step  iterative  machine 
+learning algorithm: (1) binaural source localization based on knowledge of the underlying continuous HRTF and test 
+stimulus,  and  (2)  continuous  HRTF  interpolation  from  knowledge  of  several  sample  HRTFs  and  their  locations.  
+Figure 1 below illustrates the “chicken-versus-egg” nature of this two-step estimation problem. 
+
+ 
+
+ 
+
+Figure 1: “Chicken-versus-egg” problem for HRTF estimation  
+
+refers to the fact that these binaural recordings were collected in a quiet anechoic chamber. As a pre-processing step 
+
+This study presents a novel method for HRTF estimation derived from Expectation-Maximization (EM) theory, by 
+collecting sample HRTF measurements on individuals varying their head rotation angle relative to a single fixed 
+speaker  without  explicit  knowledge  of  the  source  location.  The  goal  is  to  achieve  an  accurate  estimate  of  an 
+individual’s HRTF by eliminating any sort of head-tracking or prior source location knowledge from the process.  
+ 
+2 
+ 
+Datasets of binaural recordings containing approximately 277 non-redundant measurements (evenly distributed over 
+3D  space)  were  used  in  place  of  real-time  measurements  for  the  purpose  of  developing  and  refining  the  EM 
+algorithm.  Twelve  separate  datasets  were  collected  in  all,  representing  sets  of  binaural  recordings  collected  for 
+
+Data collection  
+
+ 
+3 
+ 
+EM is a prevailing methodology for maximum likelihood parameter estimation in models with hidden or unobserved 
+ denote a space 
+
+twelve different human subjects. Let 𝑅!(!)  represent a “clean” binaural recording at a given location 𝜃(!). “Clean” 
+before initialization of the algorithm, the collection of binaural recordings were converted to sample HRTFs,  𝑥(!), 
+computed as 𝑥(!)𝜔 =  𝑅!(!)𝜔 𝑠𝜔 , where 𝑠  was the source signal used in the recordings. Both 𝑅!(!)  and 𝑠 were 
+considered in the frequency domain so that a 𝑥(!) could be obtained through simple division.  
+dependencies. To formalize the HRTF estimation problem in context of EM, let 𝒳= 𝑥(!),…,𝑥(!) !
+of 𝑚  “unlabeled”  sample  HRTFs,  and  consider  that  if  a  set  of  known  sound  source  location  “labels” 
+Θ= 𝜃(!),…,𝜃(!) !
+  for 𝒳  existed,  finding  the  continuous  HRTF  parameters  𝑐,  would  become  the  standard 
+continuous HRTF interpolation procedure. Likewise, having complete prior knowledge of the continuous HRTF,  𝑐, 
+and 𝒳  would  trivialize  the  labeling  of  each  recording,  becoming  binaural  source  localization.  The  proposed 
+technique is an attempt at estimating the continuous HRTF,𝑐, having a dataset 𝒳, but no knowledge of Θ, hence the 
+algorithm becomes a joint maximization procedure that iteratively maximizes a function, ℱ𝑄,𝑐 , where 𝑐 is the  
+parameter described above, and 𝑄!(𝜃!) is an arbitrary distribution over the unobserved variables, given the support 
+𝑄!(𝜃!)=  𝑝𝜃! 𝑥(!);𝑐 . The iterative procedure is carried out in two alternating maximization steps on function, 
+ℱ𝑄,𝑐 , and proceeds as follows, repeating until convergence: 
+For each 𝑖, set 𝑄!!  to the 𝑄! that maximizes ℱ𝑄!,𝑐(!!!)  
+where 𝑐(!!!) is either the initial  𝑐!, or the updated 𝑐!  from previous iteration of M-Step 2. 
+
+HRTFs collected are “blind” to location. 
+ 
+For this application, it is useful to begin the formulation of an EM as a coordinate ascent process. With this, the 
+
+Joint maximization formulation   
+
+ 
+M-Step 1  
+
+ 
+  
+
+𝑄!! =arg  max!! ℱ𝑄!,𝑐(!!!)  
+
+interpolation  procedure  given  the  information  from  M-Step  1.  Using  similar  logic  and  considering  a  greedy 
+
+M-Step 2 
+
+Set 𝑐!  to the 𝑐 that maximizes ℱ𝑄!!,𝑐   𝑐! =arg  max!∈ℂℱ𝑄!!,𝑐  
+where  with  this  standard  coordinate  ascent  view,  the  resulting  algorithm  is  maximizing ℱ  in  a  process  akin  to 
+overall success of the individual M-Steps rather than successful attainment of the optimal joint distribution, ℱ. This 
+
+maximizing a tight lower bound to the true likelihood surface [3].   
+ 
+In this study, a broader view of the traditional EM algorithm is adopted, in which focus is placed on the strategy and 
+
+choice makes the formulation of the algorithm more amenable to the existing body of work on HRTF interpolation 
+and  binaural  source  localization,  as  practical  constructs  established  from  within  existing  research  can  be  used  to 
+approximate each M-Step. This is the topic of the proceeding section. 
+ 
+4 
+ 
+To  complete  the  formulation  of  the  EM-derived approach, consider that M-Step 2 and the process of continuous 
+
+EM-derived approach 
+
+probability of a source location corresponding to a given sample HRTF. Accordingly, it is logical to assume that an 
+effective  HRTF  interpolation  strategy  provides  a  sufficient  proxy  to  the  closed-form  solution  for  the  update  of 
+
+𝜃!(!)=arg  max! 𝑓!(!!!)𝜃(!),𝑥(!) ≈  ℱ𝑄!!,𝑐(!!!)  
+
+HRTF  interpolation  share  a  common  objective:  find  a 𝑐,  (continuous  HRTF  representation)  which  optimizes  the 
+parameter  𝑐.  Under  this  assumption,  M-Step  2  can  be  viewed  as  a  module  that  performs  some  sort  of  HRTF 
+distribution, 𝑄!𝜃!
+, (constrained so as to assign zero probability to all but one value of 𝜃! , so that 𝑄!𝜃! =
+  𝑝𝜃! 𝑥!;𝑐   =1 𝜃! =arg  max!   𝑓!𝜃!,𝑥!
+the machinery for identifying a 𝜃!  that maximizes 𝑄!(𝜃!). As such, the joint maximization of ℱ can be recast 
+For each 𝑖, set 𝜃!(!) to the 𝜃(!) that maximizes 𝑓!(!!!)𝜃(!),𝑥(!)  
+where 𝑐(!!!) is either the initial  𝑐!, or the updated 𝑐!  from a previous iteration of Module 2, and ℱ𝑄!!,𝑐(!!!)  
+represents  the  resulting  maximized  function  from  M-Step  1.  Note  that  the  initial  𝑐!  represents  the  average 
+The function 𝑓!(!!!)𝜃(!),𝑥(!)  computes the similarity between the spectra of 𝑐(!!!) at  𝜃(!) with 𝑥(!), thus for each 
+𝑥(!), the localizer tries to find a 𝜃(!) that maximizes their similarity. Note that with this modular formulation, any 
+Set 𝑐!  to the 𝑐 that minimizes 𝑓!! 𝑐,𝑥(!)  
+where 𝑓!! 𝑐,𝑥!
+measurement 𝑥! .  
+
+binaural  localization  algorithm  can  be  substituted  and  tested  in  Module  1  as  long  as  it  follows  the  same  general 
+construct as given above. 
+ 
+Module 2: Continuous HRTF Interpolation  
+
+  is  a  function  that  computes  the  mean  square  estimate  for 𝑐,  given  the  sample  HRTF 
+
+𝑐!  =arg  min!∈ℂ𝑓!! 𝑐,𝑥(!) ≈  ℱ𝑄!!,𝑐(!)  
+
+according to the module convention outlined above as: 
+ 
+Module 1: Binaural Source Localization  
+
+ ) [4], both M-Step 1 and binaural localization models function as 
+
+continuous HRTF from an existing database. 
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+ 
+ 
+ 
+
+ 
+
+ 
+
+Alternatively, 𝑐!  can be expressed as the least squares solution  
+𝑐! =(Y!Y)!!Y!Θ!  
+where Y represents a matrix of spherical harmonic (SH) basis functions (see [2] for more details), and Θ!  represents 
+a vector of 𝜃!(!) for all 𝑖 from Module 1. Remember, 𝜃!(!) has an 𝑥 dependence (from Module 1), thus the alternative 
+view is not an attempt to eliminate an 𝑥 dependence, but rather, it is motivated by the discussion of the results. The 
+basis functions contained in Y are indexed according to their order, a constant that determines the rate of spatial 
+and tested in Module 2 without forcing a re-derivation of the entire construct. Note that it is assumed that 𝑐!  is a 
+
+change of the basis function over the sphere, and this is presumed to have an effect on the interpolation scheme (and 
+therefore the proceeding localization). Again, with this design, other HRTF interpolation schemes can be substituted 
+
+Results and discussion 
+
+suitable approximation for the result of M-Step 2. 
+ 
+5 
+ 
+Twelve  separate  ground  truth  HRTFs  representing  twelve  individual  subjects  by  proxy  were  used  for  each 
+experiment; these HRTFs were custom measured on real human participants. The metrics used to define the success 
+of  the  algorithm  are  expressed  according  to  the  purpose  assigned  to  each  module.  Moreover,  the  purpose  of  the 
+
+binaural localizer in Module 1 is to find a 𝜃(!) that maximizes the similarity of the spectra under comparison, which 
+is analogous to minimizing the localization error for each given  𝑥(!). This localization error across all subjects (for 
+estimating the continuous HRTF parameter, 𝑐. 
+
+sets of random locations not contained in the training set) is measured with average angular error and is given in 
+Figure  2a  below  as  a  function  of  the  number  of  measurements  (number  of  discrete  binaural  recordings)  used  in 
+
+(a) 
+
+(b) 
+
+Order 
+
+ 
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+	  
+Figure  2:  (a)  Average  angular  error  (simulated  localization  with  final  c  estimate)  vs.  number  of  training  locations           
+(b) Spectral distortion vs number of training locations as a function of SH interpolation order 
+
+The results of Figure 2a indicate that the average angular error in the simulated localization (over “unseen” sample 
+locations)  decreases  rapidly  over  small  measurement  set  sizes.    This  means  that  the  localization  benefit  obtained 
+from a small measurement set size is well generalizable over all relevant locations, and that it is likely unnecessary 
+to consider any measurement set sizes over 100 as the localization benefit for those sizes appears negligible.  
+ 
+To evaluate the performance of Module 2, consider that a continuous HRTF that is sufficiently interpolated yields 
+minimal  spectral  distortion  when  compared  to  the  sample  HRTF  from  which  it  is  constructed.  Figure  2b  above 
+highlights  how  the  choice  of  order  in  the  continuous  HRTF  interpolation  (Module  2)  affects  spectral  distortion, 
+again is given as a function of the number of measurements used in the parameter estimation. The results show that 
+for  a  small  measurement  set  size  (<50  locations),  a  high  (14th  order)  representation  produces  a  less  distorted 
+estimation  of  ground  truth.  Since  the  higher  orders  in  the  spherical  harmonic  interpolation  strategy  represent  a 
+projection onto a basis with a large frequency over space, it is plausible that when given a sizable measurement set 
+size  (>50),  higher  orders  begin  over  fitting  the  data.  All  things  considered,  the  lower  (4th)  order  representation 
+appears to benefit most from the design of the algorithm and presents an interesting point of discussion, as Romigh 
+et. al [2] find that a 4th order SH representation achieved localization accuracy at a level of performance comparable 
+
+ 
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+ 
+
+ 
+
+ 
+ 
+
+ 
+ 
+
+to a fully individualized HRTF, despite the fact that a low order representation induces a significant amount of both 
+spectral and spatial smoothing. The spectral smoothing present in a 4th order estimate can be visualized in Figure 3  
+ 
+
+ 
+ 
+Figure  3:  4th  order  HRTF  magnitudes  (in  dB)  plotted  as  a  function  of  angle  along  the  median  plane 
+(comparison between 2 different subjects for 4 different measurement set sizes) 
+
+estimation.  Each time the algorithm is run, it starts with the same initial guess for 𝑐!(the database average), given on 
+
+Figure 3 shows the dramatic progression of the estimation procedure as more locations are used in formation of the 
+
+Conclusion and future work  
+
+the far left and as is shown, does begin to capture the important features of an individual’s ground truth 14th order 
+HRTF that was custom measured in an anechoic facility. As a final point, it’s important to recognize that the results 
+presented here were exploratory in scope and that these insights into ideal  measurement set sizes and interpolation 
+order, will serve to help guide the algorithm towards a more refined design.  
+ 
+6 
+ 
+This study used the iterative construct of a joint-maximization EM algorithm to derive a novel method for HRTF 
+estimation that eliminates both head-tracking and/or prior positional source location knowledge from the process.  
+Keeping to the practical problem, assumptions were made which generalized each M-Step into a more modular form 
+and did in fact eliminate some of the rigor built into the strict EM formulation; however, the overall method was 
+successful  in  its  estimation  of  a  continuous  HRTF  across  a  database  of  twelve  subjects,  as  both  the  simulated 
+average angular error on testing data and the spectral distortion improved over the course of iteration. To ensure 
+robustness for measurements taken in everyday listening environments (the eventual objective), the necessary next 
+steps involve consideration of non-anechoic and noisy recordings to see how the proposed method handles more 
+realistic  input  data.  Furthermore,  note  that  currently,  the  testing  locations  are  evenly  distributed  over  3D  space. 
+Randomizing or perhaps developing realistic paths (representing the motions of a person using the technique) would 
+present  an  interesting  follow  up  study,  as  well.  Finally,  it  is  essential  to  begin  formulating  a  plan  for  perceptual 
+testing  of  the  estimated  continuous  HRTF  structures,  to  ensure  that  the  metrics  defined  function  as  suitable 
+maximum likelihood estimators. 
+ 
+Authors' contributions to manuscript 
+G.R. advised E.S. // E.S. responsible for coding and write up. // HRTF interpolation step based on G.R.’s PhD thesis [2]. 
+ 
+References 
+[1]  
+[2]  
+[3] 
+[4] 
+                In: M. Jordan, editor, Learning in Graphical Models, pp 355-368. 1998. 
+
+W.M. Hartmann and  A.Wittenberg, “On the externalization of sound images,” J. Acoust. Soc. Am., pp. 3678–3688, 1996. 
+G. D. Romigh, D. S. Brungart, and R. M. Stern, “A continuous hrtf representation for modeling and estimation,” 2012. 
+A.Y. Ng, “The EM Algorithm,”  CS229 Course Notes, Fall 2014. 
+R. M. Neal and G. E. Hinton, “A view of the EM algorithm that justifies incremental, sparse, and other variants.” 
+
+

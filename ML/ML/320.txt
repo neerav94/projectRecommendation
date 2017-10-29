@@ -1,0 +1,1590 @@
+Neural Network Joint Language Model: An Investigation and
+
+An Extension With Global Source Context
+
+Ruizhongtai (Charles) Qi
+
+Department of Electrical Engineering, Stanford University
+
+rqi@stanford.edu
+
+Abstract
+
+Recent work has shown success in using a neural
+network joint language model that jointly model
+target language and its aligned source language
+to improve machine translation performance. In
+this project we ﬁrst investigate a state-of-the-art
+joint language model by studying architectural
+and parametric factors through experiments and
+visualizations. We then propose an extension to
+this model that incorporates global source con-
+text information. Experiments show that the best
+extension setting achieves 1.9% reduction of test
+set perplexity on a French-English data set. 1
+
+1 Introduction
+
+The construction of language model has always been
+an important topic in NLP. Recently, language models
+trained by neural networks (NNLM) have achieved
+state-of-the-art performance in a series of tasks like
+sentiment analysis and machine translation. The key
+idea of NNLMs is to learn distributive representation of
+words (aka. word embeddings) and use neural network
+as a smooth prediction function. In a speciﬁc application
+like translation, we can build a stronger NNLM by
+incorporating information from source sentences. A
+recent work from ACL 2014 (Devlin et al., 2014)
+achieved a 6+ BLEU score boost by using both target
+words and source words to train a neural network joint
+model (NNJM).
+
+In this project, we implement the original NNJM
+and design experiments to understand the model. We
+also extend the current NNJM with global context of
+source sentences, based on the intuition that long range
+dependency in source language is also an important
+information source for modelling target language.
+
+Our contribution mainly lies in three aspects: First,
+we present a deep dive into a state-of-the-art
+joint
+language model, and discuss the factors that inﬂuence
+
+1This project is advised by Thang Luong and it is a co-project for
+
+CS 224N Natural Language Processing with Yuhao Zhang.
+
+the model with experimental results; second, we propose
+a new approach that incorporates global source sentence
+information into the original model, and present our ex-
+perimental results on a French-English parallel dataset;
+third, as a side contribution, we have open-sourced2 our
+implementation of both the two models, which could be
+run on both CPU and GPU with no additional effort.
+
+The rest of this report is organized as follows. We ﬁrst
+give a brief introduction on NNJM in Section 2. Then
+in Section 3 we present our extensions: We introduce
+how we compute source sentence vectors and why we
+make these design choices. We then spend more space
+present our insights on NNJM gained from experiments,
+and evaluation of our extended NNJM model in Section
+5. We summarize related work in Section 6 and conclude
+in Section 7.
+
+2 Neural Network Joint Model
+For statistical machine translation, we can augment tar-
+get language model with extra information from source
+sentence. An effective approach proposed previous work
+is to extend traditional NNLMs by concatenating a con-
+text window of source words into the input and train
+word vectors for both source and target languages.
+In
+Section 3 we will also describe another extension of
+NNLM of using source sentence vector as an extra source
+of information.
+
+2.1 Model Description
+We use a similar model as the original neural network
+joint model. To be concrete, we provide mathematical
+formulation for the model together with a model illus-
+tration in Figure 1. For more details please refer to the
+original BBN paper (Devlin et al., 2014).
+
+One sample input to the model is a concatenated list of
+words composed of both target context words (n-1 his-
+tory words for n-gram) Ti and source context words Si.
+Source words are selected by looking at which source
+word target word ti is aligned with, say it’s sai, then we
+take a context window of source words surrounding this
+
+2http://goo.gl/WizzCF
+
+Neural Network Joint Language Model: An Investigation and
+
+An Extension With Global Source Context
+
+Ruizhongtai (Charles) Qi
+
+Department of Electrical Engineering, Stanford University
+
+rqi@stanford.edu
+
+Abstract
+
+Recent work has shown success in using a neural
+network joint language model that jointly model
+target language and its aligned source language
+to improve machine translation performance. In
+this project we ﬁrst investigate a state-of-the-art
+joint language model by studying architectural
+and parametric factors through experiments and
+visualizations. We then propose an extension to
+this model that incorporates global source con-
+text information. Experiments show that the best
+extension setting achieves 1.9% reduction of test
+set perplexity on a French-English data set. 1
+
+1 Introduction
+
+The construction of language model has always been
+an important topic in NLP. Recently, language models
+trained by neural networks (NNLM) have achieved
+state-of-the-art performance in a series of tasks like
+sentiment analysis and machine translation. The key
+idea of NNLMs is to learn distributive representation of
+words (aka. word embeddings) and use neural network
+as a smooth prediction function. In a speciﬁc application
+like translation, we can build a stronger NNLM by
+incorporating information from source sentences. A
+recent work from ACL 2014 (Devlin et al., 2014)
+achieved a 6+ BLEU score boost by using both target
+words and source words to train a neural network joint
+model (NNJM).
+
+In this project, we implement the original NNJM
+and design experiments to understand the model. We
+also extend the current NNJM with global context of
+source sentences, based on the intuition that long range
+dependency in source language is also an important
+information source for modelling target language.
+
+Our contribution mainly lies in three aspects: First,
+we present a deep dive into a state-of-the-art
+joint
+language model, and discuss the factors that inﬂuence
+
+1This project is advised by Thang Luong and it is a co-project for
+
+CS 224N Natural Language Processing with Yuhao Zhang.
+
+the model with experimental results; second, we propose
+a new approach that incorporates global source sentence
+information into the original model, and present our ex-
+perimental results on a French-English parallel dataset;
+third, as a side contribution, we have open-sourced2 our
+implementation of both the two models, which could be
+run on both CPU and GPU with no additional effort.
+
+The rest of this report is organized as follows. We ﬁrst
+give a brief introduction on NNJM in Section 2. Then
+in Section 3 we present our extensions: We introduce
+how we compute source sentence vectors and why we
+make these design choices. We then spend more space
+present our insights on NNJM gained from experiments,
+and evaluation of our extended NNJM model in Section
+5. We summarize related work in Section 6 and conclude
+in Section 7.
+
+2 Neural Network Joint Model
+For statistical machine translation, we can augment tar-
+get language model with extra information from source
+sentence. An effective approach proposed previous work
+is to extend traditional NNLMs by concatenating a con-
+text window of source words into the input and train
+word vectors for both source and target languages.
+In
+Section 3 we will also describe another extension of
+NNLM of using source sentence vector as an extra source
+of information.
+
+2.1 Model Description
+We use a similar model as the original neural network
+joint model. To be concrete, we provide mathematical
+formulation for the model together with a model illus-
+tration in Figure 1. For more details please refer to the
+original BBN paper (Devlin et al., 2014).
+
+One sample input to the model is a concatenated list of
+words composed of both target context words (n-1 his-
+tory words for n-gram) Ti and source context words Si.
+Source words are selected by looking at which source
+word target word ti is aligned with, say it’s sai, then we
+take a context window of source words surrounding this
+
+2http://goo.gl/WizzCF
+
+3 Neural Network Joint Model with Global
+
+Source Context
+
+In this section, we show our attempts in pushing the
+state-of-the-art of NNJM by utilizing global source
+context (global source sentence information).
+For
+simplicity, we will use NNJM-Global to refer to this
+extension in the following sections.
+
+3.1 Weighted Sum Source Sentence
+Our ﬁrst attempt is to include sentence vector directly
+into the input layer of the neural network. We calcu-
+late weighted sum of word vectors in source sentence,
+and feed the result into our input layer, as shown in Fig-
+ure 2. Speciﬁcally, we experimented with two different
+approaches:
+
+1. Uniform weights We assign each word a uniform
+weight in the source sentence. In another word, we
+take the mean of all the word vectors to form the
+global context vector.
+
+2. Zero weights for stop words Instead of giving all
+words the same weight, we identify top N frequent
+words in the vocabulary as stop words, and assign
+each of them with a zero weight. For all the rest
+words in the vocabulary, we still assign them with
+a uniform weight. The intuition is depress possible
+noises introduced from those irrelevant words.
+
+Figure 2: An example for the NNJM with global con-
+text, where an additional source sentence is fed into the
+model.
+
+3.2 Splitting Source Sentence Into Sections
+In order to increase expressibility of sentence vectors, we
+propose to split the source sentence into sections before
+taking weighted sum, as shown in Figure 3. We treat the
+number of sections as a hyper-parameter for this model.
+Speciﬁcally, we experimented with two variants of this
+approach:
+
+1. Fixed section length splitting The sentence vector
+is ﬁrst extended with end-of-sentence tokens so that
+all the input source sentences are of the same length.
+
+Figure 1: Neural network joint model with an example
+(illustrated with Chinese-English) where we use 4-gram
+target words (3 words history) and source context win-
+dow size of 2. We want to predict the next word follow-
+ing he, walks, to and hopefully estimated probability of
+the next word being school would be high.
+
+aligned source word. When the window width is m−1
+2 ,
+we have m source words in the input.
+
+p(ti | Ti, Si)
+
+Ti = ti−1, ..., ti−n+1
+
+Si = sai− m−1
+
+, ..., sai, ..., sai+ m−1
+
+2
+
+2
+
+Here we regard ti as output, i.e. y ∈ R as one of the tar-
+get words, and concatenation of Ti and Si as input, i.e.
+x ∈ Rn+m−1 of n− 1 target words and m source words.
+The mathematical relation between input and output is as
+follows, where Θ = {L, W, b(1), U, b(2)}. Linear embed-
+ding layer L ∈ Rd×(Vsrc+Vtgt) which converts words to
+word vectors by lookup, where d is word vector dimen-
+sion. In hidden layer, W ∈ Rh×(d∗(n+m−1)), b(1) ∈ Rh.
+In softmax layer, U ∈ RVtgt×h, b(2) ∈ RVtgt and
+
+gi(v) =
+
+(cid:80)Vtgt
+
+exp(vi)
+k=1 exp(vk)
+
+p(y = i | x; Θ) = gi(U f (W L(x) + b(1)) + b(2))
+
+Optimization objective is to maximize the log-
+
+likelihood of the model.
+
+m(cid:88)
+
+(cid:96)(Θ) =
+
+log(p(y(i) | x(i); Θ))
+
+i=1
+
+2.2 Evaluation Metric
+We use perplexity as the metric to evaluate quality of a
+language model.
+
+P P (W ) = p(w1, w2, ..., wN )
+
+−1
+N
+
+heP(school | he, walks, to, (cid:3)(cid:4), (cid:1), (cid:2)(cid:5), <\s>, <\s>)hidden layersoftmax layerwalksto(cid:3)(cid:4)(cid:1)(cid:2)(cid:5)<\s><\s>word vectorsinputoutputwalkstoschool<\s><\s>heP(school | he, walks, to, (cid:7)(cid:9), (cid:3), (cid:5)(cid:10), <\s>, <\s>, [<s>(cid:4)…(cid:5)(cid:10)<\s>])hidden layersoftmax layerwalksto(cid:7)(cid:9)(cid:3)(cid:5)(cid:10)<\s><\s>word vectorsinputoutputwalkstoschool<\s><\s>(cid:7)(cid:9)(cid:3)(cid:5)(cid:10)<\s>(cid:6)(cid:1)(cid:8)(cid:2)(cid:4)<s>walkstoschool<\s>heeverymorning<s>weighted sumNeural Network Joint Language Model: An Investigation and
+
+An Extension With Global Source Context
+
+Ruizhongtai (Charles) Qi
+
+Department of Electrical Engineering, Stanford University
+
+rqi@stanford.edu
+
+Abstract
+
+Recent work has shown success in using a neural
+network joint language model that jointly model
+target language and its aligned source language
+to improve machine translation performance. In
+this project we ﬁrst investigate a state-of-the-art
+joint language model by studying architectural
+and parametric factors through experiments and
+visualizations. We then propose an extension to
+this model that incorporates global source con-
+text information. Experiments show that the best
+extension setting achieves 1.9% reduction of test
+set perplexity on a French-English data set. 1
+
+1 Introduction
+
+The construction of language model has always been
+an important topic in NLP. Recently, language models
+trained by neural networks (NNLM) have achieved
+state-of-the-art performance in a series of tasks like
+sentiment analysis and machine translation. The key
+idea of NNLMs is to learn distributive representation of
+words (aka. word embeddings) and use neural network
+as a smooth prediction function. In a speciﬁc application
+like translation, we can build a stronger NNLM by
+incorporating information from source sentences. A
+recent work from ACL 2014 (Devlin et al., 2014)
+achieved a 6+ BLEU score boost by using both target
+words and source words to train a neural network joint
+model (NNJM).
+
+In this project, we implement the original NNJM
+and design experiments to understand the model. We
+also extend the current NNJM with global context of
+source sentences, based on the intuition that long range
+dependency in source language is also an important
+information source for modelling target language.
+
+Our contribution mainly lies in three aspects: First,
+we present a deep dive into a state-of-the-art
+joint
+language model, and discuss the factors that inﬂuence
+
+1This project is advised by Thang Luong and it is a co-project for
+
+CS 224N Natural Language Processing with Yuhao Zhang.
+
+the model with experimental results; second, we propose
+a new approach that incorporates global source sentence
+information into the original model, and present our ex-
+perimental results on a French-English parallel dataset;
+third, as a side contribution, we have open-sourced2 our
+implementation of both the two models, which could be
+run on both CPU and GPU with no additional effort.
+
+The rest of this report is organized as follows. We ﬁrst
+give a brief introduction on NNJM in Section 2. Then
+in Section 3 we present our extensions: We introduce
+how we compute source sentence vectors and why we
+make these design choices. We then spend more space
+present our insights on NNJM gained from experiments,
+and evaluation of our extended NNJM model in Section
+5. We summarize related work in Section 6 and conclude
+in Section 7.
+
+2 Neural Network Joint Model
+For statistical machine translation, we can augment tar-
+get language model with extra information from source
+sentence. An effective approach proposed previous work
+is to extend traditional NNLMs by concatenating a con-
+text window of source words into the input and train
+word vectors for both source and target languages.
+In
+Section 3 we will also describe another extension of
+NNLM of using source sentence vector as an extra source
+of information.
+
+2.1 Model Description
+We use a similar model as the original neural network
+joint model. To be concrete, we provide mathematical
+formulation for the model together with a model illus-
+tration in Figure 1. For more details please refer to the
+original BBN paper (Devlin et al., 2014).
+
+One sample input to the model is a concatenated list of
+words composed of both target context words (n-1 his-
+tory words for n-gram) Ti and source context words Si.
+Source words are selected by looking at which source
+word target word ti is aligned with, say it’s sai, then we
+take a context window of source words surrounding this
+
+2http://goo.gl/WizzCF
+
+3 Neural Network Joint Model with Global
+
+Source Context
+
+In this section, we show our attempts in pushing the
+state-of-the-art of NNJM by utilizing global source
+context (global source sentence information).
+For
+simplicity, we will use NNJM-Global to refer to this
+extension in the following sections.
+
+3.1 Weighted Sum Source Sentence
+Our ﬁrst attempt is to include sentence vector directly
+into the input layer of the neural network. We calcu-
+late weighted sum of word vectors in source sentence,
+and feed the result into our input layer, as shown in Fig-
+ure 2. Speciﬁcally, we experimented with two different
+approaches:
+
+1. Uniform weights We assign each word a uniform
+weight in the source sentence. In another word, we
+take the mean of all the word vectors to form the
+global context vector.
+
+2. Zero weights for stop words Instead of giving all
+words the same weight, we identify top N frequent
+words in the vocabulary as stop words, and assign
+each of them with a zero weight. For all the rest
+words in the vocabulary, we still assign them with
+a uniform weight. The intuition is depress possible
+noises introduced from those irrelevant words.
+
+Figure 2: An example for the NNJM with global con-
+text, where an additional source sentence is fed into the
+model.
+
+3.2 Splitting Source Sentence Into Sections
+In order to increase expressibility of sentence vectors, we
+propose to split the source sentence into sections before
+taking weighted sum, as shown in Figure 3. We treat the
+number of sections as a hyper-parameter for this model.
+Speciﬁcally, we experimented with two variants of this
+approach:
+
+1. Fixed section length splitting The sentence vector
+is ﬁrst extended with end-of-sentence tokens so that
+all the input source sentences are of the same length.
+
+Figure 1: Neural network joint model with an example
+(illustrated with Chinese-English) where we use 4-gram
+target words (3 words history) and source context win-
+dow size of 2. We want to predict the next word follow-
+ing he, walks, to and hopefully estimated probability of
+the next word being school would be high.
+
+aligned source word. When the window width is m−1
+2 ,
+we have m source words in the input.
+
+p(ti | Ti, Si)
+
+Ti = ti−1, ..., ti−n+1
+
+Si = sai− m−1
+
+, ..., sai, ..., sai+ m−1
+
+2
+
+2
+
+Here we regard ti as output, i.e. y ∈ R as one of the tar-
+get words, and concatenation of Ti and Si as input, i.e.
+x ∈ Rn+m−1 of n− 1 target words and m source words.
+The mathematical relation between input and output is as
+follows, where Θ = {L, W, b(1), U, b(2)}. Linear embed-
+ding layer L ∈ Rd×(Vsrc+Vtgt) which converts words to
+word vectors by lookup, where d is word vector dimen-
+sion. In hidden layer, W ∈ Rh×(d∗(n+m−1)), b(1) ∈ Rh.
+In softmax layer, U ∈ RVtgt×h, b(2) ∈ RVtgt and
+
+gi(v) =
+
+(cid:80)Vtgt
+
+exp(vi)
+k=1 exp(vk)
+
+p(y = i | x; Θ) = gi(U f (W L(x) + b(1)) + b(2))
+
+Optimization objective is to maximize the log-
+
+likelihood of the model.
+
+m(cid:88)
+
+(cid:96)(Θ) =
+
+log(p(y(i) | x(i); Θ))
+
+i=1
+
+2.2 Evaluation Metric
+We use perplexity as the metric to evaluate quality of a
+language model.
+
+P P (W ) = p(w1, w2, ..., wN )
+
+−1
+N
+
+heP(school | he, walks, to, (cid:3)(cid:4), (cid:1), (cid:2)(cid:5), <\s>, <\s>)hidden layersoftmax layerwalksto(cid:3)(cid:4)(cid:1)(cid:2)(cid:5)<\s><\s>word vectorsinputoutputwalkstoschool<\s><\s>heP(school | he, walks, to, (cid:7)(cid:9), (cid:3), (cid:5)(cid:10), <\s>, <\s>, [<s>(cid:4)…(cid:5)(cid:10)<\s>])hidden layersoftmax layerwalksto(cid:7)(cid:9)(cid:3)(cid:5)(cid:10)<\s><\s>word vectorsinputoutputwalkstoschool<\s><\s>(cid:7)(cid:9)(cid:3)(cid:5)(cid:10)<\s>(cid:6)(cid:1)(cid:8)(cid:2)(cid:4)<s>walkstoschool<\s>heeverymorning<s>weighted sumThen the splitting is done on the populated source
+sentences.
+
+2. Adaptive section length splitting We use the orig-
+inal source sentence instead of extending all sen-
+tence vectors into a uniform length. Thus, each sec-
+tion will have a variable length dependent on the
+length of the entire sentence.
+
+Figure 3: An example of splitting source sentence into
+2 sections before calculating the global context vectors.
+Weighted sum is calculated on the ﬁrst half of the sen-
+tence to form the ﬁrst global context vector, and then on
+the second half.
+
+3.3 Global-only Non-linear Layer
+We can also add non-linearity to the model by adding
+another global-only non-linear layer between the global
+linear layer and the downstream hidden layer, as it is
+illustrated in Figure 4. Note that this non-linear layer
+is only added for the global part of the model, and has
+no effect on the local part. We use the same non-linear
+function for this layer as in other layers of the model.
+
+Figure 4: An example for the non-linearity on the global
+source sentence. A weighted sum is calculated to form
+the intermediate global context vectors (yellow), and
+then these intermediate vectors are fed into a global-only
+non-linear layer.
+
+4 Model Training
+Following a similar strategy with BBN paper, we use
+mini-batch gradient descent to maximize log-likelihood
+
+on training set. Each batch contains 128 input samples,
+each of which is a sequence of target words plus source
+context words. There are around 22K mini-batches per
+epoch. Model parameters are randomly initialized in the
+range of [-0.05, 0.05]. We use early stopping to pick the
+model with least validation set perplexity. At the end
+of every epoch we do a validation set test and see if the
+validation set perplexity becomes worse from last time,
+if it is worse we halve the learning rate.
+
+The data set we use is from European Parallel Cor-
+pus. Our training set contains 100K pairs of parallel
+French-English sentences. Validation and test set each
+contains 1K pairs of French-English sentences. For
+NNJM model analyzing, we use the entire data set.
+However, due to limit of time, we also use a 25K subset
+of the data for some of the experiments such as NNJM
+and NNJM+Global comparisons.
+
+Both training and testing are implemented using
+Python. We use Theano Library for neural network mod-
+eling. The training runs on a single Tesla GPU. Training
+speed is around 1,500 samples/second and training one
+epoch of data (128*22K) takes around half an hour. For
+reference, total training time for a basic NNJM model
+over the entire corpus is around 2.5 hours when the full
+GPU power is utilized.
+
+5 Experimental Results
+5.1 NNJM
+In this subsection, we focus on showing our understand-
+ing of the joint language model. More evaluation results
+will be combined with NNJM+Global model in Subsec-
+tion 5.2.
+
+5.1.1 Effects of Hyperarameters
+Tuning is on the entire 100K training set. Since a full
+grid search is too time consuming we will start from a
+default hyper parameter setting and change one of them
+each time. In default, learning rate is 0.3, target n-gram
+size is 5, source window width is 5 (11 source words),
+vocab size is 20K for both target and source language,
+epoch number is 5, word vector size is 96 and there is
+one hidden layer of 128 units.
+
+As shown in Figure 5, hyper-parameters can have a big
+difference on model performance. Generally it helps to
+increase word vector dimensions and hidden layer size.
+Source window width 3 or 5 is good and target n-gram
+size of 4 is optimal in our default setting.
+
+For learning rate, we train the model until convergence
+(around 25 epochs yet the decrease of valid set perplexity
+is marginal after 5 to 10 epochs). We observe that while
+
+hidden layerword vectorssource sentence(cid:7)(cid:9)(cid:3)(cid:5)(cid:10)<\s>(cid:6)(cid:1)(cid:8)(cid:2)(cid:4)<s>walkstoschool<\s>heeverymorning<s>splitting…hidden layerword vectorssource sentence(cid:7)(cid:9)(cid:3)(cid:5)(cid:10)<\s>(cid:6)(cid:1)(cid:8)(cid:2)(cid:4)<s>walkstoschool<\s>heeverymorning<s>splitting…non-linear layerNeural Network Joint Language Model: An Investigation and
+
+An Extension With Global Source Context
+
+Ruizhongtai (Charles) Qi
+
+Department of Electrical Engineering, Stanford University
+
+rqi@stanford.edu
+
+Abstract
+
+Recent work has shown success in using a neural
+network joint language model that jointly model
+target language and its aligned source language
+to improve machine translation performance. In
+this project we ﬁrst investigate a state-of-the-art
+joint language model by studying architectural
+and parametric factors through experiments and
+visualizations. We then propose an extension to
+this model that incorporates global source con-
+text information. Experiments show that the best
+extension setting achieves 1.9% reduction of test
+set perplexity on a French-English data set. 1
+
+1 Introduction
+
+The construction of language model has always been
+an important topic in NLP. Recently, language models
+trained by neural networks (NNLM) have achieved
+state-of-the-art performance in a series of tasks like
+sentiment analysis and machine translation. The key
+idea of NNLMs is to learn distributive representation of
+words (aka. word embeddings) and use neural network
+as a smooth prediction function. In a speciﬁc application
+like translation, we can build a stronger NNLM by
+incorporating information from source sentences. A
+recent work from ACL 2014 (Devlin et al., 2014)
+achieved a 6+ BLEU score boost by using both target
+words and source words to train a neural network joint
+model (NNJM).
+
+In this project, we implement the original NNJM
+and design experiments to understand the model. We
+also extend the current NNJM with global context of
+source sentences, based on the intuition that long range
+dependency in source language is also an important
+information source for modelling target language.
+
+Our contribution mainly lies in three aspects: First,
+we present a deep dive into a state-of-the-art
+joint
+language model, and discuss the factors that inﬂuence
+
+1This project is advised by Thang Luong and it is a co-project for
+
+CS 224N Natural Language Processing with Yuhao Zhang.
+
+the model with experimental results; second, we propose
+a new approach that incorporates global source sentence
+information into the original model, and present our ex-
+perimental results on a French-English parallel dataset;
+third, as a side contribution, we have open-sourced2 our
+implementation of both the two models, which could be
+run on both CPU and GPU with no additional effort.
+
+The rest of this report is organized as follows. We ﬁrst
+give a brief introduction on NNJM in Section 2. Then
+in Section 3 we present our extensions: We introduce
+how we compute source sentence vectors and why we
+make these design choices. We then spend more space
+present our insights on NNJM gained from experiments,
+and evaluation of our extended NNJM model in Section
+5. We summarize related work in Section 6 and conclude
+in Section 7.
+
+2 Neural Network Joint Model
+For statistical machine translation, we can augment tar-
+get language model with extra information from source
+sentence. An effective approach proposed previous work
+is to extend traditional NNLMs by concatenating a con-
+text window of source words into the input and train
+word vectors for both source and target languages.
+In
+Section 3 we will also describe another extension of
+NNLM of using source sentence vector as an extra source
+of information.
+
+2.1 Model Description
+We use a similar model as the original neural network
+joint model. To be concrete, we provide mathematical
+formulation for the model together with a model illus-
+tration in Figure 1. For more details please refer to the
+original BBN paper (Devlin et al., 2014).
+
+One sample input to the model is a concatenated list of
+words composed of both target context words (n-1 his-
+tory words for n-gram) Ti and source context words Si.
+Source words are selected by looking at which source
+word target word ti is aligned with, say it’s sai, then we
+take a context window of source words surrounding this
+
+2http://goo.gl/WizzCF
+
+3 Neural Network Joint Model with Global
+
+Source Context
+
+In this section, we show our attempts in pushing the
+state-of-the-art of NNJM by utilizing global source
+context (global source sentence information).
+For
+simplicity, we will use NNJM-Global to refer to this
+extension in the following sections.
+
+3.1 Weighted Sum Source Sentence
+Our ﬁrst attempt is to include sentence vector directly
+into the input layer of the neural network. We calcu-
+late weighted sum of word vectors in source sentence,
+and feed the result into our input layer, as shown in Fig-
+ure 2. Speciﬁcally, we experimented with two different
+approaches:
+
+1. Uniform weights We assign each word a uniform
+weight in the source sentence. In another word, we
+take the mean of all the word vectors to form the
+global context vector.
+
+2. Zero weights for stop words Instead of giving all
+words the same weight, we identify top N frequent
+words in the vocabulary as stop words, and assign
+each of them with a zero weight. For all the rest
+words in the vocabulary, we still assign them with
+a uniform weight. The intuition is depress possible
+noises introduced from those irrelevant words.
+
+Figure 2: An example for the NNJM with global con-
+text, where an additional source sentence is fed into the
+model.
+
+3.2 Splitting Source Sentence Into Sections
+In order to increase expressibility of sentence vectors, we
+propose to split the source sentence into sections before
+taking weighted sum, as shown in Figure 3. We treat the
+number of sections as a hyper-parameter for this model.
+Speciﬁcally, we experimented with two variants of this
+approach:
+
+1. Fixed section length splitting The sentence vector
+is ﬁrst extended with end-of-sentence tokens so that
+all the input source sentences are of the same length.
+
+Figure 1: Neural network joint model with an example
+(illustrated with Chinese-English) where we use 4-gram
+target words (3 words history) and source context win-
+dow size of 2. We want to predict the next word follow-
+ing he, walks, to and hopefully estimated probability of
+the next word being school would be high.
+
+aligned source word. When the window width is m−1
+2 ,
+we have m source words in the input.
+
+p(ti | Ti, Si)
+
+Ti = ti−1, ..., ti−n+1
+
+Si = sai− m−1
+
+, ..., sai, ..., sai+ m−1
+
+2
+
+2
+
+Here we regard ti as output, i.e. y ∈ R as one of the tar-
+get words, and concatenation of Ti and Si as input, i.e.
+x ∈ Rn+m−1 of n− 1 target words and m source words.
+The mathematical relation between input and output is as
+follows, where Θ = {L, W, b(1), U, b(2)}. Linear embed-
+ding layer L ∈ Rd×(Vsrc+Vtgt) which converts words to
+word vectors by lookup, where d is word vector dimen-
+sion. In hidden layer, W ∈ Rh×(d∗(n+m−1)), b(1) ∈ Rh.
+In softmax layer, U ∈ RVtgt×h, b(2) ∈ RVtgt and
+
+gi(v) =
+
+(cid:80)Vtgt
+
+exp(vi)
+k=1 exp(vk)
+
+p(y = i | x; Θ) = gi(U f (W L(x) + b(1)) + b(2))
+
+Optimization objective is to maximize the log-
+
+likelihood of the model.
+
+m(cid:88)
+
+(cid:96)(Θ) =
+
+log(p(y(i) | x(i); Θ))
+
+i=1
+
+2.2 Evaluation Metric
+We use perplexity as the metric to evaluate quality of a
+language model.
+
+P P (W ) = p(w1, w2, ..., wN )
+
+−1
+N
+
+heP(school | he, walks, to, (cid:3)(cid:4), (cid:1), (cid:2)(cid:5), <\s>, <\s>)hidden layersoftmax layerwalksto(cid:3)(cid:4)(cid:1)(cid:2)(cid:5)<\s><\s>word vectorsinputoutputwalkstoschool<\s><\s>heP(school | he, walks, to, (cid:7)(cid:9), (cid:3), (cid:5)(cid:10), <\s>, <\s>, [<s>(cid:4)…(cid:5)(cid:10)<\s>])hidden layersoftmax layerwalksto(cid:7)(cid:9)(cid:3)(cid:5)(cid:10)<\s><\s>word vectorsinputoutputwalkstoschool<\s><\s>(cid:7)(cid:9)(cid:3)(cid:5)(cid:10)<\s>(cid:6)(cid:1)(cid:8)(cid:2)(cid:4)<s>walkstoschool<\s>heeverymorning<s>weighted sumThen the splitting is done on the populated source
+sentences.
+
+2. Adaptive section length splitting We use the orig-
+inal source sentence instead of extending all sen-
+tence vectors into a uniform length. Thus, each sec-
+tion will have a variable length dependent on the
+length of the entire sentence.
+
+Figure 3: An example of splitting source sentence into
+2 sections before calculating the global context vectors.
+Weighted sum is calculated on the ﬁrst half of the sen-
+tence to form the ﬁrst global context vector, and then on
+the second half.
+
+3.3 Global-only Non-linear Layer
+We can also add non-linearity to the model by adding
+another global-only non-linear layer between the global
+linear layer and the downstream hidden layer, as it is
+illustrated in Figure 4. Note that this non-linear layer
+is only added for the global part of the model, and has
+no effect on the local part. We use the same non-linear
+function for this layer as in other layers of the model.
+
+Figure 4: An example for the non-linearity on the global
+source sentence. A weighted sum is calculated to form
+the intermediate global context vectors (yellow), and
+then these intermediate vectors are fed into a global-only
+non-linear layer.
+
+4 Model Training
+Following a similar strategy with BBN paper, we use
+mini-batch gradient descent to maximize log-likelihood
+
+on training set. Each batch contains 128 input samples,
+each of which is a sequence of target words plus source
+context words. There are around 22K mini-batches per
+epoch. Model parameters are randomly initialized in the
+range of [-0.05, 0.05]. We use early stopping to pick the
+model with least validation set perplexity. At the end
+of every epoch we do a validation set test and see if the
+validation set perplexity becomes worse from last time,
+if it is worse we halve the learning rate.
+
+The data set we use is from European Parallel Cor-
+pus. Our training set contains 100K pairs of parallel
+French-English sentences. Validation and test set each
+contains 1K pairs of French-English sentences. For
+NNJM model analyzing, we use the entire data set.
+However, due to limit of time, we also use a 25K subset
+of the data for some of the experiments such as NNJM
+and NNJM+Global comparisons.
+
+Both training and testing are implemented using
+Python. We use Theano Library for neural network mod-
+eling. The training runs on a single Tesla GPU. Training
+speed is around 1,500 samples/second and training one
+epoch of data (128*22K) takes around half an hour. For
+reference, total training time for a basic NNJM model
+over the entire corpus is around 2.5 hours when the full
+GPU power is utilized.
+
+5 Experimental Results
+5.1 NNJM
+In this subsection, we focus on showing our understand-
+ing of the joint language model. More evaluation results
+will be combined with NNJM+Global model in Subsec-
+tion 5.2.
+
+5.1.1 Effects of Hyperarameters
+Tuning is on the entire 100K training set. Since a full
+grid search is too time consuming we will start from a
+default hyper parameter setting and change one of them
+each time. In default, learning rate is 0.3, target n-gram
+size is 5, source window width is 5 (11 source words),
+vocab size is 20K for both target and source language,
+epoch number is 5, word vector size is 96 and there is
+one hidden layer of 128 units.
+
+As shown in Figure 5, hyper-parameters can have a big
+difference on model performance. Generally it helps to
+increase word vector dimensions and hidden layer size.
+Source window width 3 or 5 is good and target n-gram
+size of 4 is optimal in our default setting.
+
+For learning rate, we train the model until convergence
+(around 25 epochs yet the decrease of valid set perplexity
+is marginal after 5 to 10 epochs). We observe that while
+
+hidden layerword vectorssource sentence(cid:7)(cid:9)(cid:3)(cid:5)(cid:10)<\s>(cid:6)(cid:1)(cid:8)(cid:2)(cid:4)<s>walkstoschool<\s>heeverymorning<s>splitting…hidden layerword vectorssource sentence(cid:7)(cid:9)(cid:3)(cid:5)(cid:10)<\s>(cid:6)(cid:1)(cid:8)(cid:2)(cid:4)<s>walkstoschool<\s>heeverymorning<s>splitting…non-linear layer5.2 NNJM-Global
+In this subsection we demonstrate experimental results
+for each variant of the NNJM-Global model, and com-
+pare their results with the vanilla NNJM model. Note
+that all the models in this part are trained with the same
+strategy described in previous section. By default, we
+use a vocabulary size of 10K, a source window size of 3,
+a target n-gram size of 4, an embedding dimension of 96,
+a hidden layer size of 128, and a learning rate of 0.3 to
+train the models.
+
+5.2.1 Comparing NNJM-Global with NNJM
+The resulting perplexity achieved by different models
+on the test set is shown in Table 1. Note that we also
+include the result for a basic neural network language
+model (NNLM) where only target words are utilized for
+making predictions, to demonstrate the effect of global
+source context information. It is observed that for each
+setting of source window size, the NNJM-Global model
+achieves smaller (better) test set complexity compared
+to its corresponding NNJM model. The best perfor-
+mance is achieved when the source window size 3. Under
+this setting, a slightly better result is achieved when we
+use a zero-weights-for-stop-words weighted sum strat-
+egy. There is no noticeable difference between the differ-
+ent settings of number of stop words in the NNJM-Global
+model.
+
+Model
+NNLM
+NNLM-Global
+NNJM
+NNJM-Global
+NNJM
+NNJM-Global
+NNJM
+NNJM-Global
+NNJM-Global + SW-10
+NNJM-Global + SW-25
+
+SrcWin Perplexity
+-
+-
+7
+7
+5
+5
+3
+3
+3
+3
+
+95.06
+94.73
+10.09
+10.05
+9.89
+9.71
+9.51
+9.45
+9.44
+9.44
+
+Table 1: Test set perplexity for different models. Sr-
+cWin represents the source window size that is used in
+the model. SW-N represents that N most frequent stop
+words are removed from the global sentence vector. Re-
+sults for the NNLM model where only target words are
+used for prediction are also included.
+
+5.2.2 Effect of Splitting Source Sentence
+Both the two approaches for splitting the global source
+sentence vectors are evaluated and compared to the ba-
+sic NNJM and NNJM-Global models. The results are
+
+Figure 5: Effects of Hyper-parameters
+
+very large learning rate such as 1.0 and 3.0 leads to quick
+convergence yet tend to rest at unsatisfactory local min-
+imums, very small learning rate such as 0.03 converges
+too slow. We think lr=0.3 achieves balance between con-
+vergence speed and stability.
+
+5.1.2 Visualizations and Insights
+In this subsection we use network parameter visualiza-
+tion to show how the neural network take advantage of
+source context. Speciﬁcally, we look at the linear trans-
+formation matrix W in the hidden layer, which can be
+thought as a way to measure how much certain part of
+input contribute to predicting the next word.
+In Fig-
+ure ??, we observe that the center source word, i.e. the
+one aligned with the next target word, contributes most
+to the prediction, even more than the last history target
+word (index 14). There is a trend of attenuating impor-
+tance for source words far from the middle one.
+
+Figure 6: Top: Heat map of absolute values of hidden
+layer matrix W ∈ Rh×(d∗(n+m−1)). Bottom: Average of
+W ’s elements corresponding to each input words. Words
+1 to 11 are from source with word 6 as the center one.
+Words 12 to 14 are history words in the target n-gram.
+
+0501001502006.877.27.47.67.8Word Vector DimensionValidation Set Perplexity02468106.877.27.47.67.88Source Window WidthValidation Set Perplexity05010015020025030051015202530Hidden Layer SizeValidation Set Perplexity23456786.977.17.27.37.4Target N−gram sizeValidation Set Perplexity2004006008001000120020406080100120024681012140.050.10.150.20.250.30.350.40.45Word IndexAverage Hidden Layer WeightTargetSourceNeural Network Joint Language Model: An Investigation and
+
+An Extension With Global Source Context
+
+Ruizhongtai (Charles) Qi
+
+Department of Electrical Engineering, Stanford University
+
+rqi@stanford.edu
+
+Abstract
+
+Recent work has shown success in using a neural
+network joint language model that jointly model
+target language and its aligned source language
+to improve machine translation performance. In
+this project we ﬁrst investigate a state-of-the-art
+joint language model by studying architectural
+and parametric factors through experiments and
+visualizations. We then propose an extension to
+this model that incorporates global source con-
+text information. Experiments show that the best
+extension setting achieves 1.9% reduction of test
+set perplexity on a French-English data set. 1
+
+1 Introduction
+
+The construction of language model has always been
+an important topic in NLP. Recently, language models
+trained by neural networks (NNLM) have achieved
+state-of-the-art performance in a series of tasks like
+sentiment analysis and machine translation. The key
+idea of NNLMs is to learn distributive representation of
+words (aka. word embeddings) and use neural network
+as a smooth prediction function. In a speciﬁc application
+like translation, we can build a stronger NNLM by
+incorporating information from source sentences. A
+recent work from ACL 2014 (Devlin et al., 2014)
+achieved a 6+ BLEU score boost by using both target
+words and source words to train a neural network joint
+model (NNJM).
+
+In this project, we implement the original NNJM
+and design experiments to understand the model. We
+also extend the current NNJM with global context of
+source sentences, based on the intuition that long range
+dependency in source language is also an important
+information source for modelling target language.
+
+Our contribution mainly lies in three aspects: First,
+we present a deep dive into a state-of-the-art
+joint
+language model, and discuss the factors that inﬂuence
+
+1This project is advised by Thang Luong and it is a co-project for
+
+CS 224N Natural Language Processing with Yuhao Zhang.
+
+the model with experimental results; second, we propose
+a new approach that incorporates global source sentence
+information into the original model, and present our ex-
+perimental results on a French-English parallel dataset;
+third, as a side contribution, we have open-sourced2 our
+implementation of both the two models, which could be
+run on both CPU and GPU with no additional effort.
+
+The rest of this report is organized as follows. We ﬁrst
+give a brief introduction on NNJM in Section 2. Then
+in Section 3 we present our extensions: We introduce
+how we compute source sentence vectors and why we
+make these design choices. We then spend more space
+present our insights on NNJM gained from experiments,
+and evaluation of our extended NNJM model in Section
+5. We summarize related work in Section 6 and conclude
+in Section 7.
+
+2 Neural Network Joint Model
+For statistical machine translation, we can augment tar-
+get language model with extra information from source
+sentence. An effective approach proposed previous work
+is to extend traditional NNLMs by concatenating a con-
+text window of source words into the input and train
+word vectors for both source and target languages.
+In
+Section 3 we will also describe another extension of
+NNLM of using source sentence vector as an extra source
+of information.
+
+2.1 Model Description
+We use a similar model as the original neural network
+joint model. To be concrete, we provide mathematical
+formulation for the model together with a model illus-
+tration in Figure 1. For more details please refer to the
+original BBN paper (Devlin et al., 2014).
+
+One sample input to the model is a concatenated list of
+words composed of both target context words (n-1 his-
+tory words for n-gram) Ti and source context words Si.
+Source words are selected by looking at which source
+word target word ti is aligned with, say it’s sai, then we
+take a context window of source words surrounding this
+
+2http://goo.gl/WizzCF
+
+3 Neural Network Joint Model with Global
+
+Source Context
+
+In this section, we show our attempts in pushing the
+state-of-the-art of NNJM by utilizing global source
+context (global source sentence information).
+For
+simplicity, we will use NNJM-Global to refer to this
+extension in the following sections.
+
+3.1 Weighted Sum Source Sentence
+Our ﬁrst attempt is to include sentence vector directly
+into the input layer of the neural network. We calcu-
+late weighted sum of word vectors in source sentence,
+and feed the result into our input layer, as shown in Fig-
+ure 2. Speciﬁcally, we experimented with two different
+approaches:
+
+1. Uniform weights We assign each word a uniform
+weight in the source sentence. In another word, we
+take the mean of all the word vectors to form the
+global context vector.
+
+2. Zero weights for stop words Instead of giving all
+words the same weight, we identify top N frequent
+words in the vocabulary as stop words, and assign
+each of them with a zero weight. For all the rest
+words in the vocabulary, we still assign them with
+a uniform weight. The intuition is depress possible
+noises introduced from those irrelevant words.
+
+Figure 2: An example for the NNJM with global con-
+text, where an additional source sentence is fed into the
+model.
+
+3.2 Splitting Source Sentence Into Sections
+In order to increase expressibility of sentence vectors, we
+propose to split the source sentence into sections before
+taking weighted sum, as shown in Figure 3. We treat the
+number of sections as a hyper-parameter for this model.
+Speciﬁcally, we experimented with two variants of this
+approach:
+
+1. Fixed section length splitting The sentence vector
+is ﬁrst extended with end-of-sentence tokens so that
+all the input source sentences are of the same length.
+
+Figure 1: Neural network joint model with an example
+(illustrated with Chinese-English) where we use 4-gram
+target words (3 words history) and source context win-
+dow size of 2. We want to predict the next word follow-
+ing he, walks, to and hopefully estimated probability of
+the next word being school would be high.
+
+aligned source word. When the window width is m−1
+2 ,
+we have m source words in the input.
+
+p(ti | Ti, Si)
+
+Ti = ti−1, ..., ti−n+1
+
+Si = sai− m−1
+
+, ..., sai, ..., sai+ m−1
+
+2
+
+2
+
+Here we regard ti as output, i.e. y ∈ R as one of the tar-
+get words, and concatenation of Ti and Si as input, i.e.
+x ∈ Rn+m−1 of n− 1 target words and m source words.
+The mathematical relation between input and output is as
+follows, where Θ = {L, W, b(1), U, b(2)}. Linear embed-
+ding layer L ∈ Rd×(Vsrc+Vtgt) which converts words to
+word vectors by lookup, where d is word vector dimen-
+sion. In hidden layer, W ∈ Rh×(d∗(n+m−1)), b(1) ∈ Rh.
+In softmax layer, U ∈ RVtgt×h, b(2) ∈ RVtgt and
+
+gi(v) =
+
+(cid:80)Vtgt
+
+exp(vi)
+k=1 exp(vk)
+
+p(y = i | x; Θ) = gi(U f (W L(x) + b(1)) + b(2))
+
+Optimization objective is to maximize the log-
+
+likelihood of the model.
+
+m(cid:88)
+
+(cid:96)(Θ) =
+
+log(p(y(i) | x(i); Θ))
+
+i=1
+
+2.2 Evaluation Metric
+We use perplexity as the metric to evaluate quality of a
+language model.
+
+P P (W ) = p(w1, w2, ..., wN )
+
+−1
+N
+
+heP(school | he, walks, to, (cid:3)(cid:4), (cid:1), (cid:2)(cid:5), <\s>, <\s>)hidden layersoftmax layerwalksto(cid:3)(cid:4)(cid:1)(cid:2)(cid:5)<\s><\s>word vectorsinputoutputwalkstoschool<\s><\s>heP(school | he, walks, to, (cid:7)(cid:9), (cid:3), (cid:5)(cid:10), <\s>, <\s>, [<s>(cid:4)…(cid:5)(cid:10)<\s>])hidden layersoftmax layerwalksto(cid:7)(cid:9)(cid:3)(cid:5)(cid:10)<\s><\s>word vectorsinputoutputwalkstoschool<\s><\s>(cid:7)(cid:9)(cid:3)(cid:5)(cid:10)<\s>(cid:6)(cid:1)(cid:8)(cid:2)(cid:4)<s>walkstoschool<\s>heeverymorning<s>weighted sumThen the splitting is done on the populated source
+sentences.
+
+2. Adaptive section length splitting We use the orig-
+inal source sentence instead of extending all sen-
+tence vectors into a uniform length. Thus, each sec-
+tion will have a variable length dependent on the
+length of the entire sentence.
+
+Figure 3: An example of splitting source sentence into
+2 sections before calculating the global context vectors.
+Weighted sum is calculated on the ﬁrst half of the sen-
+tence to form the ﬁrst global context vector, and then on
+the second half.
+
+3.3 Global-only Non-linear Layer
+We can also add non-linearity to the model by adding
+another global-only non-linear layer between the global
+linear layer and the downstream hidden layer, as it is
+illustrated in Figure 4. Note that this non-linear layer
+is only added for the global part of the model, and has
+no effect on the local part. We use the same non-linear
+function for this layer as in other layers of the model.
+
+Figure 4: An example for the non-linearity on the global
+source sentence. A weighted sum is calculated to form
+the intermediate global context vectors (yellow), and
+then these intermediate vectors are fed into a global-only
+non-linear layer.
+
+4 Model Training
+Following a similar strategy with BBN paper, we use
+mini-batch gradient descent to maximize log-likelihood
+
+on training set. Each batch contains 128 input samples,
+each of which is a sequence of target words plus source
+context words. There are around 22K mini-batches per
+epoch. Model parameters are randomly initialized in the
+range of [-0.05, 0.05]. We use early stopping to pick the
+model with least validation set perplexity. At the end
+of every epoch we do a validation set test and see if the
+validation set perplexity becomes worse from last time,
+if it is worse we halve the learning rate.
+
+The data set we use is from European Parallel Cor-
+pus. Our training set contains 100K pairs of parallel
+French-English sentences. Validation and test set each
+contains 1K pairs of French-English sentences. For
+NNJM model analyzing, we use the entire data set.
+However, due to limit of time, we also use a 25K subset
+of the data for some of the experiments such as NNJM
+and NNJM+Global comparisons.
+
+Both training and testing are implemented using
+Python. We use Theano Library for neural network mod-
+eling. The training runs on a single Tesla GPU. Training
+speed is around 1,500 samples/second and training one
+epoch of data (128*22K) takes around half an hour. For
+reference, total training time for a basic NNJM model
+over the entire corpus is around 2.5 hours when the full
+GPU power is utilized.
+
+5 Experimental Results
+5.1 NNJM
+In this subsection, we focus on showing our understand-
+ing of the joint language model. More evaluation results
+will be combined with NNJM+Global model in Subsec-
+tion 5.2.
+
+5.1.1 Effects of Hyperarameters
+Tuning is on the entire 100K training set. Since a full
+grid search is too time consuming we will start from a
+default hyper parameter setting and change one of them
+each time. In default, learning rate is 0.3, target n-gram
+size is 5, source window width is 5 (11 source words),
+vocab size is 20K for both target and source language,
+epoch number is 5, word vector size is 96 and there is
+one hidden layer of 128 units.
+
+As shown in Figure 5, hyper-parameters can have a big
+difference on model performance. Generally it helps to
+increase word vector dimensions and hidden layer size.
+Source window width 3 or 5 is good and target n-gram
+size of 4 is optimal in our default setting.
+
+For learning rate, we train the model until convergence
+(around 25 epochs yet the decrease of valid set perplexity
+is marginal after 5 to 10 epochs). We observe that while
+
+hidden layerword vectorssource sentence(cid:7)(cid:9)(cid:3)(cid:5)(cid:10)<\s>(cid:6)(cid:1)(cid:8)(cid:2)(cid:4)<s>walkstoschool<\s>heeverymorning<s>splitting…hidden layerword vectorssource sentence(cid:7)(cid:9)(cid:3)(cid:5)(cid:10)<\s>(cid:6)(cid:1)(cid:8)(cid:2)(cid:4)<s>walkstoschool<\s>heeverymorning<s>splitting…non-linear layer5.2 NNJM-Global
+In this subsection we demonstrate experimental results
+for each variant of the NNJM-Global model, and com-
+pare their results with the vanilla NNJM model. Note
+that all the models in this part are trained with the same
+strategy described in previous section. By default, we
+use a vocabulary size of 10K, a source window size of 3,
+a target n-gram size of 4, an embedding dimension of 96,
+a hidden layer size of 128, and a learning rate of 0.3 to
+train the models.
+
+5.2.1 Comparing NNJM-Global with NNJM
+The resulting perplexity achieved by different models
+on the test set is shown in Table 1. Note that we also
+include the result for a basic neural network language
+model (NNLM) where only target words are utilized for
+making predictions, to demonstrate the effect of global
+source context information. It is observed that for each
+setting of source window size, the NNJM-Global model
+achieves smaller (better) test set complexity compared
+to its corresponding NNJM model. The best perfor-
+mance is achieved when the source window size 3. Under
+this setting, a slightly better result is achieved when we
+use a zero-weights-for-stop-words weighted sum strat-
+egy. There is no noticeable difference between the differ-
+ent settings of number of stop words in the NNJM-Global
+model.
+
+Model
+NNLM
+NNLM-Global
+NNJM
+NNJM-Global
+NNJM
+NNJM-Global
+NNJM
+NNJM-Global
+NNJM-Global + SW-10
+NNJM-Global + SW-25
+
+SrcWin Perplexity
+-
+-
+7
+7
+5
+5
+3
+3
+3
+3
+
+95.06
+94.73
+10.09
+10.05
+9.89
+9.71
+9.51
+9.45
+9.44
+9.44
+
+Table 1: Test set perplexity for different models. Sr-
+cWin represents the source window size that is used in
+the model. SW-N represents that N most frequent stop
+words are removed from the global sentence vector. Re-
+sults for the NNLM model where only target words are
+used for prediction are also included.
+
+5.2.2 Effect of Splitting Source Sentence
+Both the two approaches for splitting the global source
+sentence vectors are evaluated and compared to the ba-
+sic NNJM and NNJM-Global models. The results are
+
+Figure 5: Effects of Hyper-parameters
+
+very large learning rate such as 1.0 and 3.0 leads to quick
+convergence yet tend to rest at unsatisfactory local min-
+imums, very small learning rate such as 0.03 converges
+too slow. We think lr=0.3 achieves balance between con-
+vergence speed and stability.
+
+5.1.2 Visualizations and Insights
+In this subsection we use network parameter visualiza-
+tion to show how the neural network take advantage of
+source context. Speciﬁcally, we look at the linear trans-
+formation matrix W in the hidden layer, which can be
+thought as a way to measure how much certain part of
+input contribute to predicting the next word.
+In Fig-
+ure ??, we observe that the center source word, i.e. the
+one aligned with the next target word, contributes most
+to the prediction, even more than the last history target
+word (index 14). There is a trend of attenuating impor-
+tance for source words far from the middle one.
+
+Figure 6: Top: Heat map of absolute values of hidden
+layer matrix W ∈ Rh×(d∗(n+m−1)). Bottom: Average of
+W ’s elements corresponding to each input words. Words
+1 to 11 are from source with word 6 as the center one.
+Words 12 to 14 are history words in the target n-gram.
+
+0501001502006.877.27.47.67.8Word Vector DimensionValidation Set Perplexity02468106.877.27.47.67.88Source Window WidthValidation Set Perplexity05010015020025030051015202530Hidden Layer SizeValidation Set Perplexity23456786.977.17.27.37.4Target N−gram sizeValidation Set Perplexity2004006008001000120020406080100120024681012140.050.10.150.20.250.30.350.40.45Word IndexAverage Hidden Layer WeightTargetSourceshown in Table 2. The ﬁxed section length splitting strat-
+egy with section number of 2 gives reduction of the test
+set perplexity when compared to the basic NNJM-Global
+model, while the adaptive section length splitting strat-
+egy gives almost the same result as the basic NNJM-
+Global model, and also achieves better result compared
+to the original NNJM model. The performance is ob-
+served to deteriorate when the section number increases.
+
+Model
+NNJM
+NNJM-Global
+NNJM-Global + FixSplit
+NNJM-Global + FixSplit
+NNJM-Global + AdaSplit
+
+NumSec Perplexity
+-
+1
+4
+2
+2
+
+9.51
+9.45
+9.54
+9.38
+9.46
+
+Table 2: Test set perplexity for models with different
+global context vector section numbers. NumSec is for
+section number in for global context vector. FixSplit de-
+notes the model with ﬁxed section length and AdaSplit
+denotes the model with adaptive section length.
+
+5.2.3 Effect of Global-only Non-linear Layer
+
+Generally, adding a non-linear layer could add expres-
+sion power to the neural network. Table 3 shows the ef-
+fect of adding non-linear layer for generating sentence
+vector under various settings. The best perplexity is
+achieved with FixSplit of 2 sections and non-linear size
+192, which is 1.9% lower than the basic NNJM model.
+One possible explanation for the improvement is that
+with the help of section splitting the non-linear model
+can gain additional expressive power from this combina-
+tion of architecture settings that is not possible without
+splitting or non-liearn layer.
+
+6 Related Work
+
+Model
+NS NLSize Perp
+NNJM
+-
+9.51
+NNJM-Global
+9.45
+1
+NNJM-Global + NL
+9.45
+1
+NNJM-Global + NL
+1
+9.45
+NNJM-Global + FixSplit
+9.38
+2
+NNJM-Global + FixSplit + NL
+9.61
+2
+9.33
+NNJM-Global + FixSplit + NL
+2
+NNJM-Global + AdaSplit
+2
+9.46
+9.55
+NNJM-Global + AdaSplit + NL 2
+NNJM-Global + AdaSplit + NL 2
+9.47
+
+-
+-
+96
+192
+-
+96
+192
+-
+96
+192
+
+Table 3: Test set perlexity for models with global-only
+non-linear layers. Results for models with no global vec-
+tor splitting, with ﬁxed section length splitting, and with
+adaptable section length splitting are shown. NL is for
+non-linear layer in the global part. NLSize represents the
+size of the global-only non-linear layer.
+
+7 Conclusion
+In this report we present our work in investigating a neu-
+ral network joint language model and extending it with
+global source context. Our experimental analysis demon-
+strates how hyperparameters inﬂuence performance of
+the model. We also use visualization of network weights
+to show how source words inﬂuence prediction. Further-
+more, we have shown that incorporating global source
+context (sentence vector) can further improve the perfor-
+mance of the language model in terms of perplexity. Fi-
+nally, we have open-sourced our implementation of both
+the original model and the extended model.
+Acknowledgements
+The author sincerely acknowledge Thang Luong in Stan-
+ford NLP Group for his advising and thank Yuhao Zhang
+for his collaboration and thank CS 229 staff for bringing
+us such a rewarding class.
+
+While BBN’s work (Devlin et al., 2014) on neural net-
+work join model focused on efﬁciency and MT result pre-
+sentation, we investigate deep into the original NNJM by
+study on hyper parameters and visualization of hidden
+layer weights. We also extend the model with global
+source context and achieves improvement in terms of
+perplexity scores. Our project have taken similar strat-
+egy in generating sentence vector with previous work on
+using sentence vector to learning word embeddings with
+multiple representations per word (Huang et al., 2012).
+However, we have also developed more complex models
+and focus more on designing good architecture to im-
+prove joint language model quality.
+
+References
+[Devlin et al.2014] Jacob Devlin, Rabih Zbib, Zhongqiang
+Huang, Thomas Lamar, Richard Schwartz, and John
+Makhoul.
+2014. Fast and robust neural network joint
+models for statistical machine translation. In 52nd Annual
+Meeting of the Association for Computational Linguistics,
+Baltimore, MD, USA, June.
+
+[Huang et al.2012] Eric H Huang, Richard Socher, Christo-
+pher D Manning, and Andrew Y Ng.
+Improv-
+ing word representations via global context and multiple
+word prototypes. In Proceedings of the 50th Annual Meet-
+ing of the Association for Computational Linguistics: Long
+Papers-Volume 1, pages 873–882. Association for Compu-
+tational Linguistics.
+
+2012.
+
+

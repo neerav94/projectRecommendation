@@ -1,0 +1,2225 @@
+Elastic Memory: Bring Elasticity Back to In-Memory Big Data Analytics
+
+Joo Seong Jeong, Woo-Yeon Lee, Yunseong Lee, Youngseok Yang, Brian Cho, Byung-Gon Chun
+
+Seoul National University
+
+Abstract
+Recent big data processing systems provide quick an-
+swers to users by keeping data in memory across a clus-
+ter. As a simple way to manage data in memory, the
+systems are deployed as long-running workers on a static
+allocation of the cluster resources. This simplicity comes
+at a cost: elasticity is lost. Using today’s resource man-
+agers such as YARN and Mesos, this severely reduces
+the utilization of the shared cluster and limits the perfor-
+mance of such systems. In this paper, we propose Elastic
+Memory, an abstraction that can dynamically change the
+allocated memory resource to improve resource utiliza-
+tion and performance. With Elastic Memory, we outline
+how we enable elastic interactive query processing and
+machine learning.
+
+Introduction
+
+1
+Over the past decade, large-scale big data analytics has
+been widely adopted. Google’s MapReduce [8], Apache
+Hadoop [16], and Dryad [11] were seminal in allow-
+ing analytics on data centers of commodity machines.
+The simple functional programming model combined
+with the runtime that supports elastic scale-out and fault-
+tolerant execution has spurred wide adoption of the tech-
+nology. Distinct MapReduce/DAG jobs are often run
+together on a large shared cluster; each job runs on re-
+source allocations given by the cluster’s resource man-
+ager (e.g. YARN [18] and Mesos [10]). The resource
+manager enables MapReduce/DAG jobs to elastically
+share resource slices, improving peak job performance
+and providing high utilization of cluster resources [18].
+The resource manager abstraction is great for MapRe-
+duce/DAG jobs, but new types of in-memory data pro-
+cessing do not ﬁt well to this abstraction. We look at two
+types, interactive query processing and machine learn-
+ing.
+
+Recent query processing systems such as Impala [2]
+and SparkSQL [6] provide quick answers to user queries
+by keeping processed data in memory. As a simple way
+to manage data in memory, the systems are deployed as
+long-running workers on a static allocation of the cluster
+resources. This simplicity comes at a cost: elasticity is
+lost. The workers hold on to their resources even while
+they remain idle during periods without client queries.
+Using today’s resource managers, this severely reduces
+the utilization of the shared cluster (the case for scale-in).
+
+In other cases, the workers may spill data to disks when
+they do not have enough memory resources.
+If mem-
+ory resources could be expanded, these queries would be
+served in memory (the case for scale-out).
+
+Recent machine learning systems such as Spark ML-
+lib [5] perform iterative processing on statically allocated
+resources. A machine learning job typically consists of
+tasks, each of which processes partitioned state in mem-
+ory. Job execution should consider the trade-off between
+computation and communication. If the job is computa-
+tion heavy, it is better to allocate more memory in other
+machines to exploit computation parallelism (the case
+for scale-out). In contrast, if the job is communication
+heavy, it is better to shrink the number of machines to
+reduce communication overheads (the case for scale-in).
+In this paper, we propose Elastic Memory, an abstrac-
+tion that brings elasticity back to in-memory big data an-
+alytics. Elastic Memory provides a set of primitives for
+dynamically expanding and shrinking memory resources
+and splitting and merging state with a hook to set elas-
+ticity policies. We then discuss how Elastic Memory en-
+ables elastic interactive query processing and elastic ma-
+chine learning.
+
+2 Elastic Memory
+Despite various kinds of data analytics workloads, such
+as batch processing, stream processing, query process-
+ing, and distributed machine learning,
+the way in-
+memory processing frameworks [2, 5, 6] execute such
+jobs can be characterized by the following common
+properties.
+
+Master-slave pattern. Slaves process data under the
+control of a master, which manages execution of a job.
+Each slave and the master are deployed within its own
+container, which represents computing resources such as
+CPU cores and memory in a cluster allocated by a re-
+source manager.
+
+Data parallelism. To efﬁciently process large vol-
+umes of data, each slave performs in parallel the same
+computation on a different subset of the data.
+
+In-memory caching. Data loaded from a distributed
+ﬁlesystem as well as intermediate data generated from
+previous computations is cached in memory, allowing
+multiple stages of reads and writes without incurring disk
+access.
+
+Taking such characteristics into account, we propose
+
+1
+
+Elastic Memory: Bring Elasticity Back to In-Memory Big Data Analytics
+
+Joo Seong Jeong, Woo-Yeon Lee, Yunseong Lee, Youngseok Yang, Brian Cho, Byung-Gon Chun
+
+Seoul National University
+
+Abstract
+Recent big data processing systems provide quick an-
+swers to users by keeping data in memory across a clus-
+ter. As a simple way to manage data in memory, the
+systems are deployed as long-running workers on a static
+allocation of the cluster resources. This simplicity comes
+at a cost: elasticity is lost. Using today’s resource man-
+agers such as YARN and Mesos, this severely reduces
+the utilization of the shared cluster and limits the perfor-
+mance of such systems. In this paper, we propose Elastic
+Memory, an abstraction that can dynamically change the
+allocated memory resource to improve resource utiliza-
+tion and performance. With Elastic Memory, we outline
+how we enable elastic interactive query processing and
+machine learning.
+
+Introduction
+
+1
+Over the past decade, large-scale big data analytics has
+been widely adopted. Google’s MapReduce [8], Apache
+Hadoop [16], and Dryad [11] were seminal in allow-
+ing analytics on data centers of commodity machines.
+The simple functional programming model combined
+with the runtime that supports elastic scale-out and fault-
+tolerant execution has spurred wide adoption of the tech-
+nology. Distinct MapReduce/DAG jobs are often run
+together on a large shared cluster; each job runs on re-
+source allocations given by the cluster’s resource man-
+ager (e.g. YARN [18] and Mesos [10]). The resource
+manager enables MapReduce/DAG jobs to elastically
+share resource slices, improving peak job performance
+and providing high utilization of cluster resources [18].
+The resource manager abstraction is great for MapRe-
+duce/DAG jobs, but new types of in-memory data pro-
+cessing do not ﬁt well to this abstraction. We look at two
+types, interactive query processing and machine learn-
+ing.
+
+Recent query processing systems such as Impala [2]
+and SparkSQL [6] provide quick answers to user queries
+by keeping processed data in memory. As a simple way
+to manage data in memory, the systems are deployed as
+long-running workers on a static allocation of the cluster
+resources. This simplicity comes at a cost: elasticity is
+lost. The workers hold on to their resources even while
+they remain idle during periods without client queries.
+Using today’s resource managers, this severely reduces
+the utilization of the shared cluster (the case for scale-in).
+
+In other cases, the workers may spill data to disks when
+they do not have enough memory resources.
+If mem-
+ory resources could be expanded, these queries would be
+served in memory (the case for scale-out).
+
+Recent machine learning systems such as Spark ML-
+lib [5] perform iterative processing on statically allocated
+resources. A machine learning job typically consists of
+tasks, each of which processes partitioned state in mem-
+ory. Job execution should consider the trade-off between
+computation and communication. If the job is computa-
+tion heavy, it is better to allocate more memory in other
+machines to exploit computation parallelism (the case
+for scale-out). In contrast, if the job is communication
+heavy, it is better to shrink the number of machines to
+reduce communication overheads (the case for scale-in).
+In this paper, we propose Elastic Memory, an abstrac-
+tion that brings elasticity back to in-memory big data an-
+alytics. Elastic Memory provides a set of primitives for
+dynamically expanding and shrinking memory resources
+and splitting and merging state with a hook to set elas-
+ticity policies. We then discuss how Elastic Memory en-
+ables elastic interactive query processing and elastic ma-
+chine learning.
+
+2 Elastic Memory
+Despite various kinds of data analytics workloads, such
+as batch processing, stream processing, query process-
+ing, and distributed machine learning,
+the way in-
+memory processing frameworks [2, 5, 6] execute such
+jobs can be characterized by the following common
+properties.
+
+Master-slave pattern. Slaves process data under the
+control of a master, which manages execution of a job.
+Each slave and the master are deployed within its own
+container, which represents computing resources such as
+CPU cores and memory in a cluster allocated by a re-
+source manager.
+
+Data parallelism. To efﬁciently process large vol-
+umes of data, each slave performs in parallel the same
+computation on a different subset of the data.
+
+In-memory caching. Data loaded from a distributed
+ﬁlesystem as well as intermediate data generated from
+previous computations is cached in memory, allowing
+multiple stages of reads and writes without incurring disk
+access.
+
+Taking such characteristics into account, we propose
+
+1
+
+Figure 2: State representation.
+In-memory data of
+type_A is divided into three parts and distributed in
+two containers.
+Two parts reside in Container0
+and compose a subset, while the remaining part is in
+Container1 as another subset. Container0 also con-
+tains a subset of type_B which, together with the subset
+of type_A, forms the state of Container0.
+
+2.2.2 Reconﬁguring State
+The policy engine compares the metrics processed by the
+metric manager with conditions speciﬁed in the user pol-
+icy. If a condition is met, then corresponding elasticity
+actions are executed through the state manager. The state
+manager provides the following set of system primitives
+that are also depicted in Figure 3.
+
+• add (resource-spec): Allocate a new container
+as speciﬁed in the resource-spec that represents
+the resource of the container such as CPUs and
+memory.
+
+• delete (container-id): Release the container
+
+whose id is container-id.
+
+• resize (container-id, resource-spec):
+
+Resize the container whose id is container-id to
+the resources speciﬁed in resource-spec.
+
+• move (set<unit>, src-id, dst-id): Move
+set<unit> from the container whose id is src-id
+to the container whose id is dst-id.
+
+• checkpoint (container-id): Persist the state
+of the container whose id is container-id into
+stable storage.
+
+Note that when releasing containers via delete or
+shrinking containers via resize, state in the slaves can
+be lost. To address this problem, the state manager can
+decide to either checkpoint such state, move it to other
+slaves or simply discard it depending on its recoverabil-
+ity and the system’s status.
+
+2.3 User Policy
+The user policy is a list of rules, each of which consists
+of a condition and elasticity actions. A user can deﬁne a
+policy using the policy deﬁnition language in Figure 4.
+
+Figure 1: The EM architecture
+
+Elastic Memory (EM) shown in Figure 1. EM adds new
+modules and abstractions to the existing model to en-
+able elasticity. First, the state manager in the master
+manages and reconﬁgures state, an abstraction for re-
+conﬁgurable in-memory data in a container. Second, the
+metric manager in the master manages metrics with the
+help of metric trackers in slaves. Third, the policy en-
+gine in the master enforces user policies. Fourth, to be
+able to quickly expand its resource capacity, EM keeps a
+pre-allocated pool of containers that can be quickly pre-
+empted for other jobs in the cluster to use and quickly
+reclaimed if needed.
+
+2.1 State
+State is the in-memory data within a container that is
+used and processed by a job. Figure 2 depicts how
+state is represented in EM. A container’s state consists
+of user-deﬁned atomic entities of elasticity called units.
+Each unit has a type representing its semantic meaning
+within the job computation. Units within a container are
+grouped into subsets of the same type. EM reorganizes
+state by transferring units that make up all or a part of a
+subset between containers.
+
+2.2 Mechanism
+2.2.1 Proﬁling
+The metric tracker in each slave tracks metrics within its
+container and sends them to the metric manager in the
+master. The metric manager aggregates and processes
+the received metrics into a form which can be used by the
+policy engine. Users can conﬁgure not only app-speciﬁc
+metrics to be proﬁled by metric trackers, but also how
+they should be aggregated by the metric manager. For
+example, each metric tracker can be conﬁgured to send
+the number of state access requests per second to the met-
+ric manager, which can also be conﬁgured to compute the
+5-second moving average of this metric.
+
+2
+
+Elastic Memory: Bring Elasticity Back to In-Memory Big Data Analytics
+
+Joo Seong Jeong, Woo-Yeon Lee, Yunseong Lee, Youngseok Yang, Brian Cho, Byung-Gon Chun
+
+Seoul National University
+
+Abstract
+Recent big data processing systems provide quick an-
+swers to users by keeping data in memory across a clus-
+ter. As a simple way to manage data in memory, the
+systems are deployed as long-running workers on a static
+allocation of the cluster resources. This simplicity comes
+at a cost: elasticity is lost. Using today’s resource man-
+agers such as YARN and Mesos, this severely reduces
+the utilization of the shared cluster and limits the perfor-
+mance of such systems. In this paper, we propose Elastic
+Memory, an abstraction that can dynamically change the
+allocated memory resource to improve resource utiliza-
+tion and performance. With Elastic Memory, we outline
+how we enable elastic interactive query processing and
+machine learning.
+
+Introduction
+
+1
+Over the past decade, large-scale big data analytics has
+been widely adopted. Google’s MapReduce [8], Apache
+Hadoop [16], and Dryad [11] were seminal in allow-
+ing analytics on data centers of commodity machines.
+The simple functional programming model combined
+with the runtime that supports elastic scale-out and fault-
+tolerant execution has spurred wide adoption of the tech-
+nology. Distinct MapReduce/DAG jobs are often run
+together on a large shared cluster; each job runs on re-
+source allocations given by the cluster’s resource man-
+ager (e.g. YARN [18] and Mesos [10]). The resource
+manager enables MapReduce/DAG jobs to elastically
+share resource slices, improving peak job performance
+and providing high utilization of cluster resources [18].
+The resource manager abstraction is great for MapRe-
+duce/DAG jobs, but new types of in-memory data pro-
+cessing do not ﬁt well to this abstraction. We look at two
+types, interactive query processing and machine learn-
+ing.
+
+Recent query processing systems such as Impala [2]
+and SparkSQL [6] provide quick answers to user queries
+by keeping processed data in memory. As a simple way
+to manage data in memory, the systems are deployed as
+long-running workers on a static allocation of the cluster
+resources. This simplicity comes at a cost: elasticity is
+lost. The workers hold on to their resources even while
+they remain idle during periods without client queries.
+Using today’s resource managers, this severely reduces
+the utilization of the shared cluster (the case for scale-in).
+
+In other cases, the workers may spill data to disks when
+they do not have enough memory resources.
+If mem-
+ory resources could be expanded, these queries would be
+served in memory (the case for scale-out).
+
+Recent machine learning systems such as Spark ML-
+lib [5] perform iterative processing on statically allocated
+resources. A machine learning job typically consists of
+tasks, each of which processes partitioned state in mem-
+ory. Job execution should consider the trade-off between
+computation and communication. If the job is computa-
+tion heavy, it is better to allocate more memory in other
+machines to exploit computation parallelism (the case
+for scale-out). In contrast, if the job is communication
+heavy, it is better to shrink the number of machines to
+reduce communication overheads (the case for scale-in).
+In this paper, we propose Elastic Memory, an abstrac-
+tion that brings elasticity back to in-memory big data an-
+alytics. Elastic Memory provides a set of primitives for
+dynamically expanding and shrinking memory resources
+and splitting and merging state with a hook to set elas-
+ticity policies. We then discuss how Elastic Memory en-
+ables elastic interactive query processing and elastic ma-
+chine learning.
+
+2 Elastic Memory
+Despite various kinds of data analytics workloads, such
+as batch processing, stream processing, query process-
+ing, and distributed machine learning,
+the way in-
+memory processing frameworks [2, 5, 6] execute such
+jobs can be characterized by the following common
+properties.
+
+Master-slave pattern. Slaves process data under the
+control of a master, which manages execution of a job.
+Each slave and the master are deployed within its own
+container, which represents computing resources such as
+CPU cores and memory in a cluster allocated by a re-
+source manager.
+
+Data parallelism. To efﬁciently process large vol-
+umes of data, each slave performs in parallel the same
+computation on a different subset of the data.
+
+In-memory caching. Data loaded from a distributed
+ﬁlesystem as well as intermediate data generated from
+previous computations is cached in memory, allowing
+multiple stages of reads and writes without incurring disk
+access.
+
+Taking such characteristics into account, we propose
+
+1
+
+Figure 2: State representation.
+In-memory data of
+type_A is divided into three parts and distributed in
+two containers.
+Two parts reside in Container0
+and compose a subset, while the remaining part is in
+Container1 as another subset. Container0 also con-
+tains a subset of type_B which, together with the subset
+of type_A, forms the state of Container0.
+
+2.2.2 Reconﬁguring State
+The policy engine compares the metrics processed by the
+metric manager with conditions speciﬁed in the user pol-
+icy. If a condition is met, then corresponding elasticity
+actions are executed through the state manager. The state
+manager provides the following set of system primitives
+that are also depicted in Figure 3.
+
+• add (resource-spec): Allocate a new container
+as speciﬁed in the resource-spec that represents
+the resource of the container such as CPUs and
+memory.
+
+• delete (container-id): Release the container
+
+whose id is container-id.
+
+• resize (container-id, resource-spec):
+
+Resize the container whose id is container-id to
+the resources speciﬁed in resource-spec.
+
+• move (set<unit>, src-id, dst-id): Move
+set<unit> from the container whose id is src-id
+to the container whose id is dst-id.
+
+• checkpoint (container-id): Persist the state
+of the container whose id is container-id into
+stable storage.
+
+Note that when releasing containers via delete or
+shrinking containers via resize, state in the slaves can
+be lost. To address this problem, the state manager can
+decide to either checkpoint such state, move it to other
+slaves or simply discard it depending on its recoverabil-
+ity and the system’s status.
+
+2.3 User Policy
+The user policy is a list of rules, each of which consists
+of a condition and elasticity actions. A user can deﬁne a
+policy using the policy deﬁnition language in Figure 4.
+
+Figure 1: The EM architecture
+
+Elastic Memory (EM) shown in Figure 1. EM adds new
+modules and abstractions to the existing model to en-
+able elasticity. First, the state manager in the master
+manages and reconﬁgures state, an abstraction for re-
+conﬁgurable in-memory data in a container. Second, the
+metric manager in the master manages metrics with the
+help of metric trackers in slaves. Third, the policy en-
+gine in the master enforces user policies. Fourth, to be
+able to quickly expand its resource capacity, EM keeps a
+pre-allocated pool of containers that can be quickly pre-
+empted for other jobs in the cluster to use and quickly
+reclaimed if needed.
+
+2.1 State
+State is the in-memory data within a container that is
+used and processed by a job. Figure 2 depicts how
+state is represented in EM. A container’s state consists
+of user-deﬁned atomic entities of elasticity called units.
+Each unit has a type representing its semantic meaning
+within the job computation. Units within a container are
+grouped into subsets of the same type. EM reorganizes
+state by transferring units that make up all or a part of a
+subset between containers.
+
+2.2 Mechanism
+2.2.1 Proﬁling
+The metric tracker in each slave tracks metrics within its
+container and sends them to the metric manager in the
+master. The metric manager aggregates and processes
+the received metrics into a form which can be used by the
+policy engine. Users can conﬁgure not only app-speciﬁc
+metrics to be proﬁled by metric trackers, but also how
+they should be aggregated by the metric manager. For
+example, each metric tracker can be conﬁgured to send
+the number of state access requests per second to the met-
+ric manager, which can also be conﬁgured to compute the
+5-second moving average of this metric.
+
+2
+
+(cid:104)Policy(cid:105) ::= list(cid:104)Rule(cid:105)
+(cid:104)Rule(cid:105) ::= (cid:104)Condition(cid:105), sequence(cid:104)Action(cid:105)
+(cid:104)Condition(cid:105) ::= (cid:104)Predicate(cid:105)
+
+|
+|
+|
+
+‘(’ (cid:104)Condition(cid:105) ‘)’
+(cid:104)Condition(cid:105) ∨ (cid:104)Condition(cid:105)
+(cid:104)Condition(cid:105) ∧ (cid:104)Condition(cid:105)
+(cid:104)Action(cid:105) ::= Add (cid:104)ResourceSpec(cid:105)
+
+| Delete (cid:104)SelectFunc(cid:105)
+| Resize (cid:104)SelectFunc(cid:105) (cid:104)ResourceSpec(cid:105)
+| Merge (cid:104)SelectFunc(cid:105) factor
+| Split (cid:104)SelectFunc(cid:105) factor
+| Migrate (cid:104)SelectFunc(cid:105) (cid:104)SelectFunc(cid:105)
+
+(cid:104)Predicate(cid:105) is a statement that is true or false depending on the
+
+system state.
+
+(cid:104)ResourceSpec(cid:105) represents the amount of resources (e.g., CPU
+
+cores, memory, etc).
+
+(cid:104)SelectFunc(cid:105) selects containers that return true when Select-
+
+Func is applied.
+
+Figure 4: Policy deﬁnition language.
+
+3 Elastic Interactive Query
+When processing interactive queries, allocating too lit-
+tle memory increases query latency, while allocating too
+much causes excessive use of scarce memory resource.
+A naive approach would estimate the load and conﬁg-
+ure the memory resource accordingly before running the
+query. However, interactive queries run in iterations and
+produce intermediate data to be used and possibly cached
+for subsequent queries. This makes it very difﬁcult to
+predict how much memory to use for each query. We
+show how EM obviates such prediction with dynamic
+state reconﬁguration.
+
+3.1 Representing Schema
+In distributed in-memory query processing frameworks,
+a table is partitioned and cached in containers in a colum-
+nar format to exploit data locality. Since in this case each
+value of a row forms an atomic unit, we can naturally de-
+ﬁne it as the base unit of reconﬁguration in EM.
+
+3.2 Proﬁling Query Execution
+The following are a few examples of metrics an inter-
+active query processing framework can proﬁle and use
+through EM.
+
+Load. To ensure low latency, an in-memory frame-
+work should have enough memory resource capacity to
+keep data in memory. But load on slaves ﬂuctuates for
+every query. EM can keep track of such load in the fol-
+lowing way. First, individual metric trackers can track
+
+3
+
+Figure 3: System primitives for handling state.
+(a) add (resource-spec) / delete(container1)
+(b) resize(container0, resource-spec)
+(c) move(unitset0, container0, container1)
+(d) checkpoint(container0)
+
+Conditions are represented as conjunctions and dis-
+junctions of predicates on metrics processed by the met-
+ric manager. When a condition is satisﬁed, the policy
+engine triggers the corresponding actions.
+
+Actions are translated into lower-level system prim-
+itives provided by the state manager in Section 2.2.2.
+The following examples show how each action can be
+deﬁned using the language in Figure 4.
+
+• Add resource-spec: Allocate a container whose
+amount is speciﬁed in resource-spec by calling add.
+• Delete (c ⇒ c.idle_time > 1 min): Remove con-
+tainers that have been idle for longer than one
+minute by executing delete on all such containers.
+• Resize (c ⇒ c.idle_time > 1 min) resource-spec:
+Change the memory size of idle containers to the
+amount as speciﬁed in resource-spec by calling
+resize on all such containers.
+• Merge (c ⇒ c.idle_time > 1 min) 2: Find idle
+containers and merge every two of them into one.
+Call move to transfer data units between contain-
+ers. During the process, EM may decide to delete
+containers that have become empty.
+• Split (c ⇒ c.load > 0.8) 2: Choose overloaded
+containers and split the state of each container into
+two containers by calling move to relocate data. EM
+may decide to add new containers in the process.
+• Migrate (c ⇒ c.load > 0.8) (c ⇒ c.load < 0.2):
+Migrate data from busy containers to idle containers
+by calling move.
+
+Elastic Memory: Bring Elasticity Back to In-Memory Big Data Analytics
+
+Joo Seong Jeong, Woo-Yeon Lee, Yunseong Lee, Youngseok Yang, Brian Cho, Byung-Gon Chun
+
+Seoul National University
+
+Abstract
+Recent big data processing systems provide quick an-
+swers to users by keeping data in memory across a clus-
+ter. As a simple way to manage data in memory, the
+systems are deployed as long-running workers on a static
+allocation of the cluster resources. This simplicity comes
+at a cost: elasticity is lost. Using today’s resource man-
+agers such as YARN and Mesos, this severely reduces
+the utilization of the shared cluster and limits the perfor-
+mance of such systems. In this paper, we propose Elastic
+Memory, an abstraction that can dynamically change the
+allocated memory resource to improve resource utiliza-
+tion and performance. With Elastic Memory, we outline
+how we enable elastic interactive query processing and
+machine learning.
+
+Introduction
+
+1
+Over the past decade, large-scale big data analytics has
+been widely adopted. Google’s MapReduce [8], Apache
+Hadoop [16], and Dryad [11] were seminal in allow-
+ing analytics on data centers of commodity machines.
+The simple functional programming model combined
+with the runtime that supports elastic scale-out and fault-
+tolerant execution has spurred wide adoption of the tech-
+nology. Distinct MapReduce/DAG jobs are often run
+together on a large shared cluster; each job runs on re-
+source allocations given by the cluster’s resource man-
+ager (e.g. YARN [18] and Mesos [10]). The resource
+manager enables MapReduce/DAG jobs to elastically
+share resource slices, improving peak job performance
+and providing high utilization of cluster resources [18].
+The resource manager abstraction is great for MapRe-
+duce/DAG jobs, but new types of in-memory data pro-
+cessing do not ﬁt well to this abstraction. We look at two
+types, interactive query processing and machine learn-
+ing.
+
+Recent query processing systems such as Impala [2]
+and SparkSQL [6] provide quick answers to user queries
+by keeping processed data in memory. As a simple way
+to manage data in memory, the systems are deployed as
+long-running workers on a static allocation of the cluster
+resources. This simplicity comes at a cost: elasticity is
+lost. The workers hold on to their resources even while
+they remain idle during periods without client queries.
+Using today’s resource managers, this severely reduces
+the utilization of the shared cluster (the case for scale-in).
+
+In other cases, the workers may spill data to disks when
+they do not have enough memory resources.
+If mem-
+ory resources could be expanded, these queries would be
+served in memory (the case for scale-out).
+
+Recent machine learning systems such as Spark ML-
+lib [5] perform iterative processing on statically allocated
+resources. A machine learning job typically consists of
+tasks, each of which processes partitioned state in mem-
+ory. Job execution should consider the trade-off between
+computation and communication. If the job is computa-
+tion heavy, it is better to allocate more memory in other
+machines to exploit computation parallelism (the case
+for scale-out). In contrast, if the job is communication
+heavy, it is better to shrink the number of machines to
+reduce communication overheads (the case for scale-in).
+In this paper, we propose Elastic Memory, an abstrac-
+tion that brings elasticity back to in-memory big data an-
+alytics. Elastic Memory provides a set of primitives for
+dynamically expanding and shrinking memory resources
+and splitting and merging state with a hook to set elas-
+ticity policies. We then discuss how Elastic Memory en-
+ables elastic interactive query processing and elastic ma-
+chine learning.
+
+2 Elastic Memory
+Despite various kinds of data analytics workloads, such
+as batch processing, stream processing, query process-
+ing, and distributed machine learning,
+the way in-
+memory processing frameworks [2, 5, 6] execute such
+jobs can be characterized by the following common
+properties.
+
+Master-slave pattern. Slaves process data under the
+control of a master, which manages execution of a job.
+Each slave and the master are deployed within its own
+container, which represents computing resources such as
+CPU cores and memory in a cluster allocated by a re-
+source manager.
+
+Data parallelism. To efﬁciently process large vol-
+umes of data, each slave performs in parallel the same
+computation on a different subset of the data.
+
+In-memory caching. Data loaded from a distributed
+ﬁlesystem as well as intermediate data generated from
+previous computations is cached in memory, allowing
+multiple stages of reads and writes without incurring disk
+access.
+
+Taking such characteristics into account, we propose
+
+1
+
+Figure 2: State representation.
+In-memory data of
+type_A is divided into three parts and distributed in
+two containers.
+Two parts reside in Container0
+and compose a subset, while the remaining part is in
+Container1 as another subset. Container0 also con-
+tains a subset of type_B which, together with the subset
+of type_A, forms the state of Container0.
+
+2.2.2 Reconﬁguring State
+The policy engine compares the metrics processed by the
+metric manager with conditions speciﬁed in the user pol-
+icy. If a condition is met, then corresponding elasticity
+actions are executed through the state manager. The state
+manager provides the following set of system primitives
+that are also depicted in Figure 3.
+
+• add (resource-spec): Allocate a new container
+as speciﬁed in the resource-spec that represents
+the resource of the container such as CPUs and
+memory.
+
+• delete (container-id): Release the container
+
+whose id is container-id.
+
+• resize (container-id, resource-spec):
+
+Resize the container whose id is container-id to
+the resources speciﬁed in resource-spec.
+
+• move (set<unit>, src-id, dst-id): Move
+set<unit> from the container whose id is src-id
+to the container whose id is dst-id.
+
+• checkpoint (container-id): Persist the state
+of the container whose id is container-id into
+stable storage.
+
+Note that when releasing containers via delete or
+shrinking containers via resize, state in the slaves can
+be lost. To address this problem, the state manager can
+decide to either checkpoint such state, move it to other
+slaves or simply discard it depending on its recoverabil-
+ity and the system’s status.
+
+2.3 User Policy
+The user policy is a list of rules, each of which consists
+of a condition and elasticity actions. A user can deﬁne a
+policy using the policy deﬁnition language in Figure 4.
+
+Figure 1: The EM architecture
+
+Elastic Memory (EM) shown in Figure 1. EM adds new
+modules and abstractions to the existing model to en-
+able elasticity. First, the state manager in the master
+manages and reconﬁgures state, an abstraction for re-
+conﬁgurable in-memory data in a container. Second, the
+metric manager in the master manages metrics with the
+help of metric trackers in slaves. Third, the policy en-
+gine in the master enforces user policies. Fourth, to be
+able to quickly expand its resource capacity, EM keeps a
+pre-allocated pool of containers that can be quickly pre-
+empted for other jobs in the cluster to use and quickly
+reclaimed if needed.
+
+2.1 State
+State is the in-memory data within a container that is
+used and processed by a job. Figure 2 depicts how
+state is represented in EM. A container’s state consists
+of user-deﬁned atomic entities of elasticity called units.
+Each unit has a type representing its semantic meaning
+within the job computation. Units within a container are
+grouped into subsets of the same type. EM reorganizes
+state by transferring units that make up all or a part of a
+subset between containers.
+
+2.2 Mechanism
+2.2.1 Proﬁling
+The metric tracker in each slave tracks metrics within its
+container and sends them to the metric manager in the
+master. The metric manager aggregates and processes
+the received metrics into a form which can be used by the
+policy engine. Users can conﬁgure not only app-speciﬁc
+metrics to be proﬁled by metric trackers, but also how
+they should be aggregated by the metric manager. For
+example, each metric tracker can be conﬁgured to send
+the number of state access requests per second to the met-
+ric manager, which can also be conﬁgured to compute the
+5-second moving average of this metric.
+
+2
+
+(cid:104)Policy(cid:105) ::= list(cid:104)Rule(cid:105)
+(cid:104)Rule(cid:105) ::= (cid:104)Condition(cid:105), sequence(cid:104)Action(cid:105)
+(cid:104)Condition(cid:105) ::= (cid:104)Predicate(cid:105)
+
+|
+|
+|
+
+‘(’ (cid:104)Condition(cid:105) ‘)’
+(cid:104)Condition(cid:105) ∨ (cid:104)Condition(cid:105)
+(cid:104)Condition(cid:105) ∧ (cid:104)Condition(cid:105)
+(cid:104)Action(cid:105) ::= Add (cid:104)ResourceSpec(cid:105)
+
+| Delete (cid:104)SelectFunc(cid:105)
+| Resize (cid:104)SelectFunc(cid:105) (cid:104)ResourceSpec(cid:105)
+| Merge (cid:104)SelectFunc(cid:105) factor
+| Split (cid:104)SelectFunc(cid:105) factor
+| Migrate (cid:104)SelectFunc(cid:105) (cid:104)SelectFunc(cid:105)
+
+(cid:104)Predicate(cid:105) is a statement that is true or false depending on the
+
+system state.
+
+(cid:104)ResourceSpec(cid:105) represents the amount of resources (e.g., CPU
+
+cores, memory, etc).
+
+(cid:104)SelectFunc(cid:105) selects containers that return true when Select-
+
+Func is applied.
+
+Figure 4: Policy deﬁnition language.
+
+3 Elastic Interactive Query
+When processing interactive queries, allocating too lit-
+tle memory increases query latency, while allocating too
+much causes excessive use of scarce memory resource.
+A naive approach would estimate the load and conﬁg-
+ure the memory resource accordingly before running the
+query. However, interactive queries run in iterations and
+produce intermediate data to be used and possibly cached
+for subsequent queries. This makes it very difﬁcult to
+predict how much memory to use for each query. We
+show how EM obviates such prediction with dynamic
+state reconﬁguration.
+
+3.1 Representing Schema
+In distributed in-memory query processing frameworks,
+a table is partitioned and cached in containers in a colum-
+nar format to exploit data locality. Since in this case each
+value of a row forms an atomic unit, we can naturally de-
+ﬁne it as the base unit of reconﬁguration in EM.
+
+3.2 Proﬁling Query Execution
+The following are a few examples of metrics an inter-
+active query processing framework can proﬁle and use
+through EM.
+
+Load. To ensure low latency, an in-memory frame-
+work should have enough memory resource capacity to
+keep data in memory. But load on slaves ﬂuctuates for
+every query. EM can keep track of such load in the fol-
+lowing way. First, individual metric trackers can track
+
+3
+
+Figure 3: System primitives for handling state.
+(a) add (resource-spec) / delete(container1)
+(b) resize(container0, resource-spec)
+(c) move(unitset0, container0, container1)
+(d) checkpoint(container0)
+
+Conditions are represented as conjunctions and dis-
+junctions of predicates on metrics processed by the met-
+ric manager. When a condition is satisﬁed, the policy
+engine triggers the corresponding actions.
+
+Actions are translated into lower-level system prim-
+itives provided by the state manager in Section 2.2.2.
+The following examples show how each action can be
+deﬁned using the language in Figure 4.
+
+• Add resource-spec: Allocate a container whose
+amount is speciﬁed in resource-spec by calling add.
+• Delete (c ⇒ c.idle_time > 1 min): Remove con-
+tainers that have been idle for longer than one
+minute by executing delete on all such containers.
+• Resize (c ⇒ c.idle_time > 1 min) resource-spec:
+Change the memory size of idle containers to the
+amount as speciﬁed in resource-spec by calling
+resize on all such containers.
+• Merge (c ⇒ c.idle_time > 1 min) 2: Find idle
+containers and merge every two of them into one.
+Call move to transfer data units between contain-
+ers. During the process, EM may decide to delete
+containers that have become empty.
+• Split (c ⇒ c.load > 0.8) 2: Choose overloaded
+containers and split the state of each container into
+two containers by calling move to relocate data. EM
+may decide to add new containers in the process.
+• Migrate (c ⇒ c.load > 0.8) (c ⇒ c.load < 0.2):
+Migrate data from busy containers to idle containers
+by calling move.
+
+metrics such as container size, data size and requests
+for data per second. Second, the metric manager can
+use these metrics to compute an aggregate load for each
+slave.
+
+Idle time. Holding onto resources even when one is
+not making good use of them hampers efﬁcient use of
+cluster resources.
+In interactive query processing, this
+can happen when the user does not submit queries. We
+can address these issues using EM by collecting and ag-
+gregating metrics like last task execution time and last
+state access time of each slave.
+3.3 User Policies For Query Execution
+The following shows an example policy to improve the
+performance and resource utilization in the interactive
+query processing. load and idle-time are measured with
+the proﬁled metrics in Section 3.2. top(metric) denotes
+the container that has the largest value for the metric.
+
+• Rule 1
+
+Condition: average(load) > 0.8
+Action: Add (resource-spec)
+
+• Rule 2
+
+Condition: idle-time > 1 min
+Action: Delete (top(idle-time))
+
+Rule 1 is applied when the average load is bigger than
+a threshold. To improve performance, EM expands its
+resource capacity by allocating new containers. Rule 2 is
+applied to containers who have been idle for longer than
+one minute. For efﬁcient use of cluster resources, EM
+releases the container with the highest idle-time.
+4 Elastic Machine Learning
+Most distributed machine learning jobs start by loading
+data from disk, which is later on accessed in memory
+throughout the remaining job. Slaves run the algorithm
+independently on its portion of the data. The master ag-
+gregates the computation results and calculates a model.
+This model is broadcast to the slaves, and then the whole
+process is repeated; hence an iterative job.
+
+Thus we can say that ML can be portrayed by a few
+aspects: slaves perform identical operations during each
+iteration and the training dataset never changes as the job
+progresses.
+
+The execution logic does not drastically change as the
+job continues, which means even a single dynamic recon-
+ﬁguration, if carried out correctly, can speed up execu-
+tion. The beneﬁt grows even more if many iterations re-
+main, or in other words the reconﬁguration is done early
+in the life span of the job. We illustrate how EM captures
+such insights and applies an optimized conﬁguration to
+the currently running ML application.
+
+4.1 Representing ML Data
+ML algorithms accept a big training data set as input, and
+use it to build a model. The data consists of independent
+observations represented as rows of a table, where a row
+can be a single ﬂoat, vector, or even a matrix depend-
+ing on the algorithm itself. Each observation is atomic
+and thus we can deﬁne it as the base unit. In case each
+worker maintains its own version of the model such as in
+asynchronous systems [7], model partitions can also be
+deﬁned as units.
+
+4.2 Proﬁling ML Execution
+The iterative characteristic of ML applications allows
+various metrics to be collected after each iteration. Sev-
+eral instances are shown below.
+
+Iteration time. The overall performance of a dis-
+tributed job is dependent on the slave with the worst per-
+formance, i.e. the slowest slave. To identify that slave,
+the EM system must be provided with the running time
+per iteration of each slave, which indicates their perfor-
+mance.
+
+Computation and communication overheads. Even
+without a signiﬁcantly slow slave, a machine learning ap-
+plication may have room for performance improvement
+by changing the number of slaves. EM can check the
+overheads of computation and communication to make
+a decision to balance out the two and ﬁnd a number of
+slaves that improves performance.
+
+4.3 User Policies for Machine Learning
+The timing for the policy engine to check conditions
+speciﬁed in policies may differ depending on the ML ex-
+ecution model: every synchronization barrier between it-
+erations is the ideal point for synchronous models such
+as BSP [12, 17], whereas for asynchronous models con-
+dition checking and actions are done in the background.
+The example policy below shows how EM can con-
+tribute to optimizing the job conﬁguration of ML ap-
+iter-time, comp-time, and comm-time are
+plications.
+computed using the proﬁled metrics in Section 4.2.
+big_outlier(metric) computes whether there exists a
+value in the metric that outstands from the other values.
+topK(metric) and bottomK(metric) choose the containers
+that have the largest K and smallest K values for the met-
+ric, respectively.
+
+• Rule 1
+
+Condition: big_outlier(iter-time) = true
+Action: Migrate (top1(iter-time), bottom1(iter-
+time))
+
+• Rule 2
+
+Condition: average(comp-time) / average(comm-
+
+4
+
+Elastic Memory: Bring Elasticity Back to In-Memory Big Data Analytics
+
+Joo Seong Jeong, Woo-Yeon Lee, Yunseong Lee, Youngseok Yang, Brian Cho, Byung-Gon Chun
+
+Seoul National University
+
+Abstract
+Recent big data processing systems provide quick an-
+swers to users by keeping data in memory across a clus-
+ter. As a simple way to manage data in memory, the
+systems are deployed as long-running workers on a static
+allocation of the cluster resources. This simplicity comes
+at a cost: elasticity is lost. Using today’s resource man-
+agers such as YARN and Mesos, this severely reduces
+the utilization of the shared cluster and limits the perfor-
+mance of such systems. In this paper, we propose Elastic
+Memory, an abstraction that can dynamically change the
+allocated memory resource to improve resource utiliza-
+tion and performance. With Elastic Memory, we outline
+how we enable elastic interactive query processing and
+machine learning.
+
+Introduction
+
+1
+Over the past decade, large-scale big data analytics has
+been widely adopted. Google’s MapReduce [8], Apache
+Hadoop [16], and Dryad [11] were seminal in allow-
+ing analytics on data centers of commodity machines.
+The simple functional programming model combined
+with the runtime that supports elastic scale-out and fault-
+tolerant execution has spurred wide adoption of the tech-
+nology. Distinct MapReduce/DAG jobs are often run
+together on a large shared cluster; each job runs on re-
+source allocations given by the cluster’s resource man-
+ager (e.g. YARN [18] and Mesos [10]). The resource
+manager enables MapReduce/DAG jobs to elastically
+share resource slices, improving peak job performance
+and providing high utilization of cluster resources [18].
+The resource manager abstraction is great for MapRe-
+duce/DAG jobs, but new types of in-memory data pro-
+cessing do not ﬁt well to this abstraction. We look at two
+types, interactive query processing and machine learn-
+ing.
+
+Recent query processing systems such as Impala [2]
+and SparkSQL [6] provide quick answers to user queries
+by keeping processed data in memory. As a simple way
+to manage data in memory, the systems are deployed as
+long-running workers on a static allocation of the cluster
+resources. This simplicity comes at a cost: elasticity is
+lost. The workers hold on to their resources even while
+they remain idle during periods without client queries.
+Using today’s resource managers, this severely reduces
+the utilization of the shared cluster (the case for scale-in).
+
+In other cases, the workers may spill data to disks when
+they do not have enough memory resources.
+If mem-
+ory resources could be expanded, these queries would be
+served in memory (the case for scale-out).
+
+Recent machine learning systems such as Spark ML-
+lib [5] perform iterative processing on statically allocated
+resources. A machine learning job typically consists of
+tasks, each of which processes partitioned state in mem-
+ory. Job execution should consider the trade-off between
+computation and communication. If the job is computa-
+tion heavy, it is better to allocate more memory in other
+machines to exploit computation parallelism (the case
+for scale-out). In contrast, if the job is communication
+heavy, it is better to shrink the number of machines to
+reduce communication overheads (the case for scale-in).
+In this paper, we propose Elastic Memory, an abstrac-
+tion that brings elasticity back to in-memory big data an-
+alytics. Elastic Memory provides a set of primitives for
+dynamically expanding and shrinking memory resources
+and splitting and merging state with a hook to set elas-
+ticity policies. We then discuss how Elastic Memory en-
+ables elastic interactive query processing and elastic ma-
+chine learning.
+
+2 Elastic Memory
+Despite various kinds of data analytics workloads, such
+as batch processing, stream processing, query process-
+ing, and distributed machine learning,
+the way in-
+memory processing frameworks [2, 5, 6] execute such
+jobs can be characterized by the following common
+properties.
+
+Master-slave pattern. Slaves process data under the
+control of a master, which manages execution of a job.
+Each slave and the master are deployed within its own
+container, which represents computing resources such as
+CPU cores and memory in a cluster allocated by a re-
+source manager.
+
+Data parallelism. To efﬁciently process large vol-
+umes of data, each slave performs in parallel the same
+computation on a different subset of the data.
+
+In-memory caching. Data loaded from a distributed
+ﬁlesystem as well as intermediate data generated from
+previous computations is cached in memory, allowing
+multiple stages of reads and writes without incurring disk
+access.
+
+Taking such characteristics into account, we propose
+
+1
+
+Figure 2: State representation.
+In-memory data of
+type_A is divided into three parts and distributed in
+two containers.
+Two parts reside in Container0
+and compose a subset, while the remaining part is in
+Container1 as another subset. Container0 also con-
+tains a subset of type_B which, together with the subset
+of type_A, forms the state of Container0.
+
+2.2.2 Reconﬁguring State
+The policy engine compares the metrics processed by the
+metric manager with conditions speciﬁed in the user pol-
+icy. If a condition is met, then corresponding elasticity
+actions are executed through the state manager. The state
+manager provides the following set of system primitives
+that are also depicted in Figure 3.
+
+• add (resource-spec): Allocate a new container
+as speciﬁed in the resource-spec that represents
+the resource of the container such as CPUs and
+memory.
+
+• delete (container-id): Release the container
+
+whose id is container-id.
+
+• resize (container-id, resource-spec):
+
+Resize the container whose id is container-id to
+the resources speciﬁed in resource-spec.
+
+• move (set<unit>, src-id, dst-id): Move
+set<unit> from the container whose id is src-id
+to the container whose id is dst-id.
+
+• checkpoint (container-id): Persist the state
+of the container whose id is container-id into
+stable storage.
+
+Note that when releasing containers via delete or
+shrinking containers via resize, state in the slaves can
+be lost. To address this problem, the state manager can
+decide to either checkpoint such state, move it to other
+slaves or simply discard it depending on its recoverabil-
+ity and the system’s status.
+
+2.3 User Policy
+The user policy is a list of rules, each of which consists
+of a condition and elasticity actions. A user can deﬁne a
+policy using the policy deﬁnition language in Figure 4.
+
+Figure 1: The EM architecture
+
+Elastic Memory (EM) shown in Figure 1. EM adds new
+modules and abstractions to the existing model to en-
+able elasticity. First, the state manager in the master
+manages and reconﬁgures state, an abstraction for re-
+conﬁgurable in-memory data in a container. Second, the
+metric manager in the master manages metrics with the
+help of metric trackers in slaves. Third, the policy en-
+gine in the master enforces user policies. Fourth, to be
+able to quickly expand its resource capacity, EM keeps a
+pre-allocated pool of containers that can be quickly pre-
+empted for other jobs in the cluster to use and quickly
+reclaimed if needed.
+
+2.1 State
+State is the in-memory data within a container that is
+used and processed by a job. Figure 2 depicts how
+state is represented in EM. A container’s state consists
+of user-deﬁned atomic entities of elasticity called units.
+Each unit has a type representing its semantic meaning
+within the job computation. Units within a container are
+grouped into subsets of the same type. EM reorganizes
+state by transferring units that make up all or a part of a
+subset between containers.
+
+2.2 Mechanism
+2.2.1 Proﬁling
+The metric tracker in each slave tracks metrics within its
+container and sends them to the metric manager in the
+master. The metric manager aggregates and processes
+the received metrics into a form which can be used by the
+policy engine. Users can conﬁgure not only app-speciﬁc
+metrics to be proﬁled by metric trackers, but also how
+they should be aggregated by the metric manager. For
+example, each metric tracker can be conﬁgured to send
+the number of state access requests per second to the met-
+ric manager, which can also be conﬁgured to compute the
+5-second moving average of this metric.
+
+2
+
+(cid:104)Policy(cid:105) ::= list(cid:104)Rule(cid:105)
+(cid:104)Rule(cid:105) ::= (cid:104)Condition(cid:105), sequence(cid:104)Action(cid:105)
+(cid:104)Condition(cid:105) ::= (cid:104)Predicate(cid:105)
+
+|
+|
+|
+
+‘(’ (cid:104)Condition(cid:105) ‘)’
+(cid:104)Condition(cid:105) ∨ (cid:104)Condition(cid:105)
+(cid:104)Condition(cid:105) ∧ (cid:104)Condition(cid:105)
+(cid:104)Action(cid:105) ::= Add (cid:104)ResourceSpec(cid:105)
+
+| Delete (cid:104)SelectFunc(cid:105)
+| Resize (cid:104)SelectFunc(cid:105) (cid:104)ResourceSpec(cid:105)
+| Merge (cid:104)SelectFunc(cid:105) factor
+| Split (cid:104)SelectFunc(cid:105) factor
+| Migrate (cid:104)SelectFunc(cid:105) (cid:104)SelectFunc(cid:105)
+
+(cid:104)Predicate(cid:105) is a statement that is true or false depending on the
+
+system state.
+
+(cid:104)ResourceSpec(cid:105) represents the amount of resources (e.g., CPU
+
+cores, memory, etc).
+
+(cid:104)SelectFunc(cid:105) selects containers that return true when Select-
+
+Func is applied.
+
+Figure 4: Policy deﬁnition language.
+
+3 Elastic Interactive Query
+When processing interactive queries, allocating too lit-
+tle memory increases query latency, while allocating too
+much causes excessive use of scarce memory resource.
+A naive approach would estimate the load and conﬁg-
+ure the memory resource accordingly before running the
+query. However, interactive queries run in iterations and
+produce intermediate data to be used and possibly cached
+for subsequent queries. This makes it very difﬁcult to
+predict how much memory to use for each query. We
+show how EM obviates such prediction with dynamic
+state reconﬁguration.
+
+3.1 Representing Schema
+In distributed in-memory query processing frameworks,
+a table is partitioned and cached in containers in a colum-
+nar format to exploit data locality. Since in this case each
+value of a row forms an atomic unit, we can naturally de-
+ﬁne it as the base unit of reconﬁguration in EM.
+
+3.2 Proﬁling Query Execution
+The following are a few examples of metrics an inter-
+active query processing framework can proﬁle and use
+through EM.
+
+Load. To ensure low latency, an in-memory frame-
+work should have enough memory resource capacity to
+keep data in memory. But load on slaves ﬂuctuates for
+every query. EM can keep track of such load in the fol-
+lowing way. First, individual metric trackers can track
+
+3
+
+Figure 3: System primitives for handling state.
+(a) add (resource-spec) / delete(container1)
+(b) resize(container0, resource-spec)
+(c) move(unitset0, container0, container1)
+(d) checkpoint(container0)
+
+Conditions are represented as conjunctions and dis-
+junctions of predicates on metrics processed by the met-
+ric manager. When a condition is satisﬁed, the policy
+engine triggers the corresponding actions.
+
+Actions are translated into lower-level system prim-
+itives provided by the state manager in Section 2.2.2.
+The following examples show how each action can be
+deﬁned using the language in Figure 4.
+
+• Add resource-spec: Allocate a container whose
+amount is speciﬁed in resource-spec by calling add.
+• Delete (c ⇒ c.idle_time > 1 min): Remove con-
+tainers that have been idle for longer than one
+minute by executing delete on all such containers.
+• Resize (c ⇒ c.idle_time > 1 min) resource-spec:
+Change the memory size of idle containers to the
+amount as speciﬁed in resource-spec by calling
+resize on all such containers.
+• Merge (c ⇒ c.idle_time > 1 min) 2: Find idle
+containers and merge every two of them into one.
+Call move to transfer data units between contain-
+ers. During the process, EM may decide to delete
+containers that have become empty.
+• Split (c ⇒ c.load > 0.8) 2: Choose overloaded
+containers and split the state of each container into
+two containers by calling move to relocate data. EM
+may decide to add new containers in the process.
+• Migrate (c ⇒ c.load > 0.8) (c ⇒ c.load < 0.2):
+Migrate data from busy containers to idle containers
+by calling move.
+
+metrics such as container size, data size and requests
+for data per second. Second, the metric manager can
+use these metrics to compute an aggregate load for each
+slave.
+
+Idle time. Holding onto resources even when one is
+not making good use of them hampers efﬁcient use of
+cluster resources.
+In interactive query processing, this
+can happen when the user does not submit queries. We
+can address these issues using EM by collecting and ag-
+gregating metrics like last task execution time and last
+state access time of each slave.
+3.3 User Policies For Query Execution
+The following shows an example policy to improve the
+performance and resource utilization in the interactive
+query processing. load and idle-time are measured with
+the proﬁled metrics in Section 3.2. top(metric) denotes
+the container that has the largest value for the metric.
+
+• Rule 1
+
+Condition: average(load) > 0.8
+Action: Add (resource-spec)
+
+• Rule 2
+
+Condition: idle-time > 1 min
+Action: Delete (top(idle-time))
+
+Rule 1 is applied when the average load is bigger than
+a threshold. To improve performance, EM expands its
+resource capacity by allocating new containers. Rule 2 is
+applied to containers who have been idle for longer than
+one minute. For efﬁcient use of cluster resources, EM
+releases the container with the highest idle-time.
+4 Elastic Machine Learning
+Most distributed machine learning jobs start by loading
+data from disk, which is later on accessed in memory
+throughout the remaining job. Slaves run the algorithm
+independently on its portion of the data. The master ag-
+gregates the computation results and calculates a model.
+This model is broadcast to the slaves, and then the whole
+process is repeated; hence an iterative job.
+
+Thus we can say that ML can be portrayed by a few
+aspects: slaves perform identical operations during each
+iteration and the training dataset never changes as the job
+progresses.
+
+The execution logic does not drastically change as the
+job continues, which means even a single dynamic recon-
+ﬁguration, if carried out correctly, can speed up execu-
+tion. The beneﬁt grows even more if many iterations re-
+main, or in other words the reconﬁguration is done early
+in the life span of the job. We illustrate how EM captures
+such insights and applies an optimized conﬁguration to
+the currently running ML application.
+
+4.1 Representing ML Data
+ML algorithms accept a big training data set as input, and
+use it to build a model. The data consists of independent
+observations represented as rows of a table, where a row
+can be a single ﬂoat, vector, or even a matrix depend-
+ing on the algorithm itself. Each observation is atomic
+and thus we can deﬁne it as the base unit. In case each
+worker maintains its own version of the model such as in
+asynchronous systems [7], model partitions can also be
+deﬁned as units.
+
+4.2 Proﬁling ML Execution
+The iterative characteristic of ML applications allows
+various metrics to be collected after each iteration. Sev-
+eral instances are shown below.
+
+Iteration time. The overall performance of a dis-
+tributed job is dependent on the slave with the worst per-
+formance, i.e. the slowest slave. To identify that slave,
+the EM system must be provided with the running time
+per iteration of each slave, which indicates their perfor-
+mance.
+
+Computation and communication overheads. Even
+without a signiﬁcantly slow slave, a machine learning ap-
+plication may have room for performance improvement
+by changing the number of slaves. EM can check the
+overheads of computation and communication to make
+a decision to balance out the two and ﬁnd a number of
+slaves that improves performance.
+
+4.3 User Policies for Machine Learning
+The timing for the policy engine to check conditions
+speciﬁed in policies may differ depending on the ML ex-
+ecution model: every synchronization barrier between it-
+erations is the ideal point for synchronous models such
+as BSP [12, 17], whereas for asynchronous models con-
+dition checking and actions are done in the background.
+The example policy below shows how EM can con-
+tribute to optimizing the job conﬁguration of ML ap-
+iter-time, comp-time, and comm-time are
+plications.
+computed using the proﬁled metrics in Section 4.2.
+big_outlier(metric) computes whether there exists a
+value in the metric that outstands from the other values.
+topK(metric) and bottomK(metric) choose the containers
+that have the largest K and smallest K values for the met-
+ric, respectively.
+
+• Rule 1
+
+Condition: big_outlier(iter-time) = true
+Action: Migrate (top1(iter-time), bottom1(iter-
+time))
+
+• Rule 2
+
+Condition: average(comp-time) / average(comm-
+
+4
+
+time) > 5
+Action: Split (top1(comp-time / comm-time), 2)
+
+• Rule 3
+
+Condition: average(comp-time) / average(comm-
+time) < 0.2
+Action: Merge (bottom2(comp-time / comm-time),
+2)
+
+Rule 1 can detect stragglers that are taking a consid-
+erably longer time to ﬁnish iterations compared to other
+containers. The total job running time can be reduced by
+migrating data from the straggler to a faster container.
+Rules 2 and 3 cover cases in which computation and
+communication overheads are unbalanced. When com-
+putation is intense, Rule 2 kicks in and splits the data of
+the container with the most computation, lowering the
+global overhead. On the other hand, if communication is
+the bottleneck then Rule 3 is invoked and the distributed
+workloads of the two most communication-heavy con-
+tainers are merged to one to diminish the network over-
+head.
+
+Resource constraints. The assumption of limited
+resources is actually a common scenario in distributed
+computing, either by hardware speciﬁcations or because
+of other users sharing the same resources. Under this sit-
+uation, the metric of available resources must be taken
+into account when deciding resource-related actions to
+be invoked. Although it is debatable whether to give
+precedence to user-deﬁned policies over resource con-
+straint policies, there exist circumstances where user-
+deﬁned policies are impossible to carry out due to the
+lack of additional resources. A job might be running
+with only two slaves and need to execute Add to achieve
+optimal performance, but the cluster may not have more
+slaves available because other jobs are using many nodes.
+
+5 Related Work
+Discardable Distributed Memory (DDM) [15] proposes
+the use of memory, obtained from a resource manager, as
+fast external storage for running jobs. EM instead recon-
+ﬁgures state directly within running jobs. In addition to
+supporting memory elasticity, this abstraction provides
+the means to tune computation parallelism and commu-
+nication overheads.
+
+Commercial cloud offerings [1, 3, 4] allow develop-
+ers to conﬁgure custom rules for triggering expansion or
+contraction of the number of VMs for serving systems.
+Escape Capsule [13] proposes a mechanism to capture
+and automatically migrate per-session state that spans all
+layers of the software stack. FreeFlow [14] splits and
+rebalances ﬂow-speciﬁc state among virtual middlebox
+replicas. While also enabling elasticity, the main goal
+of these systems is load balancing, whereas EM can im-
+
+5
+
+prove the runtime performance of in-memory big data
+processing frameworks using mechanisms and policies.
+A different line of work explores techniques to achieve
+elasticity in a distributed computing environment. Elas-
+ticOS [9] enables a process to stretch its associated re-
+source boundaries across multiple machines, obviating
+the need to accommodate cluster programming mod-
+els. The motivation is clearly different from that of EM,
+which aims to enable elastic use of in-memory data for
+distributed frameworks.
+6 Conclusion
+We propose Elastic Memory, an abstraction that provides
+mechanisms and policies for dynamically expanding and
+shrinking memory resources and splitting and merging
+memory state. We believe that the Elastic Memory archi-
+tecture enables new exciting execution modes that bring
+elasticity back to in-memory big data analytics and offers
+interesting research opportunities to consider elasticity as
+a ﬁrst-class citizen in in-memory big data analytics.
+Acknowledgments
+This research was supported by the MSIP (Ministry of
+Science, ICT and Future Planning), Korea and Microsoft
+Research, under ICT/SW creative research program su-
+pervised by the NIPA (National ICT Industry Promotion
+Agency) (NIPA-2014-H0510-14-1022). Brian Cho was
+supported by the Institute of New Media and Commu-
+nications, Seoul National University, grants No. 0423-
+20140007 and No. 0423-20140067.
+References
+[1] Amazon web services. http://aws.amazon.
+
+com.
+
+[2] Cloudera impala. http://impala.io.
+[3] Google cloud. http://cloud.google.com.
+[4] Microsoft
+http://azure.
+
+azure.
+microsoft.com.
+
+[5] Sparkmllib. https://spark.apache.org/
+
+mllib/.
+[6] Sparksql.
+
+sql/.
+
+https://spark.apache.org/
+
+[7] T. Chilimbi, Y. Suzue, J. Apacible, and K. Kalya-
+naraman. Project adam: Building an efﬁcient and
+In OSDI,
+scalable deep learning training system.
+2014.
+
+[8] J. Dean and S. Ghemawat. Mapreduce: Simpliﬁed
+
+data processing on large clusters. In OSDI, 2004.
+
+[9] A. Gupta, E. Ababneh, R. Han, and E. Keller. To-
+
+wards elastic operating systems. In HotOS, 2013.
+
+[10] B. Hindman, A. Konwinski, M. Zaharia, A. Ghodsi,
+A. D. Joseph, R. Katz, S. Shenker, and I. Stoica.
+Mesos: A platform for ﬁne-grained resource shar-
+ing in the data center. In NSDI, 2011.
+
+Elastic Memory: Bring Elasticity Back to In-Memory Big Data Analytics
+
+Joo Seong Jeong, Woo-Yeon Lee, Yunseong Lee, Youngseok Yang, Brian Cho, Byung-Gon Chun
+
+Seoul National University
+
+Abstract
+Recent big data processing systems provide quick an-
+swers to users by keeping data in memory across a clus-
+ter. As a simple way to manage data in memory, the
+systems are deployed as long-running workers on a static
+allocation of the cluster resources. This simplicity comes
+at a cost: elasticity is lost. Using today’s resource man-
+agers such as YARN and Mesos, this severely reduces
+the utilization of the shared cluster and limits the perfor-
+mance of such systems. In this paper, we propose Elastic
+Memory, an abstraction that can dynamically change the
+allocated memory resource to improve resource utiliza-
+tion and performance. With Elastic Memory, we outline
+how we enable elastic interactive query processing and
+machine learning.
+
+Introduction
+
+1
+Over the past decade, large-scale big data analytics has
+been widely adopted. Google’s MapReduce [8], Apache
+Hadoop [16], and Dryad [11] were seminal in allow-
+ing analytics on data centers of commodity machines.
+The simple functional programming model combined
+with the runtime that supports elastic scale-out and fault-
+tolerant execution has spurred wide adoption of the tech-
+nology. Distinct MapReduce/DAG jobs are often run
+together on a large shared cluster; each job runs on re-
+source allocations given by the cluster’s resource man-
+ager (e.g. YARN [18] and Mesos [10]). The resource
+manager enables MapReduce/DAG jobs to elastically
+share resource slices, improving peak job performance
+and providing high utilization of cluster resources [18].
+The resource manager abstraction is great for MapRe-
+duce/DAG jobs, but new types of in-memory data pro-
+cessing do not ﬁt well to this abstraction. We look at two
+types, interactive query processing and machine learn-
+ing.
+
+Recent query processing systems such as Impala [2]
+and SparkSQL [6] provide quick answers to user queries
+by keeping processed data in memory. As a simple way
+to manage data in memory, the systems are deployed as
+long-running workers on a static allocation of the cluster
+resources. This simplicity comes at a cost: elasticity is
+lost. The workers hold on to their resources even while
+they remain idle during periods without client queries.
+Using today’s resource managers, this severely reduces
+the utilization of the shared cluster (the case for scale-in).
+
+In other cases, the workers may spill data to disks when
+they do not have enough memory resources.
+If mem-
+ory resources could be expanded, these queries would be
+served in memory (the case for scale-out).
+
+Recent machine learning systems such as Spark ML-
+lib [5] perform iterative processing on statically allocated
+resources. A machine learning job typically consists of
+tasks, each of which processes partitioned state in mem-
+ory. Job execution should consider the trade-off between
+computation and communication. If the job is computa-
+tion heavy, it is better to allocate more memory in other
+machines to exploit computation parallelism (the case
+for scale-out). In contrast, if the job is communication
+heavy, it is better to shrink the number of machines to
+reduce communication overheads (the case for scale-in).
+In this paper, we propose Elastic Memory, an abstrac-
+tion that brings elasticity back to in-memory big data an-
+alytics. Elastic Memory provides a set of primitives for
+dynamically expanding and shrinking memory resources
+and splitting and merging state with a hook to set elas-
+ticity policies. We then discuss how Elastic Memory en-
+ables elastic interactive query processing and elastic ma-
+chine learning.
+
+2 Elastic Memory
+Despite various kinds of data analytics workloads, such
+as batch processing, stream processing, query process-
+ing, and distributed machine learning,
+the way in-
+memory processing frameworks [2, 5, 6] execute such
+jobs can be characterized by the following common
+properties.
+
+Master-slave pattern. Slaves process data under the
+control of a master, which manages execution of a job.
+Each slave and the master are deployed within its own
+container, which represents computing resources such as
+CPU cores and memory in a cluster allocated by a re-
+source manager.
+
+Data parallelism. To efﬁciently process large vol-
+umes of data, each slave performs in parallel the same
+computation on a different subset of the data.
+
+In-memory caching. Data loaded from a distributed
+ﬁlesystem as well as intermediate data generated from
+previous computations is cached in memory, allowing
+multiple stages of reads and writes without incurring disk
+access.
+
+Taking such characteristics into account, we propose
+
+1
+
+Figure 2: State representation.
+In-memory data of
+type_A is divided into three parts and distributed in
+two containers.
+Two parts reside in Container0
+and compose a subset, while the remaining part is in
+Container1 as another subset. Container0 also con-
+tains a subset of type_B which, together with the subset
+of type_A, forms the state of Container0.
+
+2.2.2 Reconﬁguring State
+The policy engine compares the metrics processed by the
+metric manager with conditions speciﬁed in the user pol-
+icy. If a condition is met, then corresponding elasticity
+actions are executed through the state manager. The state
+manager provides the following set of system primitives
+that are also depicted in Figure 3.
+
+• add (resource-spec): Allocate a new container
+as speciﬁed in the resource-spec that represents
+the resource of the container such as CPUs and
+memory.
+
+• delete (container-id): Release the container
+
+whose id is container-id.
+
+• resize (container-id, resource-spec):
+
+Resize the container whose id is container-id to
+the resources speciﬁed in resource-spec.
+
+• move (set<unit>, src-id, dst-id): Move
+set<unit> from the container whose id is src-id
+to the container whose id is dst-id.
+
+• checkpoint (container-id): Persist the state
+of the container whose id is container-id into
+stable storage.
+
+Note that when releasing containers via delete or
+shrinking containers via resize, state in the slaves can
+be lost. To address this problem, the state manager can
+decide to either checkpoint such state, move it to other
+slaves or simply discard it depending on its recoverabil-
+ity and the system’s status.
+
+2.3 User Policy
+The user policy is a list of rules, each of which consists
+of a condition and elasticity actions. A user can deﬁne a
+policy using the policy deﬁnition language in Figure 4.
+
+Figure 1: The EM architecture
+
+Elastic Memory (EM) shown in Figure 1. EM adds new
+modules and abstractions to the existing model to en-
+able elasticity. First, the state manager in the master
+manages and reconﬁgures state, an abstraction for re-
+conﬁgurable in-memory data in a container. Second, the
+metric manager in the master manages metrics with the
+help of metric trackers in slaves. Third, the policy en-
+gine in the master enforces user policies. Fourth, to be
+able to quickly expand its resource capacity, EM keeps a
+pre-allocated pool of containers that can be quickly pre-
+empted for other jobs in the cluster to use and quickly
+reclaimed if needed.
+
+2.1 State
+State is the in-memory data within a container that is
+used and processed by a job. Figure 2 depicts how
+state is represented in EM. A container’s state consists
+of user-deﬁned atomic entities of elasticity called units.
+Each unit has a type representing its semantic meaning
+within the job computation. Units within a container are
+grouped into subsets of the same type. EM reorganizes
+state by transferring units that make up all or a part of a
+subset between containers.
+
+2.2 Mechanism
+2.2.1 Proﬁling
+The metric tracker in each slave tracks metrics within its
+container and sends them to the metric manager in the
+master. The metric manager aggregates and processes
+the received metrics into a form which can be used by the
+policy engine. Users can conﬁgure not only app-speciﬁc
+metrics to be proﬁled by metric trackers, but also how
+they should be aggregated by the metric manager. For
+example, each metric tracker can be conﬁgured to send
+the number of state access requests per second to the met-
+ric manager, which can also be conﬁgured to compute the
+5-second moving average of this metric.
+
+2
+
+(cid:104)Policy(cid:105) ::= list(cid:104)Rule(cid:105)
+(cid:104)Rule(cid:105) ::= (cid:104)Condition(cid:105), sequence(cid:104)Action(cid:105)
+(cid:104)Condition(cid:105) ::= (cid:104)Predicate(cid:105)
+
+|
+|
+|
+
+‘(’ (cid:104)Condition(cid:105) ‘)’
+(cid:104)Condition(cid:105) ∨ (cid:104)Condition(cid:105)
+(cid:104)Condition(cid:105) ∧ (cid:104)Condition(cid:105)
+(cid:104)Action(cid:105) ::= Add (cid:104)ResourceSpec(cid:105)
+
+| Delete (cid:104)SelectFunc(cid:105)
+| Resize (cid:104)SelectFunc(cid:105) (cid:104)ResourceSpec(cid:105)
+| Merge (cid:104)SelectFunc(cid:105) factor
+| Split (cid:104)SelectFunc(cid:105) factor
+| Migrate (cid:104)SelectFunc(cid:105) (cid:104)SelectFunc(cid:105)
+
+(cid:104)Predicate(cid:105) is a statement that is true or false depending on the
+
+system state.
+
+(cid:104)ResourceSpec(cid:105) represents the amount of resources (e.g., CPU
+
+cores, memory, etc).
+
+(cid:104)SelectFunc(cid:105) selects containers that return true when Select-
+
+Func is applied.
+
+Figure 4: Policy deﬁnition language.
+
+3 Elastic Interactive Query
+When processing interactive queries, allocating too lit-
+tle memory increases query latency, while allocating too
+much causes excessive use of scarce memory resource.
+A naive approach would estimate the load and conﬁg-
+ure the memory resource accordingly before running the
+query. However, interactive queries run in iterations and
+produce intermediate data to be used and possibly cached
+for subsequent queries. This makes it very difﬁcult to
+predict how much memory to use for each query. We
+show how EM obviates such prediction with dynamic
+state reconﬁguration.
+
+3.1 Representing Schema
+In distributed in-memory query processing frameworks,
+a table is partitioned and cached in containers in a colum-
+nar format to exploit data locality. Since in this case each
+value of a row forms an atomic unit, we can naturally de-
+ﬁne it as the base unit of reconﬁguration in EM.
+
+3.2 Proﬁling Query Execution
+The following are a few examples of metrics an inter-
+active query processing framework can proﬁle and use
+through EM.
+
+Load. To ensure low latency, an in-memory frame-
+work should have enough memory resource capacity to
+keep data in memory. But load on slaves ﬂuctuates for
+every query. EM can keep track of such load in the fol-
+lowing way. First, individual metric trackers can track
+
+3
+
+Figure 3: System primitives for handling state.
+(a) add (resource-spec) / delete(container1)
+(b) resize(container0, resource-spec)
+(c) move(unitset0, container0, container1)
+(d) checkpoint(container0)
+
+Conditions are represented as conjunctions and dis-
+junctions of predicates on metrics processed by the met-
+ric manager. When a condition is satisﬁed, the policy
+engine triggers the corresponding actions.
+
+Actions are translated into lower-level system prim-
+itives provided by the state manager in Section 2.2.2.
+The following examples show how each action can be
+deﬁned using the language in Figure 4.
+
+• Add resource-spec: Allocate a container whose
+amount is speciﬁed in resource-spec by calling add.
+• Delete (c ⇒ c.idle_time > 1 min): Remove con-
+tainers that have been idle for longer than one
+minute by executing delete on all such containers.
+• Resize (c ⇒ c.idle_time > 1 min) resource-spec:
+Change the memory size of idle containers to the
+amount as speciﬁed in resource-spec by calling
+resize on all such containers.
+• Merge (c ⇒ c.idle_time > 1 min) 2: Find idle
+containers and merge every two of them into one.
+Call move to transfer data units between contain-
+ers. During the process, EM may decide to delete
+containers that have become empty.
+• Split (c ⇒ c.load > 0.8) 2: Choose overloaded
+containers and split the state of each container into
+two containers by calling move to relocate data. EM
+may decide to add new containers in the process.
+• Migrate (c ⇒ c.load > 0.8) (c ⇒ c.load < 0.2):
+Migrate data from busy containers to idle containers
+by calling move.
+
+metrics such as container size, data size and requests
+for data per second. Second, the metric manager can
+use these metrics to compute an aggregate load for each
+slave.
+
+Idle time. Holding onto resources even when one is
+not making good use of them hampers efﬁcient use of
+cluster resources.
+In interactive query processing, this
+can happen when the user does not submit queries. We
+can address these issues using EM by collecting and ag-
+gregating metrics like last task execution time and last
+state access time of each slave.
+3.3 User Policies For Query Execution
+The following shows an example policy to improve the
+performance and resource utilization in the interactive
+query processing. load and idle-time are measured with
+the proﬁled metrics in Section 3.2. top(metric) denotes
+the container that has the largest value for the metric.
+
+• Rule 1
+
+Condition: average(load) > 0.8
+Action: Add (resource-spec)
+
+• Rule 2
+
+Condition: idle-time > 1 min
+Action: Delete (top(idle-time))
+
+Rule 1 is applied when the average load is bigger than
+a threshold. To improve performance, EM expands its
+resource capacity by allocating new containers. Rule 2 is
+applied to containers who have been idle for longer than
+one minute. For efﬁcient use of cluster resources, EM
+releases the container with the highest idle-time.
+4 Elastic Machine Learning
+Most distributed machine learning jobs start by loading
+data from disk, which is later on accessed in memory
+throughout the remaining job. Slaves run the algorithm
+independently on its portion of the data. The master ag-
+gregates the computation results and calculates a model.
+This model is broadcast to the slaves, and then the whole
+process is repeated; hence an iterative job.
+
+Thus we can say that ML can be portrayed by a few
+aspects: slaves perform identical operations during each
+iteration and the training dataset never changes as the job
+progresses.
+
+The execution logic does not drastically change as the
+job continues, which means even a single dynamic recon-
+ﬁguration, if carried out correctly, can speed up execu-
+tion. The beneﬁt grows even more if many iterations re-
+main, or in other words the reconﬁguration is done early
+in the life span of the job. We illustrate how EM captures
+such insights and applies an optimized conﬁguration to
+the currently running ML application.
+
+4.1 Representing ML Data
+ML algorithms accept a big training data set as input, and
+use it to build a model. The data consists of independent
+observations represented as rows of a table, where a row
+can be a single ﬂoat, vector, or even a matrix depend-
+ing on the algorithm itself. Each observation is atomic
+and thus we can deﬁne it as the base unit. In case each
+worker maintains its own version of the model such as in
+asynchronous systems [7], model partitions can also be
+deﬁned as units.
+
+4.2 Proﬁling ML Execution
+The iterative characteristic of ML applications allows
+various metrics to be collected after each iteration. Sev-
+eral instances are shown below.
+
+Iteration time. The overall performance of a dis-
+tributed job is dependent on the slave with the worst per-
+formance, i.e. the slowest slave. To identify that slave,
+the EM system must be provided with the running time
+per iteration of each slave, which indicates their perfor-
+mance.
+
+Computation and communication overheads. Even
+without a signiﬁcantly slow slave, a machine learning ap-
+plication may have room for performance improvement
+by changing the number of slaves. EM can check the
+overheads of computation and communication to make
+a decision to balance out the two and ﬁnd a number of
+slaves that improves performance.
+
+4.3 User Policies for Machine Learning
+The timing for the policy engine to check conditions
+speciﬁed in policies may differ depending on the ML ex-
+ecution model: every synchronization barrier between it-
+erations is the ideal point for synchronous models such
+as BSP [12, 17], whereas for asynchronous models con-
+dition checking and actions are done in the background.
+The example policy below shows how EM can con-
+tribute to optimizing the job conﬁguration of ML ap-
+iter-time, comp-time, and comm-time are
+plications.
+computed using the proﬁled metrics in Section 4.2.
+big_outlier(metric) computes whether there exists a
+value in the metric that outstands from the other values.
+topK(metric) and bottomK(metric) choose the containers
+that have the largest K and smallest K values for the met-
+ric, respectively.
+
+• Rule 1
+
+Condition: big_outlier(iter-time) = true
+Action: Migrate (top1(iter-time), bottom1(iter-
+time))
+
+• Rule 2
+
+Condition: average(comp-time) / average(comm-
+
+4
+
+time) > 5
+Action: Split (top1(comp-time / comm-time), 2)
+
+• Rule 3
+
+Condition: average(comp-time) / average(comm-
+time) < 0.2
+Action: Merge (bottom2(comp-time / comm-time),
+2)
+
+Rule 1 can detect stragglers that are taking a consid-
+erably longer time to ﬁnish iterations compared to other
+containers. The total job running time can be reduced by
+migrating data from the straggler to a faster container.
+Rules 2 and 3 cover cases in which computation and
+communication overheads are unbalanced. When com-
+putation is intense, Rule 2 kicks in and splits the data of
+the container with the most computation, lowering the
+global overhead. On the other hand, if communication is
+the bottleneck then Rule 3 is invoked and the distributed
+workloads of the two most communication-heavy con-
+tainers are merged to one to diminish the network over-
+head.
+
+Resource constraints. The assumption of limited
+resources is actually a common scenario in distributed
+computing, either by hardware speciﬁcations or because
+of other users sharing the same resources. Under this sit-
+uation, the metric of available resources must be taken
+into account when deciding resource-related actions to
+be invoked. Although it is debatable whether to give
+precedence to user-deﬁned policies over resource con-
+straint policies, there exist circumstances where user-
+deﬁned policies are impossible to carry out due to the
+lack of additional resources. A job might be running
+with only two slaves and need to execute Add to achieve
+optimal performance, but the cluster may not have more
+slaves available because other jobs are using many nodes.
+
+5 Related Work
+Discardable Distributed Memory (DDM) [15] proposes
+the use of memory, obtained from a resource manager, as
+fast external storage for running jobs. EM instead recon-
+ﬁgures state directly within running jobs. In addition to
+supporting memory elasticity, this abstraction provides
+the means to tune computation parallelism and commu-
+nication overheads.
+
+Commercial cloud offerings [1, 3, 4] allow develop-
+ers to conﬁgure custom rules for triggering expansion or
+contraction of the number of VMs for serving systems.
+Escape Capsule [13] proposes a mechanism to capture
+and automatically migrate per-session state that spans all
+layers of the software stack. FreeFlow [14] splits and
+rebalances ﬂow-speciﬁc state among virtual middlebox
+replicas. While also enabling elasticity, the main goal
+of these systems is load balancing, whereas EM can im-
+
+5
+
+prove the runtime performance of in-memory big data
+processing frameworks using mechanisms and policies.
+A different line of work explores techniques to achieve
+elasticity in a distributed computing environment. Elas-
+ticOS [9] enables a process to stretch its associated re-
+source boundaries across multiple machines, obviating
+the need to accommodate cluster programming mod-
+els. The motivation is clearly different from that of EM,
+which aims to enable elastic use of in-memory data for
+distributed frameworks.
+6 Conclusion
+We propose Elastic Memory, an abstraction that provides
+mechanisms and policies for dynamically expanding and
+shrinking memory resources and splitting and merging
+memory state. We believe that the Elastic Memory archi-
+tecture enables new exciting execution modes that bring
+elasticity back to in-memory big data analytics and offers
+interesting research opportunities to consider elasticity as
+a ﬁrst-class citizen in in-memory big data analytics.
+Acknowledgments
+This research was supported by the MSIP (Ministry of
+Science, ICT and Future Planning), Korea and Microsoft
+Research, under ICT/SW creative research program su-
+pervised by the NIPA (National ICT Industry Promotion
+Agency) (NIPA-2014-H0510-14-1022). Brian Cho was
+supported by the Institute of New Media and Commu-
+nications, Seoul National University, grants No. 0423-
+20140007 and No. 0423-20140067.
+References
+[1] Amazon web services. http://aws.amazon.
+
+com.
+
+[2] Cloudera impala. http://impala.io.
+[3] Google cloud. http://cloud.google.com.
+[4] Microsoft
+http://azure.
+
+azure.
+microsoft.com.
+
+[5] Sparkmllib. https://spark.apache.org/
+
+mllib/.
+[6] Sparksql.
+
+sql/.
+
+https://spark.apache.org/
+
+[7] T. Chilimbi, Y. Suzue, J. Apacible, and K. Kalya-
+naraman. Project adam: Building an efﬁcient and
+In OSDI,
+scalable deep learning training system.
+2014.
+
+[8] J. Dean and S. Ghemawat. Mapreduce: Simpliﬁed
+
+data processing on large clusters. In OSDI, 2004.
+
+[9] A. Gupta, E. Ababneh, R. Han, and E. Keller. To-
+
+wards elastic operating systems. In HotOS, 2013.
+
+[10] B. Hindman, A. Konwinski, M. Zaharia, A. Ghodsi,
+A. D. Joseph, R. Katz, S. Shenker, and I. Stoica.
+Mesos: A platform for ﬁne-grained resource shar-
+ing in the data center. In NSDI, 2011.
+
+[11] M. Isard, M. Budiu, Y. Yu, A. Birrell, and D. Fet-
+terly. Dryad: distributed data-parallel programs
+from sequential building blocks. In Eurosys, 2007.
+[12] F. Loulergue, F. Gava, and D. Billiet. Bulk syn-
+chronous parallel ml: modular implementation and
+performance prediction. In ICCS. 2005.
+
+[13] S. Rajagopalan, D. Williams, H. Jamjoom, and
+A. Warﬁeld. Escape capsule: Explicit state is ro-
+bust and scalable. In HotOS, 2013.
+
+[14] S. Rajagopalan, D. Williams, H. Jamjoom, and
+A. Warﬁeld. Split/merge: System support for elas-
+In NSDI,
+tic execution in virtual middleboxes.
+2013.
+
+[15] C. N. Sanjay Radia, Arpit Agarwal.
+storage medium,
+
+port memory as
+https://issues.apache.org/jira/
+browse/HDFS-5851.
+
+a
+
+Sup-
+2014.
+
+[16] The Apache Software Foundation.
+
+Apache
+
+Hadoop. http://hadoop.apache.org.
+
+[17] L. G. Valiant. A bridging model for parallel com-
+
+putation. Commun. ACM, 33(8):103–111, 1990.
+
+[18] V. K. Vavilapalli, A. C. Murthy, C. Douglas,
+S. Agarwal, M. Konar, R. Evans, T. Graves,
+J. Lowe, H. Shah, S. Seth, B. Saha, C. Curino,
+O. O’Malley, S. Radia, B. Reed, and E. Balde-
+schwieler. Apache hadoop yarn: Yet another re-
+source negotiator. In SOCC, 2013.
+
+6
+
+

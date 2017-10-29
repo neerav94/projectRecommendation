@@ -1,0 +1,1389 @@
+Implementing Machine Learning Algorithms on GPUs
+
+for Real-Time Traﬃc Sign Classiﬁcation
+
+Dashiell Bodington, Eric Greenstein, and Matthew Hu
+
+Department of Electrical Engineering, Stanford University
+
+{dashb, ecgreens, matthu}@stanford.edu
+
+Abstract
+This paper investigates traﬃc sign classiﬁcation,
+which is an important problem to solve for au-
+tonomous driving. Linear discriminant analysis and
+convolutional neural networks achieved an accuracy
+of 98.25% and 98.75% respectively when classifying
+eight diﬀerent types of traﬃc signs. The CNN was
+implemented on a GPU for real-time traﬃc sign clas-
+siﬁcation: testing time for the CNN on a GPU was
+4 ms/image, which was 7.5x as fast as running LDA
+on a CPU and 60.2x as fast as running CNN on a
+CPU. Additionally, diﬀerent types of classiﬁcation er-
+rors and the eﬀects of adding a new sign to the dataset
+were explored.
+
+1 Introduction
+Traﬃc sign recognition (TSR) is a computer vision
+problem that has received signiﬁcant attention due
+to its relevance for autonomous driving, advanced
+driver assistance systems, and mobile mapping. The
+problem is split into two components: detection and
+classiﬁcation. Road signs are designed to be easily
+identiﬁed by human drivers and diﬀer based on their
+shape, color, icons, and text. However, traﬃc sign
+classiﬁcation is made diﬃcult for computers by vary-
+ing illumination and weather conditions, occlusions,
+and subsets of signs that are similar to each other.
+
+Many researchers have focused on improving the
+accuracy of sign detection and recognition, but less
+work has focused on improving processing time
+through diﬀerent hardware implementations. This
+paper will demonstrate how machine learning algo-
+rithms in multi-core GPU architecture can reduce
+computing time compared to CPU methods to enable
+
+real-time traﬃc sign classiﬁcation at typical video
+frame rates of 30 frames per second.
+
+In this paper the impact of computer architecture
+(CPU vs. GPU), algorithm, and training set size on
+the accuracy and speed of traﬃc sign classiﬁcation
+will be explored. First, we will discuss the meth-
+ods we used, namely the dataset, features, and al-
+gorithms, as well as give a brief background of the
+present research. Results and discussion will follow
+the methods section. Finally, a conclusion and vision
+for future work will be presented.
+
+2 Methods
+In literature, many diﬀerent features and machine
+learning algorithms are proposed for traﬃc sign clas-
+siﬁcation.
+Some commonly used features include
+histograms of oriented gradients (HOG), Haar-like
+features, and color histograms [1, 2]. Linear dis-
+criminant analysis (LDA), support vector machines
+(SVM), neural networks, subspace analysis, ensem-
+ble classiﬁers, slow feature analysis, kd-trees, and
+random forests have been investigated for traﬃc sign
+classiﬁcation [3]. This paper will examine two clas-
+siﬁcation algorithms- LDA and convolutional neural
+networks (CNNs). LDA was chosen as a benchmark
+algorithm, as it is fairly accurate and computationally
+inexpensive. CNNs give some of the highest accura-
+cies reported for TSR, but they are computationally
+intensive. A few groups have run CNNs on GPUs for
+image classiﬁcation with improved speeds [4, 5, 6].
+
+2.1 Dataset, Preprocessing, Hardware
+The LISA (Laboratory for Intelligent & Safe Automo-
+biles) Traﬃc Sign Dataset is a set of annotated images
+
+1
+
+Implementing Machine Learning Algorithms on GPUs
+
+for Real-Time Traﬃc Sign Classiﬁcation
+
+Dashiell Bodington, Eric Greenstein, and Matthew Hu
+
+Department of Electrical Engineering, Stanford University
+
+{dashb, ecgreens, matthu}@stanford.edu
+
+Abstract
+This paper investigates traﬃc sign classiﬁcation,
+which is an important problem to solve for au-
+tonomous driving. Linear discriminant analysis and
+convolutional neural networks achieved an accuracy
+of 98.25% and 98.75% respectively when classifying
+eight diﬀerent types of traﬃc signs. The CNN was
+implemented on a GPU for real-time traﬃc sign clas-
+siﬁcation: testing time for the CNN on a GPU was
+4 ms/image, which was 7.5x as fast as running LDA
+on a CPU and 60.2x as fast as running CNN on a
+CPU. Additionally, diﬀerent types of classiﬁcation er-
+rors and the eﬀects of adding a new sign to the dataset
+were explored.
+
+1 Introduction
+Traﬃc sign recognition (TSR) is a computer vision
+problem that has received signiﬁcant attention due
+to its relevance for autonomous driving, advanced
+driver assistance systems, and mobile mapping. The
+problem is split into two components: detection and
+classiﬁcation. Road signs are designed to be easily
+identiﬁed by human drivers and diﬀer based on their
+shape, color, icons, and text. However, traﬃc sign
+classiﬁcation is made diﬃcult for computers by vary-
+ing illumination and weather conditions, occlusions,
+and subsets of signs that are similar to each other.
+
+Many researchers have focused on improving the
+accuracy of sign detection and recognition, but less
+work has focused on improving processing time
+through diﬀerent hardware implementations. This
+paper will demonstrate how machine learning algo-
+rithms in multi-core GPU architecture can reduce
+computing time compared to CPU methods to enable
+
+real-time traﬃc sign classiﬁcation at typical video
+frame rates of 30 frames per second.
+
+In this paper the impact of computer architecture
+(CPU vs. GPU), algorithm, and training set size on
+the accuracy and speed of traﬃc sign classiﬁcation
+will be explored. First, we will discuss the meth-
+ods we used, namely the dataset, features, and al-
+gorithms, as well as give a brief background of the
+present research. Results and discussion will follow
+the methods section. Finally, a conclusion and vision
+for future work will be presented.
+
+2 Methods
+In literature, many diﬀerent features and machine
+learning algorithms are proposed for traﬃc sign clas-
+siﬁcation.
+Some commonly used features include
+histograms of oriented gradients (HOG), Haar-like
+features, and color histograms [1, 2]. Linear dis-
+criminant analysis (LDA), support vector machines
+(SVM), neural networks, subspace analysis, ensem-
+ble classiﬁers, slow feature analysis, kd-trees, and
+random forests have been investigated for traﬃc sign
+classiﬁcation [3]. This paper will examine two clas-
+siﬁcation algorithms- LDA and convolutional neural
+networks (CNNs). LDA was chosen as a benchmark
+algorithm, as it is fairly accurate and computationally
+inexpensive. CNNs give some of the highest accura-
+cies reported for TSR, but they are computationally
+intensive. A few groups have run CNNs on GPUs for
+image classiﬁcation with improved speeds [4, 5, 6].
+
+2.1 Dataset, Preprocessing, Hardware
+The LISA (Laboratory for Intelligent & Safe Automo-
+biles) Traﬃc Sign Dataset is a set of annotated images
+
+1
+
+Figure 1: Image from the LISA dataset (left) and the
+eight signs classiﬁed (right). The signs are: added
+lane, stop ahead, speed limit 25, speed limit 35, stop,
+pedestrian crossing, merge, and keep right.
+
+and videos containing traﬃc signs [7]. It is comprised
+of over 6,000 frames that contain over 7,000 signs of
+47 diﬀerent types. Sign dimensions vary from 6x6
+to 167x168, and are recorded from diﬀerent perspec-
+tives in grayscale and color. The wide variation in
+this dataset makes it ideal for realistic applications,
+but for the purposes of our classiﬁcation, images were
+each cropped to a square area including only the sign
+of interest. All images were converted to grayscale
+and scaled to 32x32 pixels.
+
+We focused on classifying the eight most common
+traﬃc signs in the dataset: pedestrian crossing, stop,
+signal ahead, added lane, keep right, merge, speed
+limit 25, and speed limit 35 signs (see Figure 1). We
+trained our algorithms on 200 images of each sign
+and then tested them on an additional 50 images,
+resulting in a training set size of 1600 images and a
+test set size of 400 images. Images that were taken in
+the same time sequence were grouped and then the
+groups were randomly divided into the training and
+test sets, thus preserving independence between the
+sets.
+
+An Intel i7-3770K processor and Nvidia GeForce
+GTX 780 GPU were used to run all of the algorithms.
+
+2.2 Histograms of Oriented Gradients
+
+Histograms of oriented gradients have been shown to
+be a good feature for classifying traﬃc signs, and are
+relatively fast to compute. The HOG descriptor uti-
+lizes the image’s edge orientations and distribution
+of intensity gradients in order to describe each im-
+age. The HOG features were calculated using the
+32x32 pixel raw images, with the cell size, block size,
+and block overlap tailored for performance. These
+HOG features, computed using MATLAB, served as
+the inputs into the LDA classiﬁer.
+
+2
+
+Figure 2: Structure of the CNN implemented [8]
+
+2.3 Linear Discriminant Analysis
+LDA is a common classiﬁcation technique. It models
+the class conditional probabilities using multivariate
+normal distributions and assumes the classes have a
+common covariance matrix. Ultimately, LDA train-
+ing solves for the directions that will represent the
+axis that maximize the separation between multiple
+classes. While simple, LDA often gives very good re-
+sults in traﬃc sign classiﬁcation, with accuracies of
+approximately 95% [3]. In this report, MATLAB was
+used to run the LDA on a CPU.
+
+2.4 Convolutional Neural Networks
+CNNs have achieved several state-of-the-art perfor-
+mances in traﬃc sign classiﬁcation.
+In the second
+stage of the German Traﬃc Sign Recognition Bench-
+mark (GTSRB) held at IJCNN 2011, two groups us-
+ing CNNs obtained classiﬁcation accuracies upwards
+of 98%, which is comparable to human accuracy [3].
+CNNs are composed of three diﬀerent types of layers:
+convolutional, subsampling, and fully-connected lay-
+ers. Figure 2 shows the structure of the CNN used
+in this paper. Raw grayscale images, scaled to 32x32
+pixels, were input into the CNN. Iterative training is
+done by feeding images forward through the network,
+and optimizing weights in the various layers through
+stochastic gradient descent.
+
+In this report, CNNs were implemented using
+Caﬀe, which is a publicly available deep learning
+framework created by Yangquing Jia at UC Berkeley
+[9]. Caﬀe supports several tools for accelerating CNN
+calculations, such as Nvidia’s CUDA parallel com-
+puting platform; it can be further accelerated with
+Nvidia’s cuDNN, a GPU-accelerated library devel-
+oped speciﬁcally for neural networks and deep learn-
+ing. Additionally, it is easy to switch between CPU
+and GPU calculations within Caﬀe, which suits the
+purpose of this paper.
+
+3 Results and Discussion
+Table 1 gives a summary of the speed and accuracy
+results for the LDA and CNN on CPU and GPU.
+
+Implementing Machine Learning Algorithms on GPUs
+
+for Real-Time Traﬃc Sign Classiﬁcation
+
+Dashiell Bodington, Eric Greenstein, and Matthew Hu
+
+Department of Electrical Engineering, Stanford University
+
+{dashb, ecgreens, matthu}@stanford.edu
+
+Abstract
+This paper investigates traﬃc sign classiﬁcation,
+which is an important problem to solve for au-
+tonomous driving. Linear discriminant analysis and
+convolutional neural networks achieved an accuracy
+of 98.25% and 98.75% respectively when classifying
+eight diﬀerent types of traﬃc signs. The CNN was
+implemented on a GPU for real-time traﬃc sign clas-
+siﬁcation: testing time for the CNN on a GPU was
+4 ms/image, which was 7.5x as fast as running LDA
+on a CPU and 60.2x as fast as running CNN on a
+CPU. Additionally, diﬀerent types of classiﬁcation er-
+rors and the eﬀects of adding a new sign to the dataset
+were explored.
+
+1 Introduction
+Traﬃc sign recognition (TSR) is a computer vision
+problem that has received signiﬁcant attention due
+to its relevance for autonomous driving, advanced
+driver assistance systems, and mobile mapping. The
+problem is split into two components: detection and
+classiﬁcation. Road signs are designed to be easily
+identiﬁed by human drivers and diﬀer based on their
+shape, color, icons, and text. However, traﬃc sign
+classiﬁcation is made diﬃcult for computers by vary-
+ing illumination and weather conditions, occlusions,
+and subsets of signs that are similar to each other.
+
+Many researchers have focused on improving the
+accuracy of sign detection and recognition, but less
+work has focused on improving processing time
+through diﬀerent hardware implementations. This
+paper will demonstrate how machine learning algo-
+rithms in multi-core GPU architecture can reduce
+computing time compared to CPU methods to enable
+
+real-time traﬃc sign classiﬁcation at typical video
+frame rates of 30 frames per second.
+
+In this paper the impact of computer architecture
+(CPU vs. GPU), algorithm, and training set size on
+the accuracy and speed of traﬃc sign classiﬁcation
+will be explored. First, we will discuss the meth-
+ods we used, namely the dataset, features, and al-
+gorithms, as well as give a brief background of the
+present research. Results and discussion will follow
+the methods section. Finally, a conclusion and vision
+for future work will be presented.
+
+2 Methods
+In literature, many diﬀerent features and machine
+learning algorithms are proposed for traﬃc sign clas-
+siﬁcation.
+Some commonly used features include
+histograms of oriented gradients (HOG), Haar-like
+features, and color histograms [1, 2]. Linear dis-
+criminant analysis (LDA), support vector machines
+(SVM), neural networks, subspace analysis, ensem-
+ble classiﬁers, slow feature analysis, kd-trees, and
+random forests have been investigated for traﬃc sign
+classiﬁcation [3]. This paper will examine two clas-
+siﬁcation algorithms- LDA and convolutional neural
+networks (CNNs). LDA was chosen as a benchmark
+algorithm, as it is fairly accurate and computationally
+inexpensive. CNNs give some of the highest accura-
+cies reported for TSR, but they are computationally
+intensive. A few groups have run CNNs on GPUs for
+image classiﬁcation with improved speeds [4, 5, 6].
+
+2.1 Dataset, Preprocessing, Hardware
+The LISA (Laboratory for Intelligent & Safe Automo-
+biles) Traﬃc Sign Dataset is a set of annotated images
+
+1
+
+Figure 1: Image from the LISA dataset (left) and the
+eight signs classiﬁed (right). The signs are: added
+lane, stop ahead, speed limit 25, speed limit 35, stop,
+pedestrian crossing, merge, and keep right.
+
+and videos containing traﬃc signs [7]. It is comprised
+of over 6,000 frames that contain over 7,000 signs of
+47 diﬀerent types. Sign dimensions vary from 6x6
+to 167x168, and are recorded from diﬀerent perspec-
+tives in grayscale and color. The wide variation in
+this dataset makes it ideal for realistic applications,
+but for the purposes of our classiﬁcation, images were
+each cropped to a square area including only the sign
+of interest. All images were converted to grayscale
+and scaled to 32x32 pixels.
+
+We focused on classifying the eight most common
+traﬃc signs in the dataset: pedestrian crossing, stop,
+signal ahead, added lane, keep right, merge, speed
+limit 25, and speed limit 35 signs (see Figure 1). We
+trained our algorithms on 200 images of each sign
+and then tested them on an additional 50 images,
+resulting in a training set size of 1600 images and a
+test set size of 400 images. Images that were taken in
+the same time sequence were grouped and then the
+groups were randomly divided into the training and
+test sets, thus preserving independence between the
+sets.
+
+An Intel i7-3770K processor and Nvidia GeForce
+GTX 780 GPU were used to run all of the algorithms.
+
+2.2 Histograms of Oriented Gradients
+
+Histograms of oriented gradients have been shown to
+be a good feature for classifying traﬃc signs, and are
+relatively fast to compute. The HOG descriptor uti-
+lizes the image’s edge orientations and distribution
+of intensity gradients in order to describe each im-
+age. The HOG features were calculated using the
+32x32 pixel raw images, with the cell size, block size,
+and block overlap tailored for performance. These
+HOG features, computed using MATLAB, served as
+the inputs into the LDA classiﬁer.
+
+2
+
+Figure 2: Structure of the CNN implemented [8]
+
+2.3 Linear Discriminant Analysis
+LDA is a common classiﬁcation technique. It models
+the class conditional probabilities using multivariate
+normal distributions and assumes the classes have a
+common covariance matrix. Ultimately, LDA train-
+ing solves for the directions that will represent the
+axis that maximize the separation between multiple
+classes. While simple, LDA often gives very good re-
+sults in traﬃc sign classiﬁcation, with accuracies of
+approximately 95% [3]. In this report, MATLAB was
+used to run the LDA on a CPU.
+
+2.4 Convolutional Neural Networks
+CNNs have achieved several state-of-the-art perfor-
+mances in traﬃc sign classiﬁcation.
+In the second
+stage of the German Traﬃc Sign Recognition Bench-
+mark (GTSRB) held at IJCNN 2011, two groups us-
+ing CNNs obtained classiﬁcation accuracies upwards
+of 98%, which is comparable to human accuracy [3].
+CNNs are composed of three diﬀerent types of layers:
+convolutional, subsampling, and fully-connected lay-
+ers. Figure 2 shows the structure of the CNN used
+in this paper. Raw grayscale images, scaled to 32x32
+pixels, were input into the CNN. Iterative training is
+done by feeding images forward through the network,
+and optimizing weights in the various layers through
+stochastic gradient descent.
+
+In this report, CNNs were implemented using
+Caﬀe, which is a publicly available deep learning
+framework created by Yangquing Jia at UC Berkeley
+[9]. Caﬀe supports several tools for accelerating CNN
+calculations, such as Nvidia’s CUDA parallel com-
+puting platform; it can be further accelerated with
+Nvidia’s cuDNN, a GPU-accelerated library devel-
+oped speciﬁcally for neural networks and deep learn-
+ing. Additionally, it is easy to switch between CPU
+and GPU calculations within Caﬀe, which suits the
+purpose of this paper.
+
+3 Results and Discussion
+Table 1 gives a summary of the speed and accuracy
+results for the LDA and CNN on CPU and GPU.
+
+Table 1: Comparing the speed and accuracy of LDA
+and CNN on CPU and GPU
+
+Both the LDA and CNN are highly accurate clas-
+siﬁers, achieving accuracies of 98.25% and 98.75% re-
+spectively. The LDA results are superior to the 92%-
+95% accuracies reported in literature, and the CNN
+has similar accuracy to what is reported in literature
+[3]. This could be due to diﬀerences in the training
+and test sets.
+
+In terms of training time, running LDA was 3.9x
+as fast as running the GPU CNN, and 60.2x as fast
+as running the CPU CNN. For testing time, the GPU
+CNN was the fastest, running 7.5x as fast as LDA and
+10.5x as fast as the GPU CNN. The 4 ms testing time
+using the GPU CNN is fast enough for real-time clas-
+siﬁcation. However, running a detection algorithm
+before the recognition algorithm, which is needed to
+solve the entire problem of traﬃc sign recognition,
+would take signiﬁcant time. The overall speed of the
+GPU CNN is due to the parallel processing capabil-
+ities of the GPU being well suited for the task of
+training and testing neural networks.
+
+To identify the types of mistakes the algorithms
+made, confusion matrices were analyzed. Since the
+optimized algorithms made few errors, the confusion
+matrices for the LDA and CNN shown in Figure 3
+are from less optimized versions that show interest-
+ing examples of errors. In the confusion matrix, the
+columns represent the predictions made by the model
+while the rows represent the true classiﬁcation of the
+image.
+
+For the LDA, there are two groups of signs that
+are commonly misclassiﬁed. There is a cluster of er-
+rors in the top left corner of the plot, which con-
+sists of the added lane, pedestrian crossing, signal
+ahead, and merge signs. These four signs all have the
+same diamond shape. The second cluster of errors lies
+on the bottom right corner of the confusion matrix.
+The LDA algorithm had diﬃculty classifying the two
+speed limit signs, which are extremely similar in both
+their shape and inner symbol.
+
+From these clusters of errors, we can see that sign
+shape is a fairly important aspect for LDA classiﬁers.
+The LDA algorithm separated the rectangular signs
+from the diamond signs accurately. There are also
+few errors associated with the stop sign, which has
+
+Figure 3: Confusion Matrices for LDA (top) and
+CNN (bottom)
+
+a unique shape. The diﬃculty of separating signs
+with similar shape is expected given the fact that we
+used HOG as a feature. HOG feature are descrip-
+tors that give a distribution of edge directions, so it
+makes sense that HOG features contain information
+about sign shape but possibly miss other types of in-
+formation that would help diﬀerentiate between signs
+of the same shape.
+
+The confusion matrix for the CNN shows some
+of the same misclassiﬁcation tendencies as the LDA
+model. Again, the most common errors are with
+the two types of speed limit signs and the diamond-
+shaped signs. Overall, misclassifying speed limit signs
+accounts for 60% of the misclassiﬁcation error in the
+LDA and CNN algorithms. The majority of the
+remaining error comes from the misclassiﬁcation of
+diamond-shaped signs.
+
+Figure 4 shows a few examples of signs that are
+diﬃcult to classify. The leftmost image is only
+18x18 pixels and demonstrates the limited informa-
+tion sometimes available to the models. The LDA
+model classiﬁes this as a speed limit sign, but the
+CNN model, based on the same training data, is able
+to correctly classify it as a stop sign. The center
+and rightmost images show how poor lighting and
+obstructions can make classiﬁcation extremely diﬃ-
+cult. Similarly, in a blurred image (many of which are
+
+3
+
+Implementing Machine Learning Algorithms on GPUs
+
+for Real-Time Traﬃc Sign Classiﬁcation
+
+Dashiell Bodington, Eric Greenstein, and Matthew Hu
+
+Department of Electrical Engineering, Stanford University
+
+{dashb, ecgreens, matthu}@stanford.edu
+
+Abstract
+This paper investigates traﬃc sign classiﬁcation,
+which is an important problem to solve for au-
+tonomous driving. Linear discriminant analysis and
+convolutional neural networks achieved an accuracy
+of 98.25% and 98.75% respectively when classifying
+eight diﬀerent types of traﬃc signs. The CNN was
+implemented on a GPU for real-time traﬃc sign clas-
+siﬁcation: testing time for the CNN on a GPU was
+4 ms/image, which was 7.5x as fast as running LDA
+on a CPU and 60.2x as fast as running CNN on a
+CPU. Additionally, diﬀerent types of classiﬁcation er-
+rors and the eﬀects of adding a new sign to the dataset
+were explored.
+
+1 Introduction
+Traﬃc sign recognition (TSR) is a computer vision
+problem that has received signiﬁcant attention due
+to its relevance for autonomous driving, advanced
+driver assistance systems, and mobile mapping. The
+problem is split into two components: detection and
+classiﬁcation. Road signs are designed to be easily
+identiﬁed by human drivers and diﬀer based on their
+shape, color, icons, and text. However, traﬃc sign
+classiﬁcation is made diﬃcult for computers by vary-
+ing illumination and weather conditions, occlusions,
+and subsets of signs that are similar to each other.
+
+Many researchers have focused on improving the
+accuracy of sign detection and recognition, but less
+work has focused on improving processing time
+through diﬀerent hardware implementations. This
+paper will demonstrate how machine learning algo-
+rithms in multi-core GPU architecture can reduce
+computing time compared to CPU methods to enable
+
+real-time traﬃc sign classiﬁcation at typical video
+frame rates of 30 frames per second.
+
+In this paper the impact of computer architecture
+(CPU vs. GPU), algorithm, and training set size on
+the accuracy and speed of traﬃc sign classiﬁcation
+will be explored. First, we will discuss the meth-
+ods we used, namely the dataset, features, and al-
+gorithms, as well as give a brief background of the
+present research. Results and discussion will follow
+the methods section. Finally, a conclusion and vision
+for future work will be presented.
+
+2 Methods
+In literature, many diﬀerent features and machine
+learning algorithms are proposed for traﬃc sign clas-
+siﬁcation.
+Some commonly used features include
+histograms of oriented gradients (HOG), Haar-like
+features, and color histograms [1, 2]. Linear dis-
+criminant analysis (LDA), support vector machines
+(SVM), neural networks, subspace analysis, ensem-
+ble classiﬁers, slow feature analysis, kd-trees, and
+random forests have been investigated for traﬃc sign
+classiﬁcation [3]. This paper will examine two clas-
+siﬁcation algorithms- LDA and convolutional neural
+networks (CNNs). LDA was chosen as a benchmark
+algorithm, as it is fairly accurate and computationally
+inexpensive. CNNs give some of the highest accura-
+cies reported for TSR, but they are computationally
+intensive. A few groups have run CNNs on GPUs for
+image classiﬁcation with improved speeds [4, 5, 6].
+
+2.1 Dataset, Preprocessing, Hardware
+The LISA (Laboratory for Intelligent & Safe Automo-
+biles) Traﬃc Sign Dataset is a set of annotated images
+
+1
+
+Figure 1: Image from the LISA dataset (left) and the
+eight signs classiﬁed (right). The signs are: added
+lane, stop ahead, speed limit 25, speed limit 35, stop,
+pedestrian crossing, merge, and keep right.
+
+and videos containing traﬃc signs [7]. It is comprised
+of over 6,000 frames that contain over 7,000 signs of
+47 diﬀerent types. Sign dimensions vary from 6x6
+to 167x168, and are recorded from diﬀerent perspec-
+tives in grayscale and color. The wide variation in
+this dataset makes it ideal for realistic applications,
+but for the purposes of our classiﬁcation, images were
+each cropped to a square area including only the sign
+of interest. All images were converted to grayscale
+and scaled to 32x32 pixels.
+
+We focused on classifying the eight most common
+traﬃc signs in the dataset: pedestrian crossing, stop,
+signal ahead, added lane, keep right, merge, speed
+limit 25, and speed limit 35 signs (see Figure 1). We
+trained our algorithms on 200 images of each sign
+and then tested them on an additional 50 images,
+resulting in a training set size of 1600 images and a
+test set size of 400 images. Images that were taken in
+the same time sequence were grouped and then the
+groups were randomly divided into the training and
+test sets, thus preserving independence between the
+sets.
+
+An Intel i7-3770K processor and Nvidia GeForce
+GTX 780 GPU were used to run all of the algorithms.
+
+2.2 Histograms of Oriented Gradients
+
+Histograms of oriented gradients have been shown to
+be a good feature for classifying traﬃc signs, and are
+relatively fast to compute. The HOG descriptor uti-
+lizes the image’s edge orientations and distribution
+of intensity gradients in order to describe each im-
+age. The HOG features were calculated using the
+32x32 pixel raw images, with the cell size, block size,
+and block overlap tailored for performance. These
+HOG features, computed using MATLAB, served as
+the inputs into the LDA classiﬁer.
+
+2
+
+Figure 2: Structure of the CNN implemented [8]
+
+2.3 Linear Discriminant Analysis
+LDA is a common classiﬁcation technique. It models
+the class conditional probabilities using multivariate
+normal distributions and assumes the classes have a
+common covariance matrix. Ultimately, LDA train-
+ing solves for the directions that will represent the
+axis that maximize the separation between multiple
+classes. While simple, LDA often gives very good re-
+sults in traﬃc sign classiﬁcation, with accuracies of
+approximately 95% [3]. In this report, MATLAB was
+used to run the LDA on a CPU.
+
+2.4 Convolutional Neural Networks
+CNNs have achieved several state-of-the-art perfor-
+mances in traﬃc sign classiﬁcation.
+In the second
+stage of the German Traﬃc Sign Recognition Bench-
+mark (GTSRB) held at IJCNN 2011, two groups us-
+ing CNNs obtained classiﬁcation accuracies upwards
+of 98%, which is comparable to human accuracy [3].
+CNNs are composed of three diﬀerent types of layers:
+convolutional, subsampling, and fully-connected lay-
+ers. Figure 2 shows the structure of the CNN used
+in this paper. Raw grayscale images, scaled to 32x32
+pixels, were input into the CNN. Iterative training is
+done by feeding images forward through the network,
+and optimizing weights in the various layers through
+stochastic gradient descent.
+
+In this report, CNNs were implemented using
+Caﬀe, which is a publicly available deep learning
+framework created by Yangquing Jia at UC Berkeley
+[9]. Caﬀe supports several tools for accelerating CNN
+calculations, such as Nvidia’s CUDA parallel com-
+puting platform; it can be further accelerated with
+Nvidia’s cuDNN, a GPU-accelerated library devel-
+oped speciﬁcally for neural networks and deep learn-
+ing. Additionally, it is easy to switch between CPU
+and GPU calculations within Caﬀe, which suits the
+purpose of this paper.
+
+3 Results and Discussion
+Table 1 gives a summary of the speed and accuracy
+results for the LDA and CNN on CPU and GPU.
+
+Table 1: Comparing the speed and accuracy of LDA
+and CNN on CPU and GPU
+
+Both the LDA and CNN are highly accurate clas-
+siﬁers, achieving accuracies of 98.25% and 98.75% re-
+spectively. The LDA results are superior to the 92%-
+95% accuracies reported in literature, and the CNN
+has similar accuracy to what is reported in literature
+[3]. This could be due to diﬀerences in the training
+and test sets.
+
+In terms of training time, running LDA was 3.9x
+as fast as running the GPU CNN, and 60.2x as fast
+as running the CPU CNN. For testing time, the GPU
+CNN was the fastest, running 7.5x as fast as LDA and
+10.5x as fast as the GPU CNN. The 4 ms testing time
+using the GPU CNN is fast enough for real-time clas-
+siﬁcation. However, running a detection algorithm
+before the recognition algorithm, which is needed to
+solve the entire problem of traﬃc sign recognition,
+would take signiﬁcant time. The overall speed of the
+GPU CNN is due to the parallel processing capabil-
+ities of the GPU being well suited for the task of
+training and testing neural networks.
+
+To identify the types of mistakes the algorithms
+made, confusion matrices were analyzed. Since the
+optimized algorithms made few errors, the confusion
+matrices for the LDA and CNN shown in Figure 3
+are from less optimized versions that show interest-
+ing examples of errors. In the confusion matrix, the
+columns represent the predictions made by the model
+while the rows represent the true classiﬁcation of the
+image.
+
+For the LDA, there are two groups of signs that
+are commonly misclassiﬁed. There is a cluster of er-
+rors in the top left corner of the plot, which con-
+sists of the added lane, pedestrian crossing, signal
+ahead, and merge signs. These four signs all have the
+same diamond shape. The second cluster of errors lies
+on the bottom right corner of the confusion matrix.
+The LDA algorithm had diﬃculty classifying the two
+speed limit signs, which are extremely similar in both
+their shape and inner symbol.
+
+From these clusters of errors, we can see that sign
+shape is a fairly important aspect for LDA classiﬁers.
+The LDA algorithm separated the rectangular signs
+from the diamond signs accurately. There are also
+few errors associated with the stop sign, which has
+
+Figure 3: Confusion Matrices for LDA (top) and
+CNN (bottom)
+
+a unique shape. The diﬃculty of separating signs
+with similar shape is expected given the fact that we
+used HOG as a feature. HOG feature are descrip-
+tors that give a distribution of edge directions, so it
+makes sense that HOG features contain information
+about sign shape but possibly miss other types of in-
+formation that would help diﬀerentiate between signs
+of the same shape.
+
+The confusion matrix for the CNN shows some
+of the same misclassiﬁcation tendencies as the LDA
+model. Again, the most common errors are with
+the two types of speed limit signs and the diamond-
+shaped signs. Overall, misclassifying speed limit signs
+accounts for 60% of the misclassiﬁcation error in the
+LDA and CNN algorithms. The majority of the
+remaining error comes from the misclassiﬁcation of
+diamond-shaped signs.
+
+Figure 4 shows a few examples of signs that are
+diﬃcult to classify. The leftmost image is only
+18x18 pixels and demonstrates the limited informa-
+tion sometimes available to the models. The LDA
+model classiﬁes this as a speed limit sign, but the
+CNN model, based on the same training data, is able
+to correctly classify it as a stop sign. The center
+and rightmost images show how poor lighting and
+obstructions can make classiﬁcation extremely diﬃ-
+cult. Similarly, in a blurred image (many of which are
+
+3
+
+Figure 4: Example of misclassiﬁed signs due to
+small size (left), poor lighting (center), and occlu-
+sions (right)
+
+Figure 5: Accuracy vs. New Sign Training Set Size
+
+contained in our dataset), it is easy to imagine how
+a merge and added lane sign or a pedestrian crossing
+sign might be confused given their shapes and similar
+content.
+
+Some of these misclassiﬁcation errors can be solved
+using the sequence of images that would be obtained
+while driving.
+In a typical driving scenario, a sign
+will start small in the ﬁeld of view of the recording
+device and may not be classiﬁed accurately, but as the
+image grows closer, the amount of information avail-
+able increases and the classiﬁcation accuracy should
+be higher. Our analysis conﬁrms the expectation that
+larger size images are better classiﬁed. The median
+side dimension of our test set of sign images is 34 pix-
+els, but for images that are misclassiﬁed, the median
+image side dimension is 26 pixels. This amounts to
+41% less information considering the total number of
+pixels per image. Additionally, lighting, obstructions,
+and blur may be present in some images of a speciﬁc
+sign but not others.
+
+While the LDA and CNN sometimes misclassiﬁed
+the same image, there are examples for both cases
+where the LDA or CNN outperform one another.
+This can be due to the properties of the algorithm or
+because of the optimality of the training set. There
+is a very strong dependence of the models’ accuracy
+on the similarity between the training and testing
+datasets, and the size and diversity of the training
+dataset.
+
+Next, we explored how adding a new sign to the
+
+dataset aﬀected classiﬁcation accuracy. We added
+images of the turn right sign to our test dataset and
+measured the accuracy of our new classiﬁer relative
+to the size of the training set of the new sign. The
+goal of this test was to determine how well our algo-
+rithms would perform with a small training set and
+determine a rough threshold for the number of images
+required to adequately retrain our classiﬁer. Addi-
+tionally, we were interested in how a new sign aﬀected
+the classiﬁcation of the other signs.
+
+For this experiment, we created a training set rang-
+ing from 1 to 40 images and a test set of 50 images of
+the new sign. We added the new sign datasets onto
+the original training and test sets and then reran the
+two algorithms. Figure 5 plots the accuracy vs. new
+sign training set size for both the LDA and CNN.
+
+From ﬁgure 5, we can see that both the LDA and
+CNN learn to classify the new sign fairly quickly.
+Within 10 images, both algorithms were able to cor-
+rectly classify over 90% of the new test images. By
+the time we reached 25 training examples, we were
+able to consistently achieve over 95% accuracy for
+both algorithms on the new sign. This shows that
+adding a new sign to an existing classiﬁer does not
+take a signiﬁcant number of training examples to
+achieve high accuracy.
+
+We also discovered that adding a new sign did not
+signiﬁcantly aﬀect the accuracy of the classiﬁers on
+the original testing set. The CNN received zero ad-
+ditional errors and the LDA classiﬁer received less
+than 1% additional error on the original test set im-
+ages when adding images of a new sign to the training
+and test sets. These values remained fairly constant
+as we continued to increase the size of the new sign
+training set.
+
+In terms of application, this result is useful. A
+fully trained classiﬁer can learn a new sign and begin
+achieving high accuracy on it fairly quickly. Addi-
+tionally, we can be conﬁdent that adding the new
+sign will minimally aﬀect the accuracy of the rest of
+the signs. These results would be applicable if a new
+traﬃc sign is introduced to a city, for example. It is
+also impressive considering that the right hand turn
+sign added is another diamond-shaped sign, which
+caused numerous errors in the LDA and CNN algo-
+rithms previously.
+
+4 Conclusion
+Overall, this project provided interesting insight into
+the problem of traﬃc sign recognition, and our clas-
+siﬁcation algorithms performed well. Though the
+classiﬁers were applied to a smaller dataset with
+
+4
+
+Implementing Machine Learning Algorithms on GPUs
+
+for Real-Time Traﬃc Sign Classiﬁcation
+
+Dashiell Bodington, Eric Greenstein, and Matthew Hu
+
+Department of Electrical Engineering, Stanford University
+
+{dashb, ecgreens, matthu}@stanford.edu
+
+Abstract
+This paper investigates traﬃc sign classiﬁcation,
+which is an important problem to solve for au-
+tonomous driving. Linear discriminant analysis and
+convolutional neural networks achieved an accuracy
+of 98.25% and 98.75% respectively when classifying
+eight diﬀerent types of traﬃc signs. The CNN was
+implemented on a GPU for real-time traﬃc sign clas-
+siﬁcation: testing time for the CNN on a GPU was
+4 ms/image, which was 7.5x as fast as running LDA
+on a CPU and 60.2x as fast as running CNN on a
+CPU. Additionally, diﬀerent types of classiﬁcation er-
+rors and the eﬀects of adding a new sign to the dataset
+were explored.
+
+1 Introduction
+Traﬃc sign recognition (TSR) is a computer vision
+problem that has received signiﬁcant attention due
+to its relevance for autonomous driving, advanced
+driver assistance systems, and mobile mapping. The
+problem is split into two components: detection and
+classiﬁcation. Road signs are designed to be easily
+identiﬁed by human drivers and diﬀer based on their
+shape, color, icons, and text. However, traﬃc sign
+classiﬁcation is made diﬃcult for computers by vary-
+ing illumination and weather conditions, occlusions,
+and subsets of signs that are similar to each other.
+
+Many researchers have focused on improving the
+accuracy of sign detection and recognition, but less
+work has focused on improving processing time
+through diﬀerent hardware implementations. This
+paper will demonstrate how machine learning algo-
+rithms in multi-core GPU architecture can reduce
+computing time compared to CPU methods to enable
+
+real-time traﬃc sign classiﬁcation at typical video
+frame rates of 30 frames per second.
+
+In this paper the impact of computer architecture
+(CPU vs. GPU), algorithm, and training set size on
+the accuracy and speed of traﬃc sign classiﬁcation
+will be explored. First, we will discuss the meth-
+ods we used, namely the dataset, features, and al-
+gorithms, as well as give a brief background of the
+present research. Results and discussion will follow
+the methods section. Finally, a conclusion and vision
+for future work will be presented.
+
+2 Methods
+In literature, many diﬀerent features and machine
+learning algorithms are proposed for traﬃc sign clas-
+siﬁcation.
+Some commonly used features include
+histograms of oriented gradients (HOG), Haar-like
+features, and color histograms [1, 2]. Linear dis-
+criminant analysis (LDA), support vector machines
+(SVM), neural networks, subspace analysis, ensem-
+ble classiﬁers, slow feature analysis, kd-trees, and
+random forests have been investigated for traﬃc sign
+classiﬁcation [3]. This paper will examine two clas-
+siﬁcation algorithms- LDA and convolutional neural
+networks (CNNs). LDA was chosen as a benchmark
+algorithm, as it is fairly accurate and computationally
+inexpensive. CNNs give some of the highest accura-
+cies reported for TSR, but they are computationally
+intensive. A few groups have run CNNs on GPUs for
+image classiﬁcation with improved speeds [4, 5, 6].
+
+2.1 Dataset, Preprocessing, Hardware
+The LISA (Laboratory for Intelligent & Safe Automo-
+biles) Traﬃc Sign Dataset is a set of annotated images
+
+1
+
+Figure 1: Image from the LISA dataset (left) and the
+eight signs classiﬁed (right). The signs are: added
+lane, stop ahead, speed limit 25, speed limit 35, stop,
+pedestrian crossing, merge, and keep right.
+
+and videos containing traﬃc signs [7]. It is comprised
+of over 6,000 frames that contain over 7,000 signs of
+47 diﬀerent types. Sign dimensions vary from 6x6
+to 167x168, and are recorded from diﬀerent perspec-
+tives in grayscale and color. The wide variation in
+this dataset makes it ideal for realistic applications,
+but for the purposes of our classiﬁcation, images were
+each cropped to a square area including only the sign
+of interest. All images were converted to grayscale
+and scaled to 32x32 pixels.
+
+We focused on classifying the eight most common
+traﬃc signs in the dataset: pedestrian crossing, stop,
+signal ahead, added lane, keep right, merge, speed
+limit 25, and speed limit 35 signs (see Figure 1). We
+trained our algorithms on 200 images of each sign
+and then tested them on an additional 50 images,
+resulting in a training set size of 1600 images and a
+test set size of 400 images. Images that were taken in
+the same time sequence were grouped and then the
+groups were randomly divided into the training and
+test sets, thus preserving independence between the
+sets.
+
+An Intel i7-3770K processor and Nvidia GeForce
+GTX 780 GPU were used to run all of the algorithms.
+
+2.2 Histograms of Oriented Gradients
+
+Histograms of oriented gradients have been shown to
+be a good feature for classifying traﬃc signs, and are
+relatively fast to compute. The HOG descriptor uti-
+lizes the image’s edge orientations and distribution
+of intensity gradients in order to describe each im-
+age. The HOG features were calculated using the
+32x32 pixel raw images, with the cell size, block size,
+and block overlap tailored for performance. These
+HOG features, computed using MATLAB, served as
+the inputs into the LDA classiﬁer.
+
+2
+
+Figure 2: Structure of the CNN implemented [8]
+
+2.3 Linear Discriminant Analysis
+LDA is a common classiﬁcation technique. It models
+the class conditional probabilities using multivariate
+normal distributions and assumes the classes have a
+common covariance matrix. Ultimately, LDA train-
+ing solves for the directions that will represent the
+axis that maximize the separation between multiple
+classes. While simple, LDA often gives very good re-
+sults in traﬃc sign classiﬁcation, with accuracies of
+approximately 95% [3]. In this report, MATLAB was
+used to run the LDA on a CPU.
+
+2.4 Convolutional Neural Networks
+CNNs have achieved several state-of-the-art perfor-
+mances in traﬃc sign classiﬁcation.
+In the second
+stage of the German Traﬃc Sign Recognition Bench-
+mark (GTSRB) held at IJCNN 2011, two groups us-
+ing CNNs obtained classiﬁcation accuracies upwards
+of 98%, which is comparable to human accuracy [3].
+CNNs are composed of three diﬀerent types of layers:
+convolutional, subsampling, and fully-connected lay-
+ers. Figure 2 shows the structure of the CNN used
+in this paper. Raw grayscale images, scaled to 32x32
+pixels, were input into the CNN. Iterative training is
+done by feeding images forward through the network,
+and optimizing weights in the various layers through
+stochastic gradient descent.
+
+In this report, CNNs were implemented using
+Caﬀe, which is a publicly available deep learning
+framework created by Yangquing Jia at UC Berkeley
+[9]. Caﬀe supports several tools for accelerating CNN
+calculations, such as Nvidia’s CUDA parallel com-
+puting platform; it can be further accelerated with
+Nvidia’s cuDNN, a GPU-accelerated library devel-
+oped speciﬁcally for neural networks and deep learn-
+ing. Additionally, it is easy to switch between CPU
+and GPU calculations within Caﬀe, which suits the
+purpose of this paper.
+
+3 Results and Discussion
+Table 1 gives a summary of the speed and accuracy
+results for the LDA and CNN on CPU and GPU.
+
+Table 1: Comparing the speed and accuracy of LDA
+and CNN on CPU and GPU
+
+Both the LDA and CNN are highly accurate clas-
+siﬁers, achieving accuracies of 98.25% and 98.75% re-
+spectively. The LDA results are superior to the 92%-
+95% accuracies reported in literature, and the CNN
+has similar accuracy to what is reported in literature
+[3]. This could be due to diﬀerences in the training
+and test sets.
+
+In terms of training time, running LDA was 3.9x
+as fast as running the GPU CNN, and 60.2x as fast
+as running the CPU CNN. For testing time, the GPU
+CNN was the fastest, running 7.5x as fast as LDA and
+10.5x as fast as the GPU CNN. The 4 ms testing time
+using the GPU CNN is fast enough for real-time clas-
+siﬁcation. However, running a detection algorithm
+before the recognition algorithm, which is needed to
+solve the entire problem of traﬃc sign recognition,
+would take signiﬁcant time. The overall speed of the
+GPU CNN is due to the parallel processing capabil-
+ities of the GPU being well suited for the task of
+training and testing neural networks.
+
+To identify the types of mistakes the algorithms
+made, confusion matrices were analyzed. Since the
+optimized algorithms made few errors, the confusion
+matrices for the LDA and CNN shown in Figure 3
+are from less optimized versions that show interest-
+ing examples of errors. In the confusion matrix, the
+columns represent the predictions made by the model
+while the rows represent the true classiﬁcation of the
+image.
+
+For the LDA, there are two groups of signs that
+are commonly misclassiﬁed. There is a cluster of er-
+rors in the top left corner of the plot, which con-
+sists of the added lane, pedestrian crossing, signal
+ahead, and merge signs. These four signs all have the
+same diamond shape. The second cluster of errors lies
+on the bottom right corner of the confusion matrix.
+The LDA algorithm had diﬃculty classifying the two
+speed limit signs, which are extremely similar in both
+their shape and inner symbol.
+
+From these clusters of errors, we can see that sign
+shape is a fairly important aspect for LDA classiﬁers.
+The LDA algorithm separated the rectangular signs
+from the diamond signs accurately. There are also
+few errors associated with the stop sign, which has
+
+Figure 3: Confusion Matrices for LDA (top) and
+CNN (bottom)
+
+a unique shape. The diﬃculty of separating signs
+with similar shape is expected given the fact that we
+used HOG as a feature. HOG feature are descrip-
+tors that give a distribution of edge directions, so it
+makes sense that HOG features contain information
+about sign shape but possibly miss other types of in-
+formation that would help diﬀerentiate between signs
+of the same shape.
+
+The confusion matrix for the CNN shows some
+of the same misclassiﬁcation tendencies as the LDA
+model. Again, the most common errors are with
+the two types of speed limit signs and the diamond-
+shaped signs. Overall, misclassifying speed limit signs
+accounts for 60% of the misclassiﬁcation error in the
+LDA and CNN algorithms. The majority of the
+remaining error comes from the misclassiﬁcation of
+diamond-shaped signs.
+
+Figure 4 shows a few examples of signs that are
+diﬃcult to classify. The leftmost image is only
+18x18 pixels and demonstrates the limited informa-
+tion sometimes available to the models. The LDA
+model classiﬁes this as a speed limit sign, but the
+CNN model, based on the same training data, is able
+to correctly classify it as a stop sign. The center
+and rightmost images show how poor lighting and
+obstructions can make classiﬁcation extremely diﬃ-
+cult. Similarly, in a blurred image (many of which are
+
+3
+
+Figure 4: Example of misclassiﬁed signs due to
+small size (left), poor lighting (center), and occlu-
+sions (right)
+
+Figure 5: Accuracy vs. New Sign Training Set Size
+
+contained in our dataset), it is easy to imagine how
+a merge and added lane sign or a pedestrian crossing
+sign might be confused given their shapes and similar
+content.
+
+Some of these misclassiﬁcation errors can be solved
+using the sequence of images that would be obtained
+while driving.
+In a typical driving scenario, a sign
+will start small in the ﬁeld of view of the recording
+device and may not be classiﬁed accurately, but as the
+image grows closer, the amount of information avail-
+able increases and the classiﬁcation accuracy should
+be higher. Our analysis conﬁrms the expectation that
+larger size images are better classiﬁed. The median
+side dimension of our test set of sign images is 34 pix-
+els, but for images that are misclassiﬁed, the median
+image side dimension is 26 pixels. This amounts to
+41% less information considering the total number of
+pixels per image. Additionally, lighting, obstructions,
+and blur may be present in some images of a speciﬁc
+sign but not others.
+
+While the LDA and CNN sometimes misclassiﬁed
+the same image, there are examples for both cases
+where the LDA or CNN outperform one another.
+This can be due to the properties of the algorithm or
+because of the optimality of the training set. There
+is a very strong dependence of the models’ accuracy
+on the similarity between the training and testing
+datasets, and the size and diversity of the training
+dataset.
+
+Next, we explored how adding a new sign to the
+
+dataset aﬀected classiﬁcation accuracy. We added
+images of the turn right sign to our test dataset and
+measured the accuracy of our new classiﬁer relative
+to the size of the training set of the new sign. The
+goal of this test was to determine how well our algo-
+rithms would perform with a small training set and
+determine a rough threshold for the number of images
+required to adequately retrain our classiﬁer. Addi-
+tionally, we were interested in how a new sign aﬀected
+the classiﬁcation of the other signs.
+
+For this experiment, we created a training set rang-
+ing from 1 to 40 images and a test set of 50 images of
+the new sign. We added the new sign datasets onto
+the original training and test sets and then reran the
+two algorithms. Figure 5 plots the accuracy vs. new
+sign training set size for both the LDA and CNN.
+
+From ﬁgure 5, we can see that both the LDA and
+CNN learn to classify the new sign fairly quickly.
+Within 10 images, both algorithms were able to cor-
+rectly classify over 90% of the new test images. By
+the time we reached 25 training examples, we were
+able to consistently achieve over 95% accuracy for
+both algorithms on the new sign. This shows that
+adding a new sign to an existing classiﬁer does not
+take a signiﬁcant number of training examples to
+achieve high accuracy.
+
+We also discovered that adding a new sign did not
+signiﬁcantly aﬀect the accuracy of the classiﬁers on
+the original testing set. The CNN received zero ad-
+ditional errors and the LDA classiﬁer received less
+than 1% additional error on the original test set im-
+ages when adding images of a new sign to the training
+and test sets. These values remained fairly constant
+as we continued to increase the size of the new sign
+training set.
+
+In terms of application, this result is useful. A
+fully trained classiﬁer can learn a new sign and begin
+achieving high accuracy on it fairly quickly. Addi-
+tionally, we can be conﬁdent that adding the new
+sign will minimally aﬀect the accuracy of the rest of
+the signs. These results would be applicable if a new
+traﬃc sign is introduced to a city, for example. It is
+also impressive considering that the right hand turn
+sign added is another diamond-shaped sign, which
+caused numerous errors in the LDA and CNN algo-
+rithms previously.
+
+4 Conclusion
+Overall, this project provided interesting insight into
+the problem of traﬃc sign recognition, and our clas-
+siﬁcation algorithms performed well. Though the
+classiﬁers were applied to a smaller dataset with
+
+4
+
+Temporal and movement information can also be
+useful in tracking signs across the recorded ﬁeld so
+that multiple samples of the same sign can be cap-
+tured to decrease noise and uncertainty.
+
+Detection, which is the isolation of a traﬃc sign in a
+scene, must be done to solve the full problem of traﬃc
+sign recognition, but it also complicates the process
+signiﬁcantly. We attempted to implement this, but
+were unable to do this given time constraints. One
+common practice is to use regional analysis to esti-
+mate which portions of an image may contain a traﬃc
+sign, and then to classify these areas using a classiﬁer.
+
+Acknowledgement
+We would like to thank Milad Mohammadi for his
+guidance on the project.
+
+References
+
+[1] Dalal, N., and Triggs, B. "Histograms of oriented gradients
+for human detection." Computer Vision and Pattern Recog-
+nition, 2005. CVPR 2005. IEEE Computer Society Confer-
+ence on. Vol. 1. IEEE, 2005.
+
+[2] Viola, P., and Jones, M. "Robust real-time face detection."
+International journal of computer vision 57.2 (2004): 137-
+154.
+
+[3] Stallkamp, J., et al. "Man vs. computer: Benchmarking ma-
+chine learning algorithms for traﬃc sign recognition." Neural
+networks 32 (2012): 323-332.
+
+[4] Ciresan, D., et al. "A committee of neural networks for traf-
+ﬁc sign classiﬁcation." Neural Networks (IJCNN), The 2011
+International Joint Conference on. IEEE, 2011.
+
+[5] Mussi, L., Cagnoni, S., and Daolio, F. "GPU-based road
+sign detection using particle swarm optimization." Intelli-
+gent Systems Design and Applications, 2009. ISDA’09. Ninth
+International Conference on. IEEE, 2009.
+
+[6] Oh, K., and Jung, K. "GPU implementation of neural net-
+
+works." Pattern Recognition 37.6 (2004): 1311-1314.
+
+[7] Møgelmose, A., et al. "Vision based Traﬃc Sign Detec-
+tion and Analysis for Intelligent Driver Assistance Systems:
+Perspectives and Survey," IEEE Transactions on Intelligent
+Transportation Systems, 2012.
+
+[8] Lisa
+
+Neural
+
+Networks.”
+
+Lab.
+
+“Convolutional
+
+http://deeplearning.net/tutorial/lenet.html, 2014.
+
+[9] Jia, Y. et al. “Caﬀe: Convolutional Architecture for Fast
+Feature Embedding.” http://caﬀe.berkeleyvision.org/, 2013.
+
+fewer signs, both LDA and CNN classiﬁers performed
+nearly as well as other researchers’ results, having ac-
+curacies of 98.25% and 98.75% respectively.
+
+Not surprisingly, the CPU implementation of CNN
+classiﬁcation was the slowest, and CNN training was
+the most time consuming process of either method.
+Running the GPU implementation of our CNN, how-
+ever, was signiﬁcantly faster than either CPU meth-
+ods. This demonstrates the usefulness of large par-
+allel computing for classiﬁcation and reveals the
+CPU/GPU speedup we can expect, even on less
+powerful devices. The GPU CNN testing time of
+4ms/image is fast enough to be applied to a real-time
+video feed.
+
+Though each classiﬁcation method makes some er-
+rors, these errors follow predictable trends and are
+highly dependent on the training of the algorithms.
+It is most common for the classiﬁers to misclassify
+within common sign shapes, such as diﬀerent speed
+limit signs and diﬀerent diamond shaped signs. This
+is expected, especially given small pixel dimensions,
+blurry images, diﬃcult lighting conditions, and oc-
+clusions.
+
+When the training data is representative of the
+testing conditions however, both models can achieve
+accurate classiﬁcation on a small number of samples.
+Adding the turn right sign to the established 8-sign
+classiﬁer showed that even with a small training set
+for the new sign, the classiﬁers were able to accurately
+classify it. Furthermore, the classiﬁer did not make
+many additional errors on the original sign types.
+
+With all the challenges of dealing with a small
+dataset and small, blurry, and occluded images, the
+accuracy and speed achieved by both algorithms is
+impressive. These classiﬁcation results oﬀer insight
+into successful traﬃc sign recognition, and are a sig-
+niﬁcant step towards complete recognition when ap-
+plied in conjunction with detection methods.
+
+5 Future Work
+Without changing the models we use, performance
+could be improved by improving the robustness of
+our training dataset. This can be done by simply ob-
+taining more images of the same types of signs, or
+by manipulating the current dataset. Other research
+groups have shown improved performance by includ-
+ing translated, scaled, or rotated variations of images
+in their training dataset.
+
+Higher accuracy may also be possible with further
+optimization of the networks. Adding layers to the
+CNN of diﬀerent types and connections, or adding
+features to the LDA model may increase accuracy.
+
+5
+
+

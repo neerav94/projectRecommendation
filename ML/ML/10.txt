@@ -1,0 +1,2657 @@
+Deep Reinforcement Learning for
+
+Flappy Bird
+
+Kevin Chen
+
+Abstract—Reinforcement learning is essential for appli-
+cations where there is no single correct way to solve a
+problem. In this project, we show that deep reinforcement
+learning is very effective at learning how to play the game
+Flappy Bird, despite the high-dimensional sensory input.
+The agent is not given information about what the bird
+or pipes look like - it must learn these representations
+and directly use the input and score to develop an optimal
+strategy. Our agent uses a convolutional neural network to
+evaluate the Q-function for a variant of Q-learning, and
+we show that it is able to achieve super-human perfor-
+mance. Furthermore, we discuss difﬁculties and potential
+improvements with deep reinforcement learning.
+
+I. INTRODUCTION
+
+Reinforcement learning is useful when we need an
+agent to perform a task, but there is no single “correct”
+way of completing it. For example, how would one
+program a robot to travel from one place to another
+and bring back food? It would be unrealistic to program
+every move and step that it must take. Instead, it should
+learn to make decisions under uncertainty and with very
+high dimensional input (such as a camera) in order to
+reach the end goal. This project focuses on a ﬁrst step
+in realizing this.
+
+The goal of the project is to learn a policy to have an
+agent successfully play the game Flappy Bird. Flappy
+Bird is a game in which the player tries to keep the bird
+alive for as long as possible. The bird automatically falls
+towards the ground by due to gravity, and if it hits the
+ground, it dies and the game ends. The bird must also
+navigate through pipes. The pipes restrict the height of
+the bird to be within a certain speciﬁc range as the bird
+passes through them. If the bird is too high or too low,
+it will crash into the pipe and die. Therefore, the player
+must time ﬂaps/jumps properly to keep the bird alive
+as it passes through these obstacles. The game score is
+measured by how many obstacles the bird successfully
+passes through. Therefore, to get a high score, the player
+must keep the bird alive for as long as possible as it
+encounters the pipes.
+
+Training an agent to successfully play the game is
+especially challenging because our goal is to provide
+the agent with only pixel information and the score.
+The agent is not provided with information regarding
+what the bird looks like, what the pipes look like, or
+where the bird and pipes are. Instead, it must learn these
+representations and interactions and be able to generalize
+due to the very large state space.
+
+Fig. 1: Three screenshots of the game Flappy Bird at
+three different difﬁculties (easy, medium, hard) respec-
+tively.
+
+II. RELATED WORK
+
+The related work in this area is primarily by Google
+Deepmind. Mnih et al. are able to successfully train
+agents to play the Atari 2600 games using deep rein-
+forcement learning, surpassing human expert-level on
+multiple games [1],
+[2]. These works inspired this
+project, which is heavily modeled after their approach.
+They use a deep Q-network (DQN) to evaluate the Q-
+function for Q-learning and also use experience replay
+to de-correlate experiences. Their approach is essentially
+state-of-the-art and was the main catalyst for deep re-
+inforcement learning, after which many papers tried to
+make improvements. The main strength is that they were
+able to train an agent despite extremely high dimensional
+input (pixels) and no speciﬁcation about intrinsic game
+parameters. In fact, they are able to outperform a human
+expert on three out of seven Atari 2600 games. However,
+further improvements involve prioritizing experience re-
+play, more efﬁcient training, and better stability when
+training. [2] tried to address the stability issues by
+clipping the loss to +1 or −1, and by updating the target
+network once in every C updates to the DQN rather than
+updating the target network every iteration.
+
+III. METHOD
+
+In this section, we describe how the model is param-
+
+eterized and the general algorithm.
+
+A. MDP Formulation
+
+The actions that the agent can take are to ﬂap (a = 1)
+or to do nothing and let the bird drop (a = 0). The state
+is represented by a sequence of frames from the Flappy
+Bird game as well as the recent actions that the player
+took. Speciﬁcally, the state is the sequence shown in
+
+1
+
+Deep Reinforcement Learning for
+
+Flappy Bird
+
+Kevin Chen
+
+Abstract—Reinforcement learning is essential for appli-
+cations where there is no single correct way to solve a
+problem. In this project, we show that deep reinforcement
+learning is very effective at learning how to play the game
+Flappy Bird, despite the high-dimensional sensory input.
+The agent is not given information about what the bird
+or pipes look like - it must learn these representations
+and directly use the input and score to develop an optimal
+strategy. Our agent uses a convolutional neural network to
+evaluate the Q-function for a variant of Q-learning, and
+we show that it is able to achieve super-human perfor-
+mance. Furthermore, we discuss difﬁculties and potential
+improvements with deep reinforcement learning.
+
+I. INTRODUCTION
+
+Reinforcement learning is useful when we need an
+agent to perform a task, but there is no single “correct”
+way of completing it. For example, how would one
+program a robot to travel from one place to another
+and bring back food? It would be unrealistic to program
+every move and step that it must take. Instead, it should
+learn to make decisions under uncertainty and with very
+high dimensional input (such as a camera) in order to
+reach the end goal. This project focuses on a ﬁrst step
+in realizing this.
+
+The goal of the project is to learn a policy to have an
+agent successfully play the game Flappy Bird. Flappy
+Bird is a game in which the player tries to keep the bird
+alive for as long as possible. The bird automatically falls
+towards the ground by due to gravity, and if it hits the
+ground, it dies and the game ends. The bird must also
+navigate through pipes. The pipes restrict the height of
+the bird to be within a certain speciﬁc range as the bird
+passes through them. If the bird is too high or too low,
+it will crash into the pipe and die. Therefore, the player
+must time ﬂaps/jumps properly to keep the bird alive
+as it passes through these obstacles. The game score is
+measured by how many obstacles the bird successfully
+passes through. Therefore, to get a high score, the player
+must keep the bird alive for as long as possible as it
+encounters the pipes.
+
+Training an agent to successfully play the game is
+especially challenging because our goal is to provide
+the agent with only pixel information and the score.
+The agent is not provided with information regarding
+what the bird looks like, what the pipes look like, or
+where the bird and pipes are. Instead, it must learn these
+representations and interactions and be able to generalize
+due to the very large state space.
+
+Fig. 1: Three screenshots of the game Flappy Bird at
+three different difﬁculties (easy, medium, hard) respec-
+tively.
+
+II. RELATED WORK
+
+The related work in this area is primarily by Google
+Deepmind. Mnih et al. are able to successfully train
+agents to play the Atari 2600 games using deep rein-
+forcement learning, surpassing human expert-level on
+multiple games [1],
+[2]. These works inspired this
+project, which is heavily modeled after their approach.
+They use a deep Q-network (DQN) to evaluate the Q-
+function for Q-learning and also use experience replay
+to de-correlate experiences. Their approach is essentially
+state-of-the-art and was the main catalyst for deep re-
+inforcement learning, after which many papers tried to
+make improvements. The main strength is that they were
+able to train an agent despite extremely high dimensional
+input (pixels) and no speciﬁcation about intrinsic game
+parameters. In fact, they are able to outperform a human
+expert on three out of seven Atari 2600 games. However,
+further improvements involve prioritizing experience re-
+play, more efﬁcient training, and better stability when
+training. [2] tried to address the stability issues by
+clipping the loss to +1 or −1, and by updating the target
+network once in every C updates to the DQN rather than
+updating the target network every iteration.
+
+III. METHOD
+
+In this section, we describe how the model is param-
+
+eterized and the general algorithm.
+
+A. MDP Formulation
+
+The actions that the agent can take are to ﬂap (a = 1)
+or to do nothing and let the bird drop (a = 0). The state
+is represented by a sequence of frames from the Flappy
+Bird game as well as the recent actions that the player
+took. Speciﬁcally, the state is the sequence shown in
+
+1
+
+st = (xt−histLen+1, at−histLen+1, ..., xt−1, at−1, xt)
+
+∇θiLi(θi) = Es,a∼ρ(·);s(cid:48)∼ε
+
+(r + γ max
+
+a(cid:48) Q(s(cid:48), a(cid:48); θi−1) − Q(s, a; θi))∇θiQ(s, a; θi)
+
+(cid:104)
+
+(cid:105)
+
+(1)
+
+(2)
+
+Equation 1 where st is the state at time t, xt is the pixel
+input (or the frame or screen capture) at time t, and at is
+the action taken at time t. historyLength (or histLen)
+is a hyperparameter that speciﬁes how many of the most
+recent frames to keep track of. This is to reduce the
+storage and state space compared to saving all frames
+and actions starting from t = 1. The reason for storing
+multiple x’s and a’s rather than storing a single frame x
+is because the agent needs temporal information to play.
+For example, the agent cannot deduce the velocity of
+the bird from a single frame, but velocity is essential for
+making a decision.
+
+The discount
+
+factor was set
+
+to γ = 0.95. The
+transition probabilities and the rewards are unknown
+to the agent. Since Q-learning is model-free, we do
+not explicitly estimate the transition probabilities and
+rewards, but instead directly try to estimate the optimal
+Q-function. This is described further in the Q-learning
+section.
+
+However, we still must deﬁne the rewards intrinsic to
+the game. Ideally, the reward should essentially be the
+score of the game. It starts out as 0 and every time the
+bird passes a pipe, the score increases by 1. However,
+this is potentially problematic in that the rewards will be
+very sparse. Speciﬁcally, if the bird dies instantly at the
+start of the game, the reward would be similar to if the
+bird died right before reaching the pipe. The performance
+is clearly better if the bird survives up until the pipe
+compared to dying instantly. Therefore, adding a reward
+for staying alive encourages the agent to think simi-
+larly. Without this additional reward, the agent should
+eventually realize this, but adding the reward, called
+rewardAlive, speeds up the training process. In total,
+we have three rewards: rewardAlive, rewardP ipe,
+and rewardDead. The agent gets rewardAlive for
+every frame it stays alive, rewardP ipe for successfully
+passing a pipe, and rewardDead for dying.
+
+B. Q-learning
+
+The goal in reinforcement learning is always to maxi-
+mize the expected value of the total payoff (or expected
+return). In Q-learning, which is off-policy, we use the
+
+2
+
+Bellman equation as an iterative update
+
+a(cid:48) Qi(s(cid:48), a(cid:48))|s, a]
+
+Qi+1(s, a) = Es(cid:48)∼ε[r + γ max
+
+(3)
+where s(cid:48) is the next state, r is the reward, ε is the envi-
+ronment, and Qi(s, a) is the Q-function at the ith itera-
+tion. It can be shown that this iterative update converges
+to the optimal Q-function (the Q-function associated with
+the optimal policy). However, this is rote learning. To
+prevent rote learning, function approximations are used
+for the Q-function to allow generalization to unseen
+states. Our approach uses the deep Q-learning approach
+in which we use a neural network to approximate the Q-
+function. This neural network is a convolutional neural
+network which we call the Deep Q-Network (DQN).
+
+A common loss used for training a Q-function approx-
+
+imator is
+
+Li(θi) = Es,a∼ρ(·)
+
+(yi − Q(s, a; θi))2
+
+(4)
+
+(cid:21)
+
+(cid:20) 1
+
+2
+
+where θi are the parameters of the Q-network at iteration
+i and yi is the target at iteration i. The target yi is deﬁned
+as
+
+(cid:104)
+
+(cid:105)
+a(cid:48) Q(s(cid:48), a(cid:48); θi−1)|s, a
+
+yi = Es(cid:48)∼ε
+
+r + γ max
+
+(5)
+for a given experience e = (s, a, r, s(cid:48)). An experience is
+analogous to a datapoint such as in linear regression and
+the replay memory, a list of experiences, is analogous
+to a dataset such as in linear regression. The gradient of
+the loss function with respect to the weights is shown in
+equation 2. Thus, we can simply use stochastic gradient
+descent and backpropagation on the above loss function
+to update the weights of the network.
+
+Additionally, we take an -greedy approach to handle
+the exploration-exploitation problem in Q-learning. That
+is, when we are training, we select a random action
+with probability  and choose the optimal action aopt =
+arg maxa(cid:48) Q(s, a(cid:48)). In our implementation, we linearly
+change the exploration probability  from 1 to 0.1 as the
+agent trains. This is to encourage a lot of exploration in
+the beginning where the agent has no idea how to play
+the game and the state space is extremely large. It takes a
+large number of random actions and as it starts to ﬁgure
+out which actions are better in different situations/states,
+
+Deep Reinforcement Learning for
+
+Flappy Bird
+
+Kevin Chen
+
+Abstract—Reinforcement learning is essential for appli-
+cations where there is no single correct way to solve a
+problem. In this project, we show that deep reinforcement
+learning is very effective at learning how to play the game
+Flappy Bird, despite the high-dimensional sensory input.
+The agent is not given information about what the bird
+or pipes look like - it must learn these representations
+and directly use the input and score to develop an optimal
+strategy. Our agent uses a convolutional neural network to
+evaluate the Q-function for a variant of Q-learning, and
+we show that it is able to achieve super-human perfor-
+mance. Furthermore, we discuss difﬁculties and potential
+improvements with deep reinforcement learning.
+
+I. INTRODUCTION
+
+Reinforcement learning is useful when we need an
+agent to perform a task, but there is no single “correct”
+way of completing it. For example, how would one
+program a robot to travel from one place to another
+and bring back food? It would be unrealistic to program
+every move and step that it must take. Instead, it should
+learn to make decisions under uncertainty and with very
+high dimensional input (such as a camera) in order to
+reach the end goal. This project focuses on a ﬁrst step
+in realizing this.
+
+The goal of the project is to learn a policy to have an
+agent successfully play the game Flappy Bird. Flappy
+Bird is a game in which the player tries to keep the bird
+alive for as long as possible. The bird automatically falls
+towards the ground by due to gravity, and if it hits the
+ground, it dies and the game ends. The bird must also
+navigate through pipes. The pipes restrict the height of
+the bird to be within a certain speciﬁc range as the bird
+passes through them. If the bird is too high or too low,
+it will crash into the pipe and die. Therefore, the player
+must time ﬂaps/jumps properly to keep the bird alive
+as it passes through these obstacles. The game score is
+measured by how many obstacles the bird successfully
+passes through. Therefore, to get a high score, the player
+must keep the bird alive for as long as possible as it
+encounters the pipes.
+
+Training an agent to successfully play the game is
+especially challenging because our goal is to provide
+the agent with only pixel information and the score.
+The agent is not provided with information regarding
+what the bird looks like, what the pipes look like, or
+where the bird and pipes are. Instead, it must learn these
+representations and interactions and be able to generalize
+due to the very large state space.
+
+Fig. 1: Three screenshots of the game Flappy Bird at
+three different difﬁculties (easy, medium, hard) respec-
+tively.
+
+II. RELATED WORK
+
+The related work in this area is primarily by Google
+Deepmind. Mnih et al. are able to successfully train
+agents to play the Atari 2600 games using deep rein-
+forcement learning, surpassing human expert-level on
+multiple games [1],
+[2]. These works inspired this
+project, which is heavily modeled after their approach.
+They use a deep Q-network (DQN) to evaluate the Q-
+function for Q-learning and also use experience replay
+to de-correlate experiences. Their approach is essentially
+state-of-the-art and was the main catalyst for deep re-
+inforcement learning, after which many papers tried to
+make improvements. The main strength is that they were
+able to train an agent despite extremely high dimensional
+input (pixels) and no speciﬁcation about intrinsic game
+parameters. In fact, they are able to outperform a human
+expert on three out of seven Atari 2600 games. However,
+further improvements involve prioritizing experience re-
+play, more efﬁcient training, and better stability when
+training. [2] tried to address the stability issues by
+clipping the loss to +1 or −1, and by updating the target
+network once in every C updates to the DQN rather than
+updating the target network every iteration.
+
+III. METHOD
+
+In this section, we describe how the model is param-
+
+eterized and the general algorithm.
+
+A. MDP Formulation
+
+The actions that the agent can take are to ﬂap (a = 1)
+or to do nothing and let the bird drop (a = 0). The state
+is represented by a sequence of frames from the Flappy
+Bird game as well as the recent actions that the player
+took. Speciﬁcally, the state is the sequence shown in
+
+1
+
+st = (xt−histLen+1, at−histLen+1, ..., xt−1, at−1, xt)
+
+∇θiLi(θi) = Es,a∼ρ(·);s(cid:48)∼ε
+
+(r + γ max
+
+a(cid:48) Q(s(cid:48), a(cid:48); θi−1) − Q(s, a; θi))∇θiQ(s, a; θi)
+
+(cid:104)
+
+(cid:105)
+
+(1)
+
+(2)
+
+Equation 1 where st is the state at time t, xt is the pixel
+input (or the frame or screen capture) at time t, and at is
+the action taken at time t. historyLength (or histLen)
+is a hyperparameter that speciﬁes how many of the most
+recent frames to keep track of. This is to reduce the
+storage and state space compared to saving all frames
+and actions starting from t = 1. The reason for storing
+multiple x’s and a’s rather than storing a single frame x
+is because the agent needs temporal information to play.
+For example, the agent cannot deduce the velocity of
+the bird from a single frame, but velocity is essential for
+making a decision.
+
+The discount
+
+factor was set
+
+to γ = 0.95. The
+transition probabilities and the rewards are unknown
+to the agent. Since Q-learning is model-free, we do
+not explicitly estimate the transition probabilities and
+rewards, but instead directly try to estimate the optimal
+Q-function. This is described further in the Q-learning
+section.
+
+However, we still must deﬁne the rewards intrinsic to
+the game. Ideally, the reward should essentially be the
+score of the game. It starts out as 0 and every time the
+bird passes a pipe, the score increases by 1. However,
+this is potentially problematic in that the rewards will be
+very sparse. Speciﬁcally, if the bird dies instantly at the
+start of the game, the reward would be similar to if the
+bird died right before reaching the pipe. The performance
+is clearly better if the bird survives up until the pipe
+compared to dying instantly. Therefore, adding a reward
+for staying alive encourages the agent to think simi-
+larly. Without this additional reward, the agent should
+eventually realize this, but adding the reward, called
+rewardAlive, speeds up the training process. In total,
+we have three rewards: rewardAlive, rewardP ipe,
+and rewardDead. The agent gets rewardAlive for
+every frame it stays alive, rewardP ipe for successfully
+passing a pipe, and rewardDead for dying.
+
+B. Q-learning
+
+The goal in reinforcement learning is always to maxi-
+mize the expected value of the total payoff (or expected
+return). In Q-learning, which is off-policy, we use the
+
+2
+
+Bellman equation as an iterative update
+
+a(cid:48) Qi(s(cid:48), a(cid:48))|s, a]
+
+Qi+1(s, a) = Es(cid:48)∼ε[r + γ max
+
+(3)
+where s(cid:48) is the next state, r is the reward, ε is the envi-
+ronment, and Qi(s, a) is the Q-function at the ith itera-
+tion. It can be shown that this iterative update converges
+to the optimal Q-function (the Q-function associated with
+the optimal policy). However, this is rote learning. To
+prevent rote learning, function approximations are used
+for the Q-function to allow generalization to unseen
+states. Our approach uses the deep Q-learning approach
+in which we use a neural network to approximate the Q-
+function. This neural network is a convolutional neural
+network which we call the Deep Q-Network (DQN).
+
+A common loss used for training a Q-function approx-
+
+imator is
+
+Li(θi) = Es,a∼ρ(·)
+
+(yi − Q(s, a; θi))2
+
+(4)
+
+(cid:21)
+
+(cid:20) 1
+
+2
+
+where θi are the parameters of the Q-network at iteration
+i and yi is the target at iteration i. The target yi is deﬁned
+as
+
+(cid:104)
+
+(cid:105)
+a(cid:48) Q(s(cid:48), a(cid:48); θi−1)|s, a
+
+yi = Es(cid:48)∼ε
+
+r + γ max
+
+(5)
+for a given experience e = (s, a, r, s(cid:48)). An experience is
+analogous to a datapoint such as in linear regression and
+the replay memory, a list of experiences, is analogous
+to a dataset such as in linear regression. The gradient of
+the loss function with respect to the weights is shown in
+equation 2. Thus, we can simply use stochastic gradient
+descent and backpropagation on the above loss function
+to update the weights of the network.
+
+Additionally, we take an -greedy approach to handle
+the exploration-exploitation problem in Q-learning. That
+is, when we are training, we select a random action
+with probability  and choose the optimal action aopt =
+arg maxa(cid:48) Q(s, a(cid:48)). In our implementation, we linearly
+change the exploration probability  from 1 to 0.1 as the
+agent trains. This is to encourage a lot of exploration in
+the beginning where the agent has no idea how to play
+the game and the state space is extremely large. It takes a
+large number of random actions and as it starts to ﬁgure
+out which actions are better in different situations/states,
+
+it exploits more and tries to narrow down what
+optimal actions are.
+
+the
+
+C. Experience replay
+
+A problem that arises in traditional Q-learning is
+that
+the experiences from consecutive frames of the
+same episode (a run from start to ﬁnish of a single
+game) are very correlated. This hinders the training
+process and leads to inefﬁcient training. Therefore, to
+de-correlate these experiences, we use experience replay.
+In experience replay, we store an experience (s, a, r, s(cid:48))
+at every frame into the replay memory. The replay
+memory has a certain size and contains the most recent
+replayM emorySize experiences. It is constantly up-
+dated (like a queue) so that they are associated with the
+actions taken with the recent Q-functions. The batch used
+to update the DQN is composed by uniformly sampling
+experiences from the replay memory. As a result, our
+experiences are no longer likely to be correlated.
+
+D. Stability
+
+Moreover, to encourage more stability in decreasing
+the loss function, we use a target network ˆQ(s, a).
+ˆQ(s, a) is essentially the the same as Q(s, a). The
+network has the same structure, but the parameters may
+be different. At every C updates to the DQN Q(s, a), we
+update ˆQ(s, a). This ˆQ(s, a) is then used for computing
+the target yi according to:
+
+yi = Es(cid:48)∼ε
+
+r + γ max
+
+a(cid:48)
+
+ˆQ(s(cid:48), a(cid:48); ˆθi−1)|s, a
+
+(6)
+
+This leads to better stability when updating the DQN.
+
+E. Pre-processing
+
+Since we use a very high dimensional state, we actu-
+ally perform pre-processing to reduce the dimensionality
+and state space. The pre-processing is done over the
+pixels, so we ﬁrst extract the images from the state st.
+The original screen size is 512 × 288 pixels in three
+channels, but we convert the image captured from the
+screen to grayscale, crop it to 340 × 288 pixels, and
+downsample it by a factor of 0.3, resulting in a 102× 86
+pixel image. It is then rescaled to 84 × 84 pixels and
+normalized from [0, 255] to [0, 1]. I call this feature
+extractor φ(s).
+
+F. Deep Q-Network
+
+Our Q-function is approximated by a convolutional
+neural network. This network takes as input a 84× 84×
+historyLength image and has a single output for every
+possible action. The ﬁrst layer is a convolution layer with
+
+(cid:104)
+
+(cid:105)
+
+32 ﬁlters of size 8× 8 with stride 4, followed by a recti-
+ﬁed nonlinearity. The second layer is also a convolution
+layer of 64 ﬁlters of size 4× 4 with stride 2, followed by
+another rectiﬁed linear unit. The third convolution layer
+has 64 ﬁlters of size 3 × 3 with stride 1 followed by a
+rectiﬁed linear unit. Following that is a fully connected
+layer with 512 outputs, and then the output layer (also
+fully connected) with a single output for each action.
+To choose the best action, we take the action with the
+highest output Q-value (aopt = arg maxa(cid:48) Q(s, a(cid:48))).
+
+G. Pipeline
+
+Algorithm 1: Deep Q-learning algorithm for Flappy
+Bird
+initialize replay memory
+initialize DQN to random weights
+repeat
+
+new episode (new game)
+initialize state s0
+repeat
+
+extract xt from raw pixel data update state
+st with xt
+add experience
+et = (φ(st−1), at−1, rt−1, φ(st)) to replay
+memory
+take best action
+at = arg mina∈actions Q(st, a) with
+exploration if training
+uniformly sample a batch of experiences
+from the replay memory
+backpropagate and update DQN with the
+minibatch
+update exploration probability 
+if C updates to DQN since last update to
+target network then
+
+update the target Q-network
+ˆQ(s, a) ← Q(s, a)
+
+end
+update state st with at
+update current reward rt and total reward
+totalReward
+update game parameters (bird position, etc.)
+refresh screen
+
+until ﬂappy bird crashes;
+restart Flappy Bird
+
+until convergence or number of iterations reached;
+
+The pipeline for the entire DQN training process is
+shown in Algorithm 1. It is as previously described
+earlier in this section. We apply Q-learning but use
+
+3
+
+Deep Reinforcement Learning for
+
+Flappy Bird
+
+Kevin Chen
+
+Abstract—Reinforcement learning is essential for appli-
+cations where there is no single correct way to solve a
+problem. In this project, we show that deep reinforcement
+learning is very effective at learning how to play the game
+Flappy Bird, despite the high-dimensional sensory input.
+The agent is not given information about what the bird
+or pipes look like - it must learn these representations
+and directly use the input and score to develop an optimal
+strategy. Our agent uses a convolutional neural network to
+evaluate the Q-function for a variant of Q-learning, and
+we show that it is able to achieve super-human perfor-
+mance. Furthermore, we discuss difﬁculties and potential
+improvements with deep reinforcement learning.
+
+I. INTRODUCTION
+
+Reinforcement learning is useful when we need an
+agent to perform a task, but there is no single “correct”
+way of completing it. For example, how would one
+program a robot to travel from one place to another
+and bring back food? It would be unrealistic to program
+every move and step that it must take. Instead, it should
+learn to make decisions under uncertainty and with very
+high dimensional input (such as a camera) in order to
+reach the end goal. This project focuses on a ﬁrst step
+in realizing this.
+
+The goal of the project is to learn a policy to have an
+agent successfully play the game Flappy Bird. Flappy
+Bird is a game in which the player tries to keep the bird
+alive for as long as possible. The bird automatically falls
+towards the ground by due to gravity, and if it hits the
+ground, it dies and the game ends. The bird must also
+navigate through pipes. The pipes restrict the height of
+the bird to be within a certain speciﬁc range as the bird
+passes through them. If the bird is too high or too low,
+it will crash into the pipe and die. Therefore, the player
+must time ﬂaps/jumps properly to keep the bird alive
+as it passes through these obstacles. The game score is
+measured by how many obstacles the bird successfully
+passes through. Therefore, to get a high score, the player
+must keep the bird alive for as long as possible as it
+encounters the pipes.
+
+Training an agent to successfully play the game is
+especially challenging because our goal is to provide
+the agent with only pixel information and the score.
+The agent is not provided with information regarding
+what the bird looks like, what the pipes look like, or
+where the bird and pipes are. Instead, it must learn these
+representations and interactions and be able to generalize
+due to the very large state space.
+
+Fig. 1: Three screenshots of the game Flappy Bird at
+three different difﬁculties (easy, medium, hard) respec-
+tively.
+
+II. RELATED WORK
+
+The related work in this area is primarily by Google
+Deepmind. Mnih et al. are able to successfully train
+agents to play the Atari 2600 games using deep rein-
+forcement learning, surpassing human expert-level on
+multiple games [1],
+[2]. These works inspired this
+project, which is heavily modeled after their approach.
+They use a deep Q-network (DQN) to evaluate the Q-
+function for Q-learning and also use experience replay
+to de-correlate experiences. Their approach is essentially
+state-of-the-art and was the main catalyst for deep re-
+inforcement learning, after which many papers tried to
+make improvements. The main strength is that they were
+able to train an agent despite extremely high dimensional
+input (pixels) and no speciﬁcation about intrinsic game
+parameters. In fact, they are able to outperform a human
+expert on three out of seven Atari 2600 games. However,
+further improvements involve prioritizing experience re-
+play, more efﬁcient training, and better stability when
+training. [2] tried to address the stability issues by
+clipping the loss to +1 or −1, and by updating the target
+network once in every C updates to the DQN rather than
+updating the target network every iteration.
+
+III. METHOD
+
+In this section, we describe how the model is param-
+
+eterized and the general algorithm.
+
+A. MDP Formulation
+
+The actions that the agent can take are to ﬂap (a = 1)
+or to do nothing and let the bird drop (a = 0). The state
+is represented by a sequence of frames from the Flappy
+Bird game as well as the recent actions that the player
+took. Speciﬁcally, the state is the sequence shown in
+
+1
+
+st = (xt−histLen+1, at−histLen+1, ..., xt−1, at−1, xt)
+
+∇θiLi(θi) = Es,a∼ρ(·);s(cid:48)∼ε
+
+(r + γ max
+
+a(cid:48) Q(s(cid:48), a(cid:48); θi−1) − Q(s, a; θi))∇θiQ(s, a; θi)
+
+(cid:104)
+
+(cid:105)
+
+(1)
+
+(2)
+
+Equation 1 where st is the state at time t, xt is the pixel
+input (or the frame or screen capture) at time t, and at is
+the action taken at time t. historyLength (or histLen)
+is a hyperparameter that speciﬁes how many of the most
+recent frames to keep track of. This is to reduce the
+storage and state space compared to saving all frames
+and actions starting from t = 1. The reason for storing
+multiple x’s and a’s rather than storing a single frame x
+is because the agent needs temporal information to play.
+For example, the agent cannot deduce the velocity of
+the bird from a single frame, but velocity is essential for
+making a decision.
+
+The discount
+
+factor was set
+
+to γ = 0.95. The
+transition probabilities and the rewards are unknown
+to the agent. Since Q-learning is model-free, we do
+not explicitly estimate the transition probabilities and
+rewards, but instead directly try to estimate the optimal
+Q-function. This is described further in the Q-learning
+section.
+
+However, we still must deﬁne the rewards intrinsic to
+the game. Ideally, the reward should essentially be the
+score of the game. It starts out as 0 and every time the
+bird passes a pipe, the score increases by 1. However,
+this is potentially problematic in that the rewards will be
+very sparse. Speciﬁcally, if the bird dies instantly at the
+start of the game, the reward would be similar to if the
+bird died right before reaching the pipe. The performance
+is clearly better if the bird survives up until the pipe
+compared to dying instantly. Therefore, adding a reward
+for staying alive encourages the agent to think simi-
+larly. Without this additional reward, the agent should
+eventually realize this, but adding the reward, called
+rewardAlive, speeds up the training process. In total,
+we have three rewards: rewardAlive, rewardP ipe,
+and rewardDead. The agent gets rewardAlive for
+every frame it stays alive, rewardP ipe for successfully
+passing a pipe, and rewardDead for dying.
+
+B. Q-learning
+
+The goal in reinforcement learning is always to maxi-
+mize the expected value of the total payoff (or expected
+return). In Q-learning, which is off-policy, we use the
+
+2
+
+Bellman equation as an iterative update
+
+a(cid:48) Qi(s(cid:48), a(cid:48))|s, a]
+
+Qi+1(s, a) = Es(cid:48)∼ε[r + γ max
+
+(3)
+where s(cid:48) is the next state, r is the reward, ε is the envi-
+ronment, and Qi(s, a) is the Q-function at the ith itera-
+tion. It can be shown that this iterative update converges
+to the optimal Q-function (the Q-function associated with
+the optimal policy). However, this is rote learning. To
+prevent rote learning, function approximations are used
+for the Q-function to allow generalization to unseen
+states. Our approach uses the deep Q-learning approach
+in which we use a neural network to approximate the Q-
+function. This neural network is a convolutional neural
+network which we call the Deep Q-Network (DQN).
+
+A common loss used for training a Q-function approx-
+
+imator is
+
+Li(θi) = Es,a∼ρ(·)
+
+(yi − Q(s, a; θi))2
+
+(4)
+
+(cid:21)
+
+(cid:20) 1
+
+2
+
+where θi are the parameters of the Q-network at iteration
+i and yi is the target at iteration i. The target yi is deﬁned
+as
+
+(cid:104)
+
+(cid:105)
+a(cid:48) Q(s(cid:48), a(cid:48); θi−1)|s, a
+
+yi = Es(cid:48)∼ε
+
+r + γ max
+
+(5)
+for a given experience e = (s, a, r, s(cid:48)). An experience is
+analogous to a datapoint such as in linear regression and
+the replay memory, a list of experiences, is analogous
+to a dataset such as in linear regression. The gradient of
+the loss function with respect to the weights is shown in
+equation 2. Thus, we can simply use stochastic gradient
+descent and backpropagation on the above loss function
+to update the weights of the network.
+
+Additionally, we take an -greedy approach to handle
+the exploration-exploitation problem in Q-learning. That
+is, when we are training, we select a random action
+with probability  and choose the optimal action aopt =
+arg maxa(cid:48) Q(s, a(cid:48)). In our implementation, we linearly
+change the exploration probability  from 1 to 0.1 as the
+agent trains. This is to encourage a lot of exploration in
+the beginning where the agent has no idea how to play
+the game and the state space is extremely large. It takes a
+large number of random actions and as it starts to ﬁgure
+out which actions are better in different situations/states,
+
+it exploits more and tries to narrow down what
+optimal actions are.
+
+the
+
+C. Experience replay
+
+A problem that arises in traditional Q-learning is
+that
+the experiences from consecutive frames of the
+same episode (a run from start to ﬁnish of a single
+game) are very correlated. This hinders the training
+process and leads to inefﬁcient training. Therefore, to
+de-correlate these experiences, we use experience replay.
+In experience replay, we store an experience (s, a, r, s(cid:48))
+at every frame into the replay memory. The replay
+memory has a certain size and contains the most recent
+replayM emorySize experiences. It is constantly up-
+dated (like a queue) so that they are associated with the
+actions taken with the recent Q-functions. The batch used
+to update the DQN is composed by uniformly sampling
+experiences from the replay memory. As a result, our
+experiences are no longer likely to be correlated.
+
+D. Stability
+
+Moreover, to encourage more stability in decreasing
+the loss function, we use a target network ˆQ(s, a).
+ˆQ(s, a) is essentially the the same as Q(s, a). The
+network has the same structure, but the parameters may
+be different. At every C updates to the DQN Q(s, a), we
+update ˆQ(s, a). This ˆQ(s, a) is then used for computing
+the target yi according to:
+
+yi = Es(cid:48)∼ε
+
+r + γ max
+
+a(cid:48)
+
+ˆQ(s(cid:48), a(cid:48); ˆθi−1)|s, a
+
+(6)
+
+This leads to better stability when updating the DQN.
+
+E. Pre-processing
+
+Since we use a very high dimensional state, we actu-
+ally perform pre-processing to reduce the dimensionality
+and state space. The pre-processing is done over the
+pixels, so we ﬁrst extract the images from the state st.
+The original screen size is 512 × 288 pixels in three
+channels, but we convert the image captured from the
+screen to grayscale, crop it to 340 × 288 pixels, and
+downsample it by a factor of 0.3, resulting in a 102× 86
+pixel image. It is then rescaled to 84 × 84 pixels and
+normalized from [0, 255] to [0, 1]. I call this feature
+extractor φ(s).
+
+F. Deep Q-Network
+
+Our Q-function is approximated by a convolutional
+neural network. This network takes as input a 84× 84×
+historyLength image and has a single output for every
+possible action. The ﬁrst layer is a convolution layer with
+
+(cid:104)
+
+(cid:105)
+
+32 ﬁlters of size 8× 8 with stride 4, followed by a recti-
+ﬁed nonlinearity. The second layer is also a convolution
+layer of 64 ﬁlters of size 4× 4 with stride 2, followed by
+another rectiﬁed linear unit. The third convolution layer
+has 64 ﬁlters of size 3 × 3 with stride 1 followed by a
+rectiﬁed linear unit. Following that is a fully connected
+layer with 512 outputs, and then the output layer (also
+fully connected) with a single output for each action.
+To choose the best action, we take the action with the
+highest output Q-value (aopt = arg maxa(cid:48) Q(s, a(cid:48))).
+
+G. Pipeline
+
+Algorithm 1: Deep Q-learning algorithm for Flappy
+Bird
+initialize replay memory
+initialize DQN to random weights
+repeat
+
+new episode (new game)
+initialize state s0
+repeat
+
+extract xt from raw pixel data update state
+st with xt
+add experience
+et = (φ(st−1), at−1, rt−1, φ(st)) to replay
+memory
+take best action
+at = arg mina∈actions Q(st, a) with
+exploration if training
+uniformly sample a batch of experiences
+from the replay memory
+backpropagate and update DQN with the
+minibatch
+update exploration probability 
+if C updates to DQN since last update to
+target network then
+
+update the target Q-network
+ˆQ(s, a) ← Q(s, a)
+
+end
+update state st with at
+update current reward rt and total reward
+totalReward
+update game parameters (bird position, etc.)
+refresh screen
+
+until ﬂappy bird crashes;
+restart Flappy Bird
+
+until convergence or number of iterations reached;
+
+The pipeline for the entire DQN training process is
+shown in Algorithm 1. It is as previously described
+earlier in this section. We apply Q-learning but use
+
+3
+
+experience replay, storing every experience in the replay
+memory at every frame. When we perform an update
+to the DQN, we sample uniformly to get a batch of
+experiences and use that to update the DQN. This is
+analogous to sampling batches from a dataset using
+SGD/mini-batch gradient descent in convolutional neural
+networks for image classiﬁcation or deep learning in
+general. Then we update the exploration probability as
+well as the target network ˆQ(s, a) if necessary.
+
+IV. RESULTS
+
+A video can be found at
+
+the following link:
+https://youtu.be/9WKBzTUsPKc. Our metric for evalu-
+ating the performance of the DQN is the game score
+(numper of pipes passed). The reported scores in the
+tables are the average scores over 10 games (unless
+otherwise speciﬁed).
+
+A. Testing parameters
+
+The Flappy Bird game was run at 30 frames per
+second, and historyLength was set
+to 5. The dis-
+count factor was 0.95 and the rewards were the fol-
+lowing: rewardAlive = +0.1, rewardP ipe = +1.0,
+rewardDead = −1.0. The exploration probability  de-
+creased from 1 to 0.1 over 600000 updates to the DQN.
+The size of the replay memory was 20000 experiences.
+For training, we used RMSProp with a learning rate
+of 1e-6, decay of 0.9, and momentum as 0.95. These
+were chosen similarly to that of [2]. To ﬁgure out better
+parameters, some were done by trial and error. For
+example, we noticed that the learning rate was too high
+when the neural network weights began exploding, and
+used a binary search algorithm to ﬁgure out the best
+learning rate. If the learning rate was too low, it would
+take longer to train. We did updates in mini-batches of
+size 32 (experiences). We only begin training after the
+replay memory has at least 3000 experiences and update
+the target network ˆQ(s, a) once for every 1000 updates
+to the DQN. Our convolution weights are initialized to
+have a normal distribution with mean 0 and variance
+0.1. This deep neural network was implemented using
+TensorFlow.
+
+training difﬁculty
+easy
+medium
+hard
+
+ﬂap every n
+Inf
+Inf
+0.5
+
+human
+Inf
+Inf
+17.625
+
+DQN
+Inf
+Inf
+82.2
+
+TABLE I: Average score of DQN on varying difﬁculties
+compared to baseline and human performance
+
+training difﬁculty
+easy
+medium
+hard
+
+ﬂap every n
+Inf
+11
+1
+
+human
+Inf
+Inf
+65
+
+DQN
+Inf
+Inf
+215
+
+TABLE II: Highest score of DQN on varying difﬁculties
+compared to baseline and human scores
+
+screen. These comparisons are shown in table I (average
+score) and table II (highest score).
+
+The performance of the DQN is much higher than the
+baseline and human performance. If the score was higher
+than 1000, the score was considered to be inﬁnity (except
+for the human case where if they got a score above
+100, this would be considered inﬁnity). The human case
+was generalized to be inﬁnity if the user could play for
+forever if he or she could focus and did not need to take
+breaks (eat, sleep, etc.). Although the scores for human
+and DQN are both inﬁnity for the easy and medium
+difﬁculties, in reality the DQN is better because it does
+not have to take a break whereas the DQN can play for
+10+ hours at a time.
+
+In general, almost all of the failures in the hard
+difﬁculty are because the bird ﬂaps upwards when it
+should be letting the bird drop, and then it dies. However,
+once in a while, the bird will just barely clip the top-right
+corner of the lower pipe as it is falling. Furthermore, I
+noticed that the agent seems to take riskier moves when
+it trains more. Thus, a follow-up test to resolve these
+problems could be to encourage the agent to take the
+moves with the lowest risk. To do this, we would have
+the agent make a random move a small probability of the
+time during training (even if the agent is supposed to be
+evaluating the optimal action). To maximize the expected
+return, the agent would have to play very safely.
+
+B. Overall performance
+
+C. Training time
+
+The trained DQN plays extremely well and even
+performs better than humans. We compare the results
+of the DQN with a baseline and humans. The baseline
+implementation ﬂaps every z frames to keep the bird
+in the middle of the screen. This baseline was chosen
+because the pipe gaps locations are uniformly distributed
+with the expected location to be in the middle of the
+
+In this section, we discuss how the number of training
+iterations affects the performance of the Flappy Bird
+agent. The number of training iterations refers to the
+number of updates to the DQN (there is no exact deﬁni-
+tion of epoch here). Our results (see Table III) show that
+more training does not necessarily lead to better scores.
+In fact there is some instability and the scores ﬂuctuate
+
+4
+
+Deep Reinforcement Learning for
+
+Flappy Bird
+
+Kevin Chen
+
+Abstract—Reinforcement learning is essential for appli-
+cations where there is no single correct way to solve a
+problem. In this project, we show that deep reinforcement
+learning is very effective at learning how to play the game
+Flappy Bird, despite the high-dimensional sensory input.
+The agent is not given information about what the bird
+or pipes look like - it must learn these representations
+and directly use the input and score to develop an optimal
+strategy. Our agent uses a convolutional neural network to
+evaluate the Q-function for a variant of Q-learning, and
+we show that it is able to achieve super-human perfor-
+mance. Furthermore, we discuss difﬁculties and potential
+improvements with deep reinforcement learning.
+
+I. INTRODUCTION
+
+Reinforcement learning is useful when we need an
+agent to perform a task, but there is no single “correct”
+way of completing it. For example, how would one
+program a robot to travel from one place to another
+and bring back food? It would be unrealistic to program
+every move and step that it must take. Instead, it should
+learn to make decisions under uncertainty and with very
+high dimensional input (such as a camera) in order to
+reach the end goal. This project focuses on a ﬁrst step
+in realizing this.
+
+The goal of the project is to learn a policy to have an
+agent successfully play the game Flappy Bird. Flappy
+Bird is a game in which the player tries to keep the bird
+alive for as long as possible. The bird automatically falls
+towards the ground by due to gravity, and if it hits the
+ground, it dies and the game ends. The bird must also
+navigate through pipes. The pipes restrict the height of
+the bird to be within a certain speciﬁc range as the bird
+passes through them. If the bird is too high or too low,
+it will crash into the pipe and die. Therefore, the player
+must time ﬂaps/jumps properly to keep the bird alive
+as it passes through these obstacles. The game score is
+measured by how many obstacles the bird successfully
+passes through. Therefore, to get a high score, the player
+must keep the bird alive for as long as possible as it
+encounters the pipes.
+
+Training an agent to successfully play the game is
+especially challenging because our goal is to provide
+the agent with only pixel information and the score.
+The agent is not provided with information regarding
+what the bird looks like, what the pipes look like, or
+where the bird and pipes are. Instead, it must learn these
+representations and interactions and be able to generalize
+due to the very large state space.
+
+Fig. 1: Three screenshots of the game Flappy Bird at
+three different difﬁculties (easy, medium, hard) respec-
+tively.
+
+II. RELATED WORK
+
+The related work in this area is primarily by Google
+Deepmind. Mnih et al. are able to successfully train
+agents to play the Atari 2600 games using deep rein-
+forcement learning, surpassing human expert-level on
+multiple games [1],
+[2]. These works inspired this
+project, which is heavily modeled after their approach.
+They use a deep Q-network (DQN) to evaluate the Q-
+function for Q-learning and also use experience replay
+to de-correlate experiences. Their approach is essentially
+state-of-the-art and was the main catalyst for deep re-
+inforcement learning, after which many papers tried to
+make improvements. The main strength is that they were
+able to train an agent despite extremely high dimensional
+input (pixels) and no speciﬁcation about intrinsic game
+parameters. In fact, they are able to outperform a human
+expert on three out of seven Atari 2600 games. However,
+further improvements involve prioritizing experience re-
+play, more efﬁcient training, and better stability when
+training. [2] tried to address the stability issues by
+clipping the loss to +1 or −1, and by updating the target
+network once in every C updates to the DQN rather than
+updating the target network every iteration.
+
+III. METHOD
+
+In this section, we describe how the model is param-
+
+eterized and the general algorithm.
+
+A. MDP Formulation
+
+The actions that the agent can take are to ﬂap (a = 1)
+or to do nothing and let the bird drop (a = 0). The state
+is represented by a sequence of frames from the Flappy
+Bird game as well as the recent actions that the player
+took. Speciﬁcally, the state is the sequence shown in
+
+1
+
+st = (xt−histLen+1, at−histLen+1, ..., xt−1, at−1, xt)
+
+∇θiLi(θi) = Es,a∼ρ(·);s(cid:48)∼ε
+
+(r + γ max
+
+a(cid:48) Q(s(cid:48), a(cid:48); θi−1) − Q(s, a; θi))∇θiQ(s, a; θi)
+
+(cid:104)
+
+(cid:105)
+
+(1)
+
+(2)
+
+Equation 1 where st is the state at time t, xt is the pixel
+input (or the frame or screen capture) at time t, and at is
+the action taken at time t. historyLength (or histLen)
+is a hyperparameter that speciﬁes how many of the most
+recent frames to keep track of. This is to reduce the
+storage and state space compared to saving all frames
+and actions starting from t = 1. The reason for storing
+multiple x’s and a’s rather than storing a single frame x
+is because the agent needs temporal information to play.
+For example, the agent cannot deduce the velocity of
+the bird from a single frame, but velocity is essential for
+making a decision.
+
+The discount
+
+factor was set
+
+to γ = 0.95. The
+transition probabilities and the rewards are unknown
+to the agent. Since Q-learning is model-free, we do
+not explicitly estimate the transition probabilities and
+rewards, but instead directly try to estimate the optimal
+Q-function. This is described further in the Q-learning
+section.
+
+However, we still must deﬁne the rewards intrinsic to
+the game. Ideally, the reward should essentially be the
+score of the game. It starts out as 0 and every time the
+bird passes a pipe, the score increases by 1. However,
+this is potentially problematic in that the rewards will be
+very sparse. Speciﬁcally, if the bird dies instantly at the
+start of the game, the reward would be similar to if the
+bird died right before reaching the pipe. The performance
+is clearly better if the bird survives up until the pipe
+compared to dying instantly. Therefore, adding a reward
+for staying alive encourages the agent to think simi-
+larly. Without this additional reward, the agent should
+eventually realize this, but adding the reward, called
+rewardAlive, speeds up the training process. In total,
+we have three rewards: rewardAlive, rewardP ipe,
+and rewardDead. The agent gets rewardAlive for
+every frame it stays alive, rewardP ipe for successfully
+passing a pipe, and rewardDead for dying.
+
+B. Q-learning
+
+The goal in reinforcement learning is always to maxi-
+mize the expected value of the total payoff (or expected
+return). In Q-learning, which is off-policy, we use the
+
+2
+
+Bellman equation as an iterative update
+
+a(cid:48) Qi(s(cid:48), a(cid:48))|s, a]
+
+Qi+1(s, a) = Es(cid:48)∼ε[r + γ max
+
+(3)
+where s(cid:48) is the next state, r is the reward, ε is the envi-
+ronment, and Qi(s, a) is the Q-function at the ith itera-
+tion. It can be shown that this iterative update converges
+to the optimal Q-function (the Q-function associated with
+the optimal policy). However, this is rote learning. To
+prevent rote learning, function approximations are used
+for the Q-function to allow generalization to unseen
+states. Our approach uses the deep Q-learning approach
+in which we use a neural network to approximate the Q-
+function. This neural network is a convolutional neural
+network which we call the Deep Q-Network (DQN).
+
+A common loss used for training a Q-function approx-
+
+imator is
+
+Li(θi) = Es,a∼ρ(·)
+
+(yi − Q(s, a; θi))2
+
+(4)
+
+(cid:21)
+
+(cid:20) 1
+
+2
+
+where θi are the parameters of the Q-network at iteration
+i and yi is the target at iteration i. The target yi is deﬁned
+as
+
+(cid:104)
+
+(cid:105)
+a(cid:48) Q(s(cid:48), a(cid:48); θi−1)|s, a
+
+yi = Es(cid:48)∼ε
+
+r + γ max
+
+(5)
+for a given experience e = (s, a, r, s(cid:48)). An experience is
+analogous to a datapoint such as in linear regression and
+the replay memory, a list of experiences, is analogous
+to a dataset such as in linear regression. The gradient of
+the loss function with respect to the weights is shown in
+equation 2. Thus, we can simply use stochastic gradient
+descent and backpropagation on the above loss function
+to update the weights of the network.
+
+Additionally, we take an -greedy approach to handle
+the exploration-exploitation problem in Q-learning. That
+is, when we are training, we select a random action
+with probability  and choose the optimal action aopt =
+arg maxa(cid:48) Q(s, a(cid:48)). In our implementation, we linearly
+change the exploration probability  from 1 to 0.1 as the
+agent trains. This is to encourage a lot of exploration in
+the beginning where the agent has no idea how to play
+the game and the state space is extremely large. It takes a
+large number of random actions and as it starts to ﬁgure
+out which actions are better in different situations/states,
+
+it exploits more and tries to narrow down what
+optimal actions are.
+
+the
+
+C. Experience replay
+
+A problem that arises in traditional Q-learning is
+that
+the experiences from consecutive frames of the
+same episode (a run from start to ﬁnish of a single
+game) are very correlated. This hinders the training
+process and leads to inefﬁcient training. Therefore, to
+de-correlate these experiences, we use experience replay.
+In experience replay, we store an experience (s, a, r, s(cid:48))
+at every frame into the replay memory. The replay
+memory has a certain size and contains the most recent
+replayM emorySize experiences. It is constantly up-
+dated (like a queue) so that they are associated with the
+actions taken with the recent Q-functions. The batch used
+to update the DQN is composed by uniformly sampling
+experiences from the replay memory. As a result, our
+experiences are no longer likely to be correlated.
+
+D. Stability
+
+Moreover, to encourage more stability in decreasing
+the loss function, we use a target network ˆQ(s, a).
+ˆQ(s, a) is essentially the the same as Q(s, a). The
+network has the same structure, but the parameters may
+be different. At every C updates to the DQN Q(s, a), we
+update ˆQ(s, a). This ˆQ(s, a) is then used for computing
+the target yi according to:
+
+yi = Es(cid:48)∼ε
+
+r + γ max
+
+a(cid:48)
+
+ˆQ(s(cid:48), a(cid:48); ˆθi−1)|s, a
+
+(6)
+
+This leads to better stability when updating the DQN.
+
+E. Pre-processing
+
+Since we use a very high dimensional state, we actu-
+ally perform pre-processing to reduce the dimensionality
+and state space. The pre-processing is done over the
+pixels, so we ﬁrst extract the images from the state st.
+The original screen size is 512 × 288 pixels in three
+channels, but we convert the image captured from the
+screen to grayscale, crop it to 340 × 288 pixels, and
+downsample it by a factor of 0.3, resulting in a 102× 86
+pixel image. It is then rescaled to 84 × 84 pixels and
+normalized from [0, 255] to [0, 1]. I call this feature
+extractor φ(s).
+
+F. Deep Q-Network
+
+Our Q-function is approximated by a convolutional
+neural network. This network takes as input a 84× 84×
+historyLength image and has a single output for every
+possible action. The ﬁrst layer is a convolution layer with
+
+(cid:104)
+
+(cid:105)
+
+32 ﬁlters of size 8× 8 with stride 4, followed by a recti-
+ﬁed nonlinearity. The second layer is also a convolution
+layer of 64 ﬁlters of size 4× 4 with stride 2, followed by
+another rectiﬁed linear unit. The third convolution layer
+has 64 ﬁlters of size 3 × 3 with stride 1 followed by a
+rectiﬁed linear unit. Following that is a fully connected
+layer with 512 outputs, and then the output layer (also
+fully connected) with a single output for each action.
+To choose the best action, we take the action with the
+highest output Q-value (aopt = arg maxa(cid:48) Q(s, a(cid:48))).
+
+G. Pipeline
+
+Algorithm 1: Deep Q-learning algorithm for Flappy
+Bird
+initialize replay memory
+initialize DQN to random weights
+repeat
+
+new episode (new game)
+initialize state s0
+repeat
+
+extract xt from raw pixel data update state
+st with xt
+add experience
+et = (φ(st−1), at−1, rt−1, φ(st)) to replay
+memory
+take best action
+at = arg mina∈actions Q(st, a) with
+exploration if training
+uniformly sample a batch of experiences
+from the replay memory
+backpropagate and update DQN with the
+minibatch
+update exploration probability 
+if C updates to DQN since last update to
+target network then
+
+update the target Q-network
+ˆQ(s, a) ← Q(s, a)
+
+end
+update state st with at
+update current reward rt and total reward
+totalReward
+update game parameters (bird position, etc.)
+refresh screen
+
+until ﬂappy bird crashes;
+restart Flappy Bird
+
+until convergence or number of iterations reached;
+
+The pipeline for the entire DQN training process is
+shown in Algorithm 1. It is as previously described
+earlier in this section. We apply Q-learning but use
+
+3
+
+experience replay, storing every experience in the replay
+memory at every frame. When we perform an update
+to the DQN, we sample uniformly to get a batch of
+experiences and use that to update the DQN. This is
+analogous to sampling batches from a dataset using
+SGD/mini-batch gradient descent in convolutional neural
+networks for image classiﬁcation or deep learning in
+general. Then we update the exploration probability as
+well as the target network ˆQ(s, a) if necessary.
+
+IV. RESULTS
+
+A video can be found at
+
+the following link:
+https://youtu.be/9WKBzTUsPKc. Our metric for evalu-
+ating the performance of the DQN is the game score
+(numper of pipes passed). The reported scores in the
+tables are the average scores over 10 games (unless
+otherwise speciﬁed).
+
+A. Testing parameters
+
+The Flappy Bird game was run at 30 frames per
+second, and historyLength was set
+to 5. The dis-
+count factor was 0.95 and the rewards were the fol-
+lowing: rewardAlive = +0.1, rewardP ipe = +1.0,
+rewardDead = −1.0. The exploration probability  de-
+creased from 1 to 0.1 over 600000 updates to the DQN.
+The size of the replay memory was 20000 experiences.
+For training, we used RMSProp with a learning rate
+of 1e-6, decay of 0.9, and momentum as 0.95. These
+were chosen similarly to that of [2]. To ﬁgure out better
+parameters, some were done by trial and error. For
+example, we noticed that the learning rate was too high
+when the neural network weights began exploding, and
+used a binary search algorithm to ﬁgure out the best
+learning rate. If the learning rate was too low, it would
+take longer to train. We did updates in mini-batches of
+size 32 (experiences). We only begin training after the
+replay memory has at least 3000 experiences and update
+the target network ˆQ(s, a) once for every 1000 updates
+to the DQN. Our convolution weights are initialized to
+have a normal distribution with mean 0 and variance
+0.1. This deep neural network was implemented using
+TensorFlow.
+
+training difﬁculty
+easy
+medium
+hard
+
+ﬂap every n
+Inf
+Inf
+0.5
+
+human
+Inf
+Inf
+17.625
+
+DQN
+Inf
+Inf
+82.2
+
+TABLE I: Average score of DQN on varying difﬁculties
+compared to baseline and human performance
+
+training difﬁculty
+easy
+medium
+hard
+
+ﬂap every n
+Inf
+11
+1
+
+human
+Inf
+Inf
+65
+
+DQN
+Inf
+Inf
+215
+
+TABLE II: Highest score of DQN on varying difﬁculties
+compared to baseline and human scores
+
+screen. These comparisons are shown in table I (average
+score) and table II (highest score).
+
+The performance of the DQN is much higher than the
+baseline and human performance. If the score was higher
+than 1000, the score was considered to be inﬁnity (except
+for the human case where if they got a score above
+100, this would be considered inﬁnity). The human case
+was generalized to be inﬁnity if the user could play for
+forever if he or she could focus and did not need to take
+breaks (eat, sleep, etc.). Although the scores for human
+and DQN are both inﬁnity for the easy and medium
+difﬁculties, in reality the DQN is better because it does
+not have to take a break whereas the DQN can play for
+10+ hours at a time.
+
+In general, almost all of the failures in the hard
+difﬁculty are because the bird ﬂaps upwards when it
+should be letting the bird drop, and then it dies. However,
+once in a while, the bird will just barely clip the top-right
+corner of the lower pipe as it is falling. Furthermore, I
+noticed that the agent seems to take riskier moves when
+it trains more. Thus, a follow-up test to resolve these
+problems could be to encourage the agent to take the
+moves with the lowest risk. To do this, we would have
+the agent make a random move a small probability of the
+time during training (even if the agent is supposed to be
+evaluating the optimal action). To maximize the expected
+return, the agent would have to play very safely.
+
+B. Overall performance
+
+C. Training time
+
+The trained DQN plays extremely well and even
+performs better than humans. We compare the results
+of the DQN with a baseline and humans. The baseline
+implementation ﬂaps every z frames to keep the bird
+in the middle of the screen. This baseline was chosen
+because the pipe gaps locations are uniformly distributed
+with the expected location to be in the middle of the
+
+In this section, we discuss how the number of training
+iterations affects the performance of the Flappy Bird
+agent. The number of training iterations refers to the
+number of updates to the DQN (there is no exact deﬁni-
+tion of epoch here). Our results (see Table III) show that
+more training does not necessarily lead to better scores.
+In fact there is some instability and the scores ﬂuctuate
+
+4
+
+training iterations
+99000
+199000
+299000
+399000
+
+easy medium hard
+0.3
+11.6
+65
+71.6
+
+52.7
+101.8
+42.7
+2598
+
+1680.9
+1026.8
+351.06
+1006.11
+
+TABLE III: Average score of DQN as a function of
+learning rate
+
+Game difﬁculty
+Easy
+Medium
+Hard
+
+DQN (easy)
+Inf
+1.11
+0.0
+
+DQN (medium)
+99.3
+Inf
+0.6
+
+DQN (hard)
+1.5
+1.5
+71.6
+
+TABLE V: Performance of DQN after training on the
+tested difﬁculty but initialized to random weights
+
+Game difﬁculty
+Easy
+Medium
+Hard
+
+DQN (easy)
+Inf
+0.7
+0.1
+
+DQN (medium)
+Inf
+Inf
+0.6
+
+DQN (hard)
+Inf
+Inf
+82.2
+
+# iterations
+99000
+199000
+299000
+399000
+
+easy
+28.1
+128.4
+617.11
+282.3
+
+w/ rewardAlive medium w/ rewardAlive
+52.7
+101.8
+42.7
+2598
+
+1680.9
+1026.8
+351.06
+1006.11
+
+2.6
+128.6
+58.7
+299.1
+
+TABLE IV: Performance of DQN on medium difﬁculty
+with weights initialized from DQN trained on easy
+
+TABLE VI: Comparison of training with additional
+rewardAlive and without it
+
+with more training after a certain point. For example, the
+hard difﬁculty had not reached this point of training and
+consistently yields better results with more training. This
+instability is inherent to many reinforcement learning
+algorithms and could be further investigated in a follow-
+up project. One potential solution would be to decrease
+the learning rate as more training occurs or to increase
+model complexity (neural network architecture).
+
+D. Training with initial pre-trained network
+
+Here, we describe results of a network which is initial-
+ized to another pre-trained network. Speciﬁcally, when
+training the network to play on the medium difﬁculty, we
+initialize the DQN to have the same weights of a network
+that was previously trained on the easy difﬁculty. This
+yielded the best results performance-wise compared to
+any of our other trained networks. The network was
+trained on the medium difﬁculty for 209,000 updates
+after being initialized to the previously trained DQN on
+easy mode.
+
+From Table IV, it is clear that not only does the
+DQN perform better on the difﬁculty it was trained on,
+but it also performs better on the easier difﬁculties. It
+remembers how to perform well on the easy mode while
+it modiﬁes it weights to also perform well on the medium
+difﬁculty. The same could not be said about the networks
+which were directly trained on the easy/medium/hard
+difﬁculties (as shown in Table V), which is a very
+insightful observation.
+
+After training for 199 iterations on each difﬁculty
+(directly) with random initialized weights, we got the
+results shown in Table V. These networks do not gener-
+alize well to different difﬁculties.
+
+E. Removing the reward for staying alive
+
+In this section, we test whether the rewardAlive
+reward truly leads to faster convergence or better re-
+sults as suspected. The results in Table VI show that
+indeed adding a rewardAlive reward accelerates the
+training process since it provides an incentive which is
+directly correlated to the score/goal. More importantly,
+it prevents sparse rewards to encourage faster learning.
+Therefore, if a reward is directly correlated with the
+intended reward (such as score of the game), then it is
+beneﬁcial to use this correlated reward in addition to the
+intended reward to speed up the training process.
+
+V. CONCLUSION
+
+We were able to successfully play the game Flappy
+Bird by learning straight from the pixels and the score,
+achieving super-human results. However, training was
+not consistent in that more training did not necessarily
+correlate with better score. The model could be overﬁt-
+ting or forgetting so future work could attempt to explore
+and resolve this issue. Another very important area that
+could be reﬁned is the experience replay. We uniformly
+sampled from the replay memory, but some experiences
+have more impact on successfully training the DQN
+than other experiences. Being able to prioritize these
+experiences would lead to better performance, efﬁcient
+training, and faster convergence. Moreover, in this game
+we removed the background and score to reduce clutter
+and increase likeliness of successful training. It would be
+interesting to see how restoring the background affects
+agent performance. Overall, our results show that deep
+reinforcement learning is a step in the right direction and
+has a lot of potential for further application.
+
+5
+
+Deep Reinforcement Learning for
+
+Flappy Bird
+
+Kevin Chen
+
+Abstract—Reinforcement learning is essential for appli-
+cations where there is no single correct way to solve a
+problem. In this project, we show that deep reinforcement
+learning is very effective at learning how to play the game
+Flappy Bird, despite the high-dimensional sensory input.
+The agent is not given information about what the bird
+or pipes look like - it must learn these representations
+and directly use the input and score to develop an optimal
+strategy. Our agent uses a convolutional neural network to
+evaluate the Q-function for a variant of Q-learning, and
+we show that it is able to achieve super-human perfor-
+mance. Furthermore, we discuss difﬁculties and potential
+improvements with deep reinforcement learning.
+
+I. INTRODUCTION
+
+Reinforcement learning is useful when we need an
+agent to perform a task, but there is no single “correct”
+way of completing it. For example, how would one
+program a robot to travel from one place to another
+and bring back food? It would be unrealistic to program
+every move and step that it must take. Instead, it should
+learn to make decisions under uncertainty and with very
+high dimensional input (such as a camera) in order to
+reach the end goal. This project focuses on a ﬁrst step
+in realizing this.
+
+The goal of the project is to learn a policy to have an
+agent successfully play the game Flappy Bird. Flappy
+Bird is a game in which the player tries to keep the bird
+alive for as long as possible. The bird automatically falls
+towards the ground by due to gravity, and if it hits the
+ground, it dies and the game ends. The bird must also
+navigate through pipes. The pipes restrict the height of
+the bird to be within a certain speciﬁc range as the bird
+passes through them. If the bird is too high or too low,
+it will crash into the pipe and die. Therefore, the player
+must time ﬂaps/jumps properly to keep the bird alive
+as it passes through these obstacles. The game score is
+measured by how many obstacles the bird successfully
+passes through. Therefore, to get a high score, the player
+must keep the bird alive for as long as possible as it
+encounters the pipes.
+
+Training an agent to successfully play the game is
+especially challenging because our goal is to provide
+the agent with only pixel information and the score.
+The agent is not provided with information regarding
+what the bird looks like, what the pipes look like, or
+where the bird and pipes are. Instead, it must learn these
+representations and interactions and be able to generalize
+due to the very large state space.
+
+Fig. 1: Three screenshots of the game Flappy Bird at
+three different difﬁculties (easy, medium, hard) respec-
+tively.
+
+II. RELATED WORK
+
+The related work in this area is primarily by Google
+Deepmind. Mnih et al. are able to successfully train
+agents to play the Atari 2600 games using deep rein-
+forcement learning, surpassing human expert-level on
+multiple games [1],
+[2]. These works inspired this
+project, which is heavily modeled after their approach.
+They use a deep Q-network (DQN) to evaluate the Q-
+function for Q-learning and also use experience replay
+to de-correlate experiences. Their approach is essentially
+state-of-the-art and was the main catalyst for deep re-
+inforcement learning, after which many papers tried to
+make improvements. The main strength is that they were
+able to train an agent despite extremely high dimensional
+input (pixels) and no speciﬁcation about intrinsic game
+parameters. In fact, they are able to outperform a human
+expert on three out of seven Atari 2600 games. However,
+further improvements involve prioritizing experience re-
+play, more efﬁcient training, and better stability when
+training. [2] tried to address the stability issues by
+clipping the loss to +1 or −1, and by updating the target
+network once in every C updates to the DQN rather than
+updating the target network every iteration.
+
+III. METHOD
+
+In this section, we describe how the model is param-
+
+eterized and the general algorithm.
+
+A. MDP Formulation
+
+The actions that the agent can take are to ﬂap (a = 1)
+or to do nothing and let the bird drop (a = 0). The state
+is represented by a sequence of frames from the Flappy
+Bird game as well as the recent actions that the player
+took. Speciﬁcally, the state is the sequence shown in
+
+1
+
+st = (xt−histLen+1, at−histLen+1, ..., xt−1, at−1, xt)
+
+∇θiLi(θi) = Es,a∼ρ(·);s(cid:48)∼ε
+
+(r + γ max
+
+a(cid:48) Q(s(cid:48), a(cid:48); θi−1) − Q(s, a; θi))∇θiQ(s, a; θi)
+
+(cid:104)
+
+(cid:105)
+
+(1)
+
+(2)
+
+Equation 1 where st is the state at time t, xt is the pixel
+input (or the frame or screen capture) at time t, and at is
+the action taken at time t. historyLength (or histLen)
+is a hyperparameter that speciﬁes how many of the most
+recent frames to keep track of. This is to reduce the
+storage and state space compared to saving all frames
+and actions starting from t = 1. The reason for storing
+multiple x’s and a’s rather than storing a single frame x
+is because the agent needs temporal information to play.
+For example, the agent cannot deduce the velocity of
+the bird from a single frame, but velocity is essential for
+making a decision.
+
+The discount
+
+factor was set
+
+to γ = 0.95. The
+transition probabilities and the rewards are unknown
+to the agent. Since Q-learning is model-free, we do
+not explicitly estimate the transition probabilities and
+rewards, but instead directly try to estimate the optimal
+Q-function. This is described further in the Q-learning
+section.
+
+However, we still must deﬁne the rewards intrinsic to
+the game. Ideally, the reward should essentially be the
+score of the game. It starts out as 0 and every time the
+bird passes a pipe, the score increases by 1. However,
+this is potentially problematic in that the rewards will be
+very sparse. Speciﬁcally, if the bird dies instantly at the
+start of the game, the reward would be similar to if the
+bird died right before reaching the pipe. The performance
+is clearly better if the bird survives up until the pipe
+compared to dying instantly. Therefore, adding a reward
+for staying alive encourages the agent to think simi-
+larly. Without this additional reward, the agent should
+eventually realize this, but adding the reward, called
+rewardAlive, speeds up the training process. In total,
+we have three rewards: rewardAlive, rewardP ipe,
+and rewardDead. The agent gets rewardAlive for
+every frame it stays alive, rewardP ipe for successfully
+passing a pipe, and rewardDead for dying.
+
+B. Q-learning
+
+The goal in reinforcement learning is always to maxi-
+mize the expected value of the total payoff (or expected
+return). In Q-learning, which is off-policy, we use the
+
+2
+
+Bellman equation as an iterative update
+
+a(cid:48) Qi(s(cid:48), a(cid:48))|s, a]
+
+Qi+1(s, a) = Es(cid:48)∼ε[r + γ max
+
+(3)
+where s(cid:48) is the next state, r is the reward, ε is the envi-
+ronment, and Qi(s, a) is the Q-function at the ith itera-
+tion. It can be shown that this iterative update converges
+to the optimal Q-function (the Q-function associated with
+the optimal policy). However, this is rote learning. To
+prevent rote learning, function approximations are used
+for the Q-function to allow generalization to unseen
+states. Our approach uses the deep Q-learning approach
+in which we use a neural network to approximate the Q-
+function. This neural network is a convolutional neural
+network which we call the Deep Q-Network (DQN).
+
+A common loss used for training a Q-function approx-
+
+imator is
+
+Li(θi) = Es,a∼ρ(·)
+
+(yi − Q(s, a; θi))2
+
+(4)
+
+(cid:21)
+
+(cid:20) 1
+
+2
+
+where θi are the parameters of the Q-network at iteration
+i and yi is the target at iteration i. The target yi is deﬁned
+as
+
+(cid:104)
+
+(cid:105)
+a(cid:48) Q(s(cid:48), a(cid:48); θi−1)|s, a
+
+yi = Es(cid:48)∼ε
+
+r + γ max
+
+(5)
+for a given experience e = (s, a, r, s(cid:48)). An experience is
+analogous to a datapoint such as in linear regression and
+the replay memory, a list of experiences, is analogous
+to a dataset such as in linear regression. The gradient of
+the loss function with respect to the weights is shown in
+equation 2. Thus, we can simply use stochastic gradient
+descent and backpropagation on the above loss function
+to update the weights of the network.
+
+Additionally, we take an -greedy approach to handle
+the exploration-exploitation problem in Q-learning. That
+is, when we are training, we select a random action
+with probability  and choose the optimal action aopt =
+arg maxa(cid:48) Q(s, a(cid:48)). In our implementation, we linearly
+change the exploration probability  from 1 to 0.1 as the
+agent trains. This is to encourage a lot of exploration in
+the beginning where the agent has no idea how to play
+the game and the state space is extremely large. It takes a
+large number of random actions and as it starts to ﬁgure
+out which actions are better in different situations/states,
+
+it exploits more and tries to narrow down what
+optimal actions are.
+
+the
+
+C. Experience replay
+
+A problem that arises in traditional Q-learning is
+that
+the experiences from consecutive frames of the
+same episode (a run from start to ﬁnish of a single
+game) are very correlated. This hinders the training
+process and leads to inefﬁcient training. Therefore, to
+de-correlate these experiences, we use experience replay.
+In experience replay, we store an experience (s, a, r, s(cid:48))
+at every frame into the replay memory. The replay
+memory has a certain size and contains the most recent
+replayM emorySize experiences. It is constantly up-
+dated (like a queue) so that they are associated with the
+actions taken with the recent Q-functions. The batch used
+to update the DQN is composed by uniformly sampling
+experiences from the replay memory. As a result, our
+experiences are no longer likely to be correlated.
+
+D. Stability
+
+Moreover, to encourage more stability in decreasing
+the loss function, we use a target network ˆQ(s, a).
+ˆQ(s, a) is essentially the the same as Q(s, a). The
+network has the same structure, but the parameters may
+be different. At every C updates to the DQN Q(s, a), we
+update ˆQ(s, a). This ˆQ(s, a) is then used for computing
+the target yi according to:
+
+yi = Es(cid:48)∼ε
+
+r + γ max
+
+a(cid:48)
+
+ˆQ(s(cid:48), a(cid:48); ˆθi−1)|s, a
+
+(6)
+
+This leads to better stability when updating the DQN.
+
+E. Pre-processing
+
+Since we use a very high dimensional state, we actu-
+ally perform pre-processing to reduce the dimensionality
+and state space. The pre-processing is done over the
+pixels, so we ﬁrst extract the images from the state st.
+The original screen size is 512 × 288 pixels in three
+channels, but we convert the image captured from the
+screen to grayscale, crop it to 340 × 288 pixels, and
+downsample it by a factor of 0.3, resulting in a 102× 86
+pixel image. It is then rescaled to 84 × 84 pixels and
+normalized from [0, 255] to [0, 1]. I call this feature
+extractor φ(s).
+
+F. Deep Q-Network
+
+Our Q-function is approximated by a convolutional
+neural network. This network takes as input a 84× 84×
+historyLength image and has a single output for every
+possible action. The ﬁrst layer is a convolution layer with
+
+(cid:104)
+
+(cid:105)
+
+32 ﬁlters of size 8× 8 with stride 4, followed by a recti-
+ﬁed nonlinearity. The second layer is also a convolution
+layer of 64 ﬁlters of size 4× 4 with stride 2, followed by
+another rectiﬁed linear unit. The third convolution layer
+has 64 ﬁlters of size 3 × 3 with stride 1 followed by a
+rectiﬁed linear unit. Following that is a fully connected
+layer with 512 outputs, and then the output layer (also
+fully connected) with a single output for each action.
+To choose the best action, we take the action with the
+highest output Q-value (aopt = arg maxa(cid:48) Q(s, a(cid:48))).
+
+G. Pipeline
+
+Algorithm 1: Deep Q-learning algorithm for Flappy
+Bird
+initialize replay memory
+initialize DQN to random weights
+repeat
+
+new episode (new game)
+initialize state s0
+repeat
+
+extract xt from raw pixel data update state
+st with xt
+add experience
+et = (φ(st−1), at−1, rt−1, φ(st)) to replay
+memory
+take best action
+at = arg mina∈actions Q(st, a) with
+exploration if training
+uniformly sample a batch of experiences
+from the replay memory
+backpropagate and update DQN with the
+minibatch
+update exploration probability 
+if C updates to DQN since last update to
+target network then
+
+update the target Q-network
+ˆQ(s, a) ← Q(s, a)
+
+end
+update state st with at
+update current reward rt and total reward
+totalReward
+update game parameters (bird position, etc.)
+refresh screen
+
+until ﬂappy bird crashes;
+restart Flappy Bird
+
+until convergence or number of iterations reached;
+
+The pipeline for the entire DQN training process is
+shown in Algorithm 1. It is as previously described
+earlier in this section. We apply Q-learning but use
+
+3
+
+experience replay, storing every experience in the replay
+memory at every frame. When we perform an update
+to the DQN, we sample uniformly to get a batch of
+experiences and use that to update the DQN. This is
+analogous to sampling batches from a dataset using
+SGD/mini-batch gradient descent in convolutional neural
+networks for image classiﬁcation or deep learning in
+general. Then we update the exploration probability as
+well as the target network ˆQ(s, a) if necessary.
+
+IV. RESULTS
+
+A video can be found at
+
+the following link:
+https://youtu.be/9WKBzTUsPKc. Our metric for evalu-
+ating the performance of the DQN is the game score
+(numper of pipes passed). The reported scores in the
+tables are the average scores over 10 games (unless
+otherwise speciﬁed).
+
+A. Testing parameters
+
+The Flappy Bird game was run at 30 frames per
+second, and historyLength was set
+to 5. The dis-
+count factor was 0.95 and the rewards were the fol-
+lowing: rewardAlive = +0.1, rewardP ipe = +1.0,
+rewardDead = −1.0. The exploration probability  de-
+creased from 1 to 0.1 over 600000 updates to the DQN.
+The size of the replay memory was 20000 experiences.
+For training, we used RMSProp with a learning rate
+of 1e-6, decay of 0.9, and momentum as 0.95. These
+were chosen similarly to that of [2]. To ﬁgure out better
+parameters, some were done by trial and error. For
+example, we noticed that the learning rate was too high
+when the neural network weights began exploding, and
+used a binary search algorithm to ﬁgure out the best
+learning rate. If the learning rate was too low, it would
+take longer to train. We did updates in mini-batches of
+size 32 (experiences). We only begin training after the
+replay memory has at least 3000 experiences and update
+the target network ˆQ(s, a) once for every 1000 updates
+to the DQN. Our convolution weights are initialized to
+have a normal distribution with mean 0 and variance
+0.1. This deep neural network was implemented using
+TensorFlow.
+
+training difﬁculty
+easy
+medium
+hard
+
+ﬂap every n
+Inf
+Inf
+0.5
+
+human
+Inf
+Inf
+17.625
+
+DQN
+Inf
+Inf
+82.2
+
+TABLE I: Average score of DQN on varying difﬁculties
+compared to baseline and human performance
+
+training difﬁculty
+easy
+medium
+hard
+
+ﬂap every n
+Inf
+11
+1
+
+human
+Inf
+Inf
+65
+
+DQN
+Inf
+Inf
+215
+
+TABLE II: Highest score of DQN on varying difﬁculties
+compared to baseline and human scores
+
+screen. These comparisons are shown in table I (average
+score) and table II (highest score).
+
+The performance of the DQN is much higher than the
+baseline and human performance. If the score was higher
+than 1000, the score was considered to be inﬁnity (except
+for the human case where if they got a score above
+100, this would be considered inﬁnity). The human case
+was generalized to be inﬁnity if the user could play for
+forever if he or she could focus and did not need to take
+breaks (eat, sleep, etc.). Although the scores for human
+and DQN are both inﬁnity for the easy and medium
+difﬁculties, in reality the DQN is better because it does
+not have to take a break whereas the DQN can play for
+10+ hours at a time.
+
+In general, almost all of the failures in the hard
+difﬁculty are because the bird ﬂaps upwards when it
+should be letting the bird drop, and then it dies. However,
+once in a while, the bird will just barely clip the top-right
+corner of the lower pipe as it is falling. Furthermore, I
+noticed that the agent seems to take riskier moves when
+it trains more. Thus, a follow-up test to resolve these
+problems could be to encourage the agent to take the
+moves with the lowest risk. To do this, we would have
+the agent make a random move a small probability of the
+time during training (even if the agent is supposed to be
+evaluating the optimal action). To maximize the expected
+return, the agent would have to play very safely.
+
+B. Overall performance
+
+C. Training time
+
+The trained DQN plays extremely well and even
+performs better than humans. We compare the results
+of the DQN with a baseline and humans. The baseline
+implementation ﬂaps every z frames to keep the bird
+in the middle of the screen. This baseline was chosen
+because the pipe gaps locations are uniformly distributed
+with the expected location to be in the middle of the
+
+In this section, we discuss how the number of training
+iterations affects the performance of the Flappy Bird
+agent. The number of training iterations refers to the
+number of updates to the DQN (there is no exact deﬁni-
+tion of epoch here). Our results (see Table III) show that
+more training does not necessarily lead to better scores.
+In fact there is some instability and the scores ﬂuctuate
+
+4
+
+training iterations
+99000
+199000
+299000
+399000
+
+easy medium hard
+0.3
+11.6
+65
+71.6
+
+52.7
+101.8
+42.7
+2598
+
+1680.9
+1026.8
+351.06
+1006.11
+
+TABLE III: Average score of DQN as a function of
+learning rate
+
+Game difﬁculty
+Easy
+Medium
+Hard
+
+DQN (easy)
+Inf
+1.11
+0.0
+
+DQN (medium)
+99.3
+Inf
+0.6
+
+DQN (hard)
+1.5
+1.5
+71.6
+
+TABLE V: Performance of DQN after training on the
+tested difﬁculty but initialized to random weights
+
+Game difﬁculty
+Easy
+Medium
+Hard
+
+DQN (easy)
+Inf
+0.7
+0.1
+
+DQN (medium)
+Inf
+Inf
+0.6
+
+DQN (hard)
+Inf
+Inf
+82.2
+
+# iterations
+99000
+199000
+299000
+399000
+
+easy
+28.1
+128.4
+617.11
+282.3
+
+w/ rewardAlive medium w/ rewardAlive
+52.7
+101.8
+42.7
+2598
+
+1680.9
+1026.8
+351.06
+1006.11
+
+2.6
+128.6
+58.7
+299.1
+
+TABLE IV: Performance of DQN on medium difﬁculty
+with weights initialized from DQN trained on easy
+
+TABLE VI: Comparison of training with additional
+rewardAlive and without it
+
+with more training after a certain point. For example, the
+hard difﬁculty had not reached this point of training and
+consistently yields better results with more training. This
+instability is inherent to many reinforcement learning
+algorithms and could be further investigated in a follow-
+up project. One potential solution would be to decrease
+the learning rate as more training occurs or to increase
+model complexity (neural network architecture).
+
+D. Training with initial pre-trained network
+
+Here, we describe results of a network which is initial-
+ized to another pre-trained network. Speciﬁcally, when
+training the network to play on the medium difﬁculty, we
+initialize the DQN to have the same weights of a network
+that was previously trained on the easy difﬁculty. This
+yielded the best results performance-wise compared to
+any of our other trained networks. The network was
+trained on the medium difﬁculty for 209,000 updates
+after being initialized to the previously trained DQN on
+easy mode.
+
+From Table IV, it is clear that not only does the
+DQN perform better on the difﬁculty it was trained on,
+but it also performs better on the easier difﬁculties. It
+remembers how to perform well on the easy mode while
+it modiﬁes it weights to also perform well on the medium
+difﬁculty. The same could not be said about the networks
+which were directly trained on the easy/medium/hard
+difﬁculties (as shown in Table V), which is a very
+insightful observation.
+
+After training for 199 iterations on each difﬁculty
+(directly) with random initialized weights, we got the
+results shown in Table V. These networks do not gener-
+alize well to different difﬁculties.
+
+E. Removing the reward for staying alive
+
+In this section, we test whether the rewardAlive
+reward truly leads to faster convergence or better re-
+sults as suspected. The results in Table VI show that
+indeed adding a rewardAlive reward accelerates the
+training process since it provides an incentive which is
+directly correlated to the score/goal. More importantly,
+it prevents sparse rewards to encourage faster learning.
+Therefore, if a reward is directly correlated with the
+intended reward (such as score of the game), then it is
+beneﬁcial to use this correlated reward in addition to the
+intended reward to speed up the training process.
+
+V. CONCLUSION
+
+We were able to successfully play the game Flappy
+Bird by learning straight from the pixels and the score,
+achieving super-human results. However, training was
+not consistent in that more training did not necessarily
+correlate with better score. The model could be overﬁt-
+ting or forgetting so future work could attempt to explore
+and resolve this issue. Another very important area that
+could be reﬁned is the experience replay. We uniformly
+sampled from the replay memory, but some experiences
+have more impact on successfully training the DQN
+than other experiences. Being able to prioritize these
+experiences would lead to better performance, efﬁcient
+training, and faster convergence. Moreover, in this game
+we removed the background and score to reduce clutter
+and increase likeliness of successful training. It would be
+interesting to see how restoring the background affects
+agent performance. Overall, our results show that deep
+reinforcement learning is a step in the right direction and
+has a lot of potential for further application.
+
+5
+
+REFERENCES
+
+[1] V. Mnih, K. Kavukcuoglu, D. Silver, A. Graves, I. Antonoglou, D.
+Wierstra, and M. Riedmiller. Playing Atari with Deep Reinforce-
+ment Learning. In Deep Learning, Neural Information Processing
+Systems Workshop, 2013.
+
+[2] V. Mnih, K. Kavukcuoglu, D. Silver, A. A. Rusu, J. Veness,
+M. G. Bellemare, A. Graves, M. Riedmiller, A. K. Fidjeland,
+G. Ostrovski, S. Petersen, C. Beattle, A. Sadik, I. Antonoglou,
+H. King, D. Kumaran, D. Wierstra, S. Legg, and D. Hassabis.
+Human-level control through deep reinforcement learning. Nature,
+518(7540):529-533, 2015.
+
+[3] T. Schaul, J. Quan, I. Antonoglou, D. Silver. Prioritized Experience
+
+Replay. arXiv: http://arxiv.org/abs/1511.05952
+
+6
+
+

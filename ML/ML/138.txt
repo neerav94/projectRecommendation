@@ -1,0 +1,2251 @@
+Incorporating Nesterov Momentum into Adam
+
+Timothy Dozat
+
+1
+
+Introduction
+
+When attempting to improve the performance of a
+deep learning system, there are more or less three
+approaches one can take: the ﬁrst is to improve the
+structure of the model, perhaps adding another layer,
+switching from simple recurrent units to LSTM cells
+[4], or–in the realm of NLP–taking advantage of
+syntactic parses (e.g. as in [13, et seq.]); another ap-
+proach is to improve the initialization of the model,
+guaranteeing that the early-stage gradients have cer-
+tain beneﬁcial properties [3], or building in large
+amounts of sparsity [6], or taking advantage of prin-
+ciples of linear algebra [15]; the ﬁnal approach is to
+try a more powerful learning algorithm, such as in-
+cluding a decaying sum over the previous gradients
+in the update [12], by dividing each parameter up-
+date by the L2 norm of the previous updates for that
+parameter [2], or even by foregoing ﬁrst-order algo-
+rithms for more powerful but more computationally
+costly second order algorithms [9]. This paper has
+as its goal the third option—improving the quality
+of the ﬁnal solution by using a faster, more powerful
+learning algorithm.
+
+2 Related Work
+
+2.1 Momentum-based algorithms
+Gradient descent is a simple, well-known, and gen-
+erally very robust optimization algorithm where the
+gradient of the function to be minimized with re-
+spect to the parameters (∇ f (θ t−1)) is computed, and
+a portion η of that gradient is subtracted off of the
+parameters:
+
+Classical momentum [12] accumulates a decaying
+
+Algorithm 1 Gradient Descent
+
+gt ← ∇θ t−1 f (θ t−1)
+θ t ← θ t−1 − ηgt
+
+sum (with decay constant µ) of the previous gradi-
+ents into a momentum vector m, and using that in-
+stead of the true gradient. This has the advantage of
+accelerating gradient descent learning along dimen-
+sions where the gradient remains relatively consis-
+tent across training steps and slowing it along turbu-
+lent dimensions where the gradient is signiﬁcantly
+oscillating.
+
+Algorithm 2 Classical Momentum
+
+gt ← ∇θ t−1 f (θ t−1)
+mt ← µmt−1 + gt
+θ t ← θ t−1 − ηmt
+
+[14] show that Nesterov’s accelerated gradient
+(NAG) [11]–which has a provably better bound than
+gradient descent–can be rewritten as a kind of im-
+proved momentum. If we can substitute the deﬁni-
+tion for mt in place of the symbol mt in the parame-
+ter update as in (2)
+
+θ t ←θ t−1 − ηmt
+θ t ←θ t−1 − ηµmt−1 − ηgt
+
+(1)
+(2)
+
+we can see that the term mt−1 doesn’t depend on
+the current gradient gt—so in principle, we can get
+a superior step direction by applying the momentum
+vector to the parameters before computing the gradi-
+ent. The authors provide empirical evidence that this
+algorithm is superior to the gradient descent, classi-
+
+Incorporating Nesterov Momentum into Adam
+
+Timothy Dozat
+
+1
+
+Introduction
+
+When attempting to improve the performance of a
+deep learning system, there are more or less three
+approaches one can take: the ﬁrst is to improve the
+structure of the model, perhaps adding another layer,
+switching from simple recurrent units to LSTM cells
+[4], or–in the realm of NLP–taking advantage of
+syntactic parses (e.g. as in [13, et seq.]); another ap-
+proach is to improve the initialization of the model,
+guaranteeing that the early-stage gradients have cer-
+tain beneﬁcial properties [3], or building in large
+amounts of sparsity [6], or taking advantage of prin-
+ciples of linear algebra [15]; the ﬁnal approach is to
+try a more powerful learning algorithm, such as in-
+cluding a decaying sum over the previous gradients
+in the update [12], by dividing each parameter up-
+date by the L2 norm of the previous updates for that
+parameter [2], or even by foregoing ﬁrst-order algo-
+rithms for more powerful but more computationally
+costly second order algorithms [9]. This paper has
+as its goal the third option—improving the quality
+of the ﬁnal solution by using a faster, more powerful
+learning algorithm.
+
+2 Related Work
+
+2.1 Momentum-based algorithms
+Gradient descent is a simple, well-known, and gen-
+erally very robust optimization algorithm where the
+gradient of the function to be minimized with re-
+spect to the parameters (∇ f (θ t−1)) is computed, and
+a portion η of that gradient is subtracted off of the
+parameters:
+
+Classical momentum [12] accumulates a decaying
+
+Algorithm 1 Gradient Descent
+
+gt ← ∇θ t−1 f (θ t−1)
+θ t ← θ t−1 − ηgt
+
+sum (with decay constant µ) of the previous gradi-
+ents into a momentum vector m, and using that in-
+stead of the true gradient. This has the advantage of
+accelerating gradient descent learning along dimen-
+sions where the gradient remains relatively consis-
+tent across training steps and slowing it along turbu-
+lent dimensions where the gradient is signiﬁcantly
+oscillating.
+
+Algorithm 2 Classical Momentum
+
+gt ← ∇θ t−1 f (θ t−1)
+mt ← µmt−1 + gt
+θ t ← θ t−1 − ηmt
+
+[14] show that Nesterov’s accelerated gradient
+(NAG) [11]–which has a provably better bound than
+gradient descent–can be rewritten as a kind of im-
+proved momentum. If we can substitute the deﬁni-
+tion for mt in place of the symbol mt in the parame-
+ter update as in (2)
+
+θ t ←θ t−1 − ηmt
+θ t ←θ t−1 − ηµmt−1 − ηgt
+
+(1)
+(2)
+
+we can see that the term mt−1 doesn’t depend on
+the current gradient gt—so in principle, we can get
+a superior step direction by applying the momentum
+vector to the parameters before computing the gradi-
+ent. The authors provide empirical evidence that this
+algorithm is superior to the gradient descent, classi-
+
+Algorithm 3 Nesterov’s accelerated gradient
+
+gt ← ∇θ t−1 f (θ t−1 − ηµmt−1)
+mt ← µmt−1 + gt
+θ t ← θ t−1 − ηmt
+
+cal momentum, and Hessian-Free [9] algorithms for
+conventionally difﬁcult optimization objectives.
+
+2.2 L2 norm-based algorithms
+[2] present adaptive subgradient descent (Ada-
+Grad), which divides η of every step by the L2 norm
+of all previous gradients; this slows down learning
+along dimensions that have already changed signiﬁ-
+cantly and speeds up learning along dimensions that
+have only changed slightly, stabilizing the model’s
+representation of common features and allowing it
+to rapidly “catch up” its representation of rare fea-
+tures.1
+
+Algorithm 4 AdaGrad
+gt ← ∇θ t−1 f (θ t−1)
+nt ← nt−1 + g2
+θ t ← θ t−1 − η gt√
+nt +ε
+
+t
+
+One notable problem with AdaGrad is that the
+norm vector n eventually becomes so large that
+training slows to a halt, preventing the model from
+reaching the local minimum; [16] go on to motivate
+RMSProp, an alternative to AdaGrad that replaces
+the sum in nt with a decaying mean parameterized
+here by ν. This allows the model to continue to learn
+indeﬁnitely.
+
+Algorithm 5 RMSProp
+gt ← ∇θ t−1 f (θ t−1)
+nt ← νnt−1 + (1− ν)g2
+θ t ← θ t−1 − η gt√
+nt +ε
+
+t
+
+2.3 Combination
+One might ask if combining the momentum-based
+and norm-based methods might provide the ad-
+vantages of both.
+In fact, [5] successfully do so
+
+1Most implementations of this kind of algorithm include an
+ε parameter to keep the denominator from being too small and
+resulting in an irrecoverably large step
+
+with adaptive moment estimation (Adam), combin-
+ing classical momentum (using a decaying mean in-
+stead of a decaying sum) with RMSProp to improve
+performance on a number of benchmarks. In their
+algorithm, they include initialization bias correction
+terms, which offset some of the instability that ini-
+tializing m and n to 0 can create.
+
+Algorithm 6 Adam
+gt ← ∇θ t−1 f (θ t−1)
+mt ← µmt−1 + (1− µ)gt
+ˆmt ← mt
+1−µt
+nt ← νnt−1 + (1− ν)g2
+ˆnt ← nt
+1−νt
+θ t ← θ t−1 − η ˆmt√
+ˆnt +ε
+
+t
+
+[5] also include an algorithm AdaMax that re-
+places the L2 norm with the L∞ norm, removing the
+need for ˆnt and replacing nt and θ t with the follow-
+ing updates:
+
+nt ← max(νnt−1,|gt|)
+θ t ← θ t−1 − η ˆmt
+nt +ε
+
+We can generalize this to RMSProp as well, using
+the L∞ norm in the denominator instead of the L2
+norm, giving what might be called the MaxaProp
+algorithm.
+
+3 Methods
+3.1 NAG revisited
+Adam combines RMSProp with classical momen-
+tum. But as [14] show, NAG is in general supe-
+rior to classical momentum—so how would we go
+about modifying Adam to use NAG instead? First,
+we rewrite the NAG algorithm to be more straight-
+forward and efﬁcient to implement at the cost of
+some intuitive readability. Momentum is most ef-
+fective with a warming schedule, so for complete-
+ness we parameterize µ by t as well. Here, the
+
+Algorithm 7 NAG rewritten
+
+gt ← ∇θ t−1 f (θ t−1)
+mt ← µtmt−1 + gt
+¯mt ← gt + µt+1mt
+θ t ← θ t−1 − η ¯mt
+
+vector ¯m contains the gradient update for the cur-
+
+Incorporating Nesterov Momentum into Adam
+
+Timothy Dozat
+
+1
+
+Introduction
+
+When attempting to improve the performance of a
+deep learning system, there are more or less three
+approaches one can take: the ﬁrst is to improve the
+structure of the model, perhaps adding another layer,
+switching from simple recurrent units to LSTM cells
+[4], or–in the realm of NLP–taking advantage of
+syntactic parses (e.g. as in [13, et seq.]); another ap-
+proach is to improve the initialization of the model,
+guaranteeing that the early-stage gradients have cer-
+tain beneﬁcial properties [3], or building in large
+amounts of sparsity [6], or taking advantage of prin-
+ciples of linear algebra [15]; the ﬁnal approach is to
+try a more powerful learning algorithm, such as in-
+cluding a decaying sum over the previous gradients
+in the update [12], by dividing each parameter up-
+date by the L2 norm of the previous updates for that
+parameter [2], or even by foregoing ﬁrst-order algo-
+rithms for more powerful but more computationally
+costly second order algorithms [9]. This paper has
+as its goal the third option—improving the quality
+of the ﬁnal solution by using a faster, more powerful
+learning algorithm.
+
+2 Related Work
+
+2.1 Momentum-based algorithms
+Gradient descent is a simple, well-known, and gen-
+erally very robust optimization algorithm where the
+gradient of the function to be minimized with re-
+spect to the parameters (∇ f (θ t−1)) is computed, and
+a portion η of that gradient is subtracted off of the
+parameters:
+
+Classical momentum [12] accumulates a decaying
+
+Algorithm 1 Gradient Descent
+
+gt ← ∇θ t−1 f (θ t−1)
+θ t ← θ t−1 − ηgt
+
+sum (with decay constant µ) of the previous gradi-
+ents into a momentum vector m, and using that in-
+stead of the true gradient. This has the advantage of
+accelerating gradient descent learning along dimen-
+sions where the gradient remains relatively consis-
+tent across training steps and slowing it along turbu-
+lent dimensions where the gradient is signiﬁcantly
+oscillating.
+
+Algorithm 2 Classical Momentum
+
+gt ← ∇θ t−1 f (θ t−1)
+mt ← µmt−1 + gt
+θ t ← θ t−1 − ηmt
+
+[14] show that Nesterov’s accelerated gradient
+(NAG) [11]–which has a provably better bound than
+gradient descent–can be rewritten as a kind of im-
+proved momentum. If we can substitute the deﬁni-
+tion for mt in place of the symbol mt in the parame-
+ter update as in (2)
+
+θ t ←θ t−1 − ηmt
+θ t ←θ t−1 − ηµmt−1 − ηgt
+
+(1)
+(2)
+
+we can see that the term mt−1 doesn’t depend on
+the current gradient gt—so in principle, we can get
+a superior step direction by applying the momentum
+vector to the parameters before computing the gradi-
+ent. The authors provide empirical evidence that this
+algorithm is superior to the gradient descent, classi-
+
+Algorithm 3 Nesterov’s accelerated gradient
+
+gt ← ∇θ t−1 f (θ t−1 − ηµmt−1)
+mt ← µmt−1 + gt
+θ t ← θ t−1 − ηmt
+
+cal momentum, and Hessian-Free [9] algorithms for
+conventionally difﬁcult optimization objectives.
+
+2.2 L2 norm-based algorithms
+[2] present adaptive subgradient descent (Ada-
+Grad), which divides η of every step by the L2 norm
+of all previous gradients; this slows down learning
+along dimensions that have already changed signiﬁ-
+cantly and speeds up learning along dimensions that
+have only changed slightly, stabilizing the model’s
+representation of common features and allowing it
+to rapidly “catch up” its representation of rare fea-
+tures.1
+
+Algorithm 4 AdaGrad
+gt ← ∇θ t−1 f (θ t−1)
+nt ← nt−1 + g2
+θ t ← θ t−1 − η gt√
+nt +ε
+
+t
+
+One notable problem with AdaGrad is that the
+norm vector n eventually becomes so large that
+training slows to a halt, preventing the model from
+reaching the local minimum; [16] go on to motivate
+RMSProp, an alternative to AdaGrad that replaces
+the sum in nt with a decaying mean parameterized
+here by ν. This allows the model to continue to learn
+indeﬁnitely.
+
+Algorithm 5 RMSProp
+gt ← ∇θ t−1 f (θ t−1)
+nt ← νnt−1 + (1− ν)g2
+θ t ← θ t−1 − η gt√
+nt +ε
+
+t
+
+2.3 Combination
+One might ask if combining the momentum-based
+and norm-based methods might provide the ad-
+vantages of both.
+In fact, [5] successfully do so
+
+1Most implementations of this kind of algorithm include an
+ε parameter to keep the denominator from being too small and
+resulting in an irrecoverably large step
+
+with adaptive moment estimation (Adam), combin-
+ing classical momentum (using a decaying mean in-
+stead of a decaying sum) with RMSProp to improve
+performance on a number of benchmarks. In their
+algorithm, they include initialization bias correction
+terms, which offset some of the instability that ini-
+tializing m and n to 0 can create.
+
+Algorithm 6 Adam
+gt ← ∇θ t−1 f (θ t−1)
+mt ← µmt−1 + (1− µ)gt
+ˆmt ← mt
+1−µt
+nt ← νnt−1 + (1− ν)g2
+ˆnt ← nt
+1−νt
+θ t ← θ t−1 − η ˆmt√
+ˆnt +ε
+
+t
+
+[5] also include an algorithm AdaMax that re-
+places the L2 norm with the L∞ norm, removing the
+need for ˆnt and replacing nt and θ t with the follow-
+ing updates:
+
+nt ← max(νnt−1,|gt|)
+θ t ← θ t−1 − η ˆmt
+nt +ε
+
+We can generalize this to RMSProp as well, using
+the L∞ norm in the denominator instead of the L2
+norm, giving what might be called the MaxaProp
+algorithm.
+
+3 Methods
+3.1 NAG revisited
+Adam combines RMSProp with classical momen-
+tum. But as [14] show, NAG is in general supe-
+rior to classical momentum—so how would we go
+about modifying Adam to use NAG instead? First,
+we rewrite the NAG algorithm to be more straight-
+forward and efﬁcient to implement at the cost of
+some intuitive readability. Momentum is most ef-
+fective with a warming schedule, so for complete-
+ness we parameterize µ by t as well. Here, the
+
+Algorithm 7 NAG rewritten
+
+gt ← ∇θ t−1 f (θ t−1)
+mt ← µtmt−1 + gt
+¯mt ← gt + µt+1mt
+θ t ← θ t−1 − η ¯mt
+
+vector ¯m contains the gradient update for the cur-
+
+rent timestep gt in addition to the momentum vector
+update for the next timestep µt+1mt, which needs
+to be applied before taking the gradient at the next
+timestep. We don’t need to apply the momentum
+vector for the current timestep anymore because we
+already applied it in the last update of the parame-
+ters, at timestep t − 1.
+3.2 Applying NAG to Adam
+Ignoring the initialization bias correction terms for
+the moment, Adam’s update rule can be written in
+terms of the previous momentum/norm vectors and
+current gradient update as in (3).
+
+µmt−1
+
+(cid:112)νnt−1 + (1− ν)g2
+(cid:112)νnt−1 + (1− ν)g2
+
+(1− µ)gt
+
+t + ε
+
+− η
+
+θ t ←θ t−1 − η
+
+(3)
+
+t + ε
+
+In rewritten NAG, we would take the ﬁrst part of the
+step and apply it before taking the gradient of the
+cost function f –however, the denominator depends
+on gt, so we can’t take advantage of the trick used
+in NAG for this equation. However, ν is generally
+chosen to be very large (normally > .9), so the dif-
+ference between nt−1 and nt will in general be very
+small. We can then replace nt with nt−1 without los-
+ing too much accuracy:
+µmt−1
+θ t ←θ t−1 − η
+√
+nt−1 + ε
+(1− µ)gt
+
+(cid:112)νnt−1 + (1− ν)g2
+
+− η
+
+t + ε
+
+(4)
+
+The the ﬁrst term in the expression in (4) no longer
+depends on gt, meaning here we can use the Nes-
+terov trick; this give us the following expressions for
+¯mt and θ t:
+
+¯mt ← (1− µt)gt + µt+1mt
+θ t ← θ t−1 − η ¯mt√
+vt +ε
+All that’s left is to determine how to include the
+initialization bias correction terms, taking into con-
+sideration that gt comes from the current timestep
+but mt comes from the subsequent timestep. This
+gives us the following, ﬁnal form of the Nesterov-
+accelerated adaptive moment estimation (Nadam)
+algorithm. AdaMax can make use of the Nesterov
+acceleration trick identically (NadaMax).
+
+Algorithm 8 Nesterov-accelerated adaptive moment
+estimation
+gt ← ∇θ t−1 f (θ t−1)
+ˆg ← gt
+1−∏t
+i=1 µi
+mt ← µmt−1 + (1− µ)gt
+ˆmt ← mt
+1−∏t+1
+nt ← νnt−1 + (1− ν)g2
+ˆnt ← nt
+1−νt
+¯mt ← (1− µt)ˆgt + µt+1 ˆmt
+θ t ← θ t−1 − η ¯mt√
+ˆnt +ε
+
+i=1 µi
+
+t
+
+4 Experiments
+
+To test this algorithm, we compared the perfor-
+mance of nine algorithms–GD, Momentum, NAG,
+RMSProp, Adam, Nadam, MaxaProp, AdaMax,
+and Nadamax–on three benchmarks–word2vec [10],
+MNIST image classiﬁcation [7], and LSTM lan-
+guage models [17]. All algorithms used ν = .999
+and ε = 1e−8 as suggested in [5], with a momen-
+tum schedule given by µt = µ(1− .5× .96 t
+250 ) with
+µ = .99, similar to the recommendation in [14].
+Only the learning rate η differed across algorithms
+and experiments. The algorithms were all coded us-
+ing Google’s TensorFlow [1] API and the experi-
+ments were done using the built-in TensorFlow mod-
+els, making only small edits to the default settings.
+All algorithms used initialization bias correction.
+
+4.1 Word2Vec
+Word2vec [10] word embeddings were trained us-
+ing each of the nine algorithms. Approximately
+100MB of cleaned text2 from Wikipedia were used
+as the source text, and any word not in the top 50000
+words was replaced with UNK. 128-dimensional vec-
+tors with a left and right context size of 1 were
+trained using noise-contrastive estimation with 64
+negative samples. Validation was done using the
+word analogy task; we report the average cosine dif-
+ferene ( 1−cossim(x,y)
+) between the analogy vector and
+the embedding of the correct answer to the analogy.
+The best results were achieved when, each column
+of the embedding vector had a 50% chance to be
+dropped during training. The results are in Figure 1.
+
+2
+
+2http://mattmahoney.net/dc/text8.zip
+
+Incorporating Nesterov Momentum into Adam
+
+Timothy Dozat
+
+1
+
+Introduction
+
+When attempting to improve the performance of a
+deep learning system, there are more or less three
+approaches one can take: the ﬁrst is to improve the
+structure of the model, perhaps adding another layer,
+switching from simple recurrent units to LSTM cells
+[4], or–in the realm of NLP–taking advantage of
+syntactic parses (e.g. as in [13, et seq.]); another ap-
+proach is to improve the initialization of the model,
+guaranteeing that the early-stage gradients have cer-
+tain beneﬁcial properties [3], or building in large
+amounts of sparsity [6], or taking advantage of prin-
+ciples of linear algebra [15]; the ﬁnal approach is to
+try a more powerful learning algorithm, such as in-
+cluding a decaying sum over the previous gradients
+in the update [12], by dividing each parameter up-
+date by the L2 norm of the previous updates for that
+parameter [2], or even by foregoing ﬁrst-order algo-
+rithms for more powerful but more computationally
+costly second order algorithms [9]. This paper has
+as its goal the third option—improving the quality
+of the ﬁnal solution by using a faster, more powerful
+learning algorithm.
+
+2 Related Work
+
+2.1 Momentum-based algorithms
+Gradient descent is a simple, well-known, and gen-
+erally very robust optimization algorithm where the
+gradient of the function to be minimized with re-
+spect to the parameters (∇ f (θ t−1)) is computed, and
+a portion η of that gradient is subtracted off of the
+parameters:
+
+Classical momentum [12] accumulates a decaying
+
+Algorithm 1 Gradient Descent
+
+gt ← ∇θ t−1 f (θ t−1)
+θ t ← θ t−1 − ηgt
+
+sum (with decay constant µ) of the previous gradi-
+ents into a momentum vector m, and using that in-
+stead of the true gradient. This has the advantage of
+accelerating gradient descent learning along dimen-
+sions where the gradient remains relatively consis-
+tent across training steps and slowing it along turbu-
+lent dimensions where the gradient is signiﬁcantly
+oscillating.
+
+Algorithm 2 Classical Momentum
+
+gt ← ∇θ t−1 f (θ t−1)
+mt ← µmt−1 + gt
+θ t ← θ t−1 − ηmt
+
+[14] show that Nesterov’s accelerated gradient
+(NAG) [11]–which has a provably better bound than
+gradient descent–can be rewritten as a kind of im-
+proved momentum. If we can substitute the deﬁni-
+tion for mt in place of the symbol mt in the parame-
+ter update as in (2)
+
+θ t ←θ t−1 − ηmt
+θ t ←θ t−1 − ηµmt−1 − ηgt
+
+(1)
+(2)
+
+we can see that the term mt−1 doesn’t depend on
+the current gradient gt—so in principle, we can get
+a superior step direction by applying the momentum
+vector to the parameters before computing the gradi-
+ent. The authors provide empirical evidence that this
+algorithm is superior to the gradient descent, classi-
+
+Algorithm 3 Nesterov’s accelerated gradient
+
+gt ← ∇θ t−1 f (θ t−1 − ηµmt−1)
+mt ← µmt−1 + gt
+θ t ← θ t−1 − ηmt
+
+cal momentum, and Hessian-Free [9] algorithms for
+conventionally difﬁcult optimization objectives.
+
+2.2 L2 norm-based algorithms
+[2] present adaptive subgradient descent (Ada-
+Grad), which divides η of every step by the L2 norm
+of all previous gradients; this slows down learning
+along dimensions that have already changed signiﬁ-
+cantly and speeds up learning along dimensions that
+have only changed slightly, stabilizing the model’s
+representation of common features and allowing it
+to rapidly “catch up” its representation of rare fea-
+tures.1
+
+Algorithm 4 AdaGrad
+gt ← ∇θ t−1 f (θ t−1)
+nt ← nt−1 + g2
+θ t ← θ t−1 − η gt√
+nt +ε
+
+t
+
+One notable problem with AdaGrad is that the
+norm vector n eventually becomes so large that
+training slows to a halt, preventing the model from
+reaching the local minimum; [16] go on to motivate
+RMSProp, an alternative to AdaGrad that replaces
+the sum in nt with a decaying mean parameterized
+here by ν. This allows the model to continue to learn
+indeﬁnitely.
+
+Algorithm 5 RMSProp
+gt ← ∇θ t−1 f (θ t−1)
+nt ← νnt−1 + (1− ν)g2
+θ t ← θ t−1 − η gt√
+nt +ε
+
+t
+
+2.3 Combination
+One might ask if combining the momentum-based
+and norm-based methods might provide the ad-
+vantages of both.
+In fact, [5] successfully do so
+
+1Most implementations of this kind of algorithm include an
+ε parameter to keep the denominator from being too small and
+resulting in an irrecoverably large step
+
+with adaptive moment estimation (Adam), combin-
+ing classical momentum (using a decaying mean in-
+stead of a decaying sum) with RMSProp to improve
+performance on a number of benchmarks. In their
+algorithm, they include initialization bias correction
+terms, which offset some of the instability that ini-
+tializing m and n to 0 can create.
+
+Algorithm 6 Adam
+gt ← ∇θ t−1 f (θ t−1)
+mt ← µmt−1 + (1− µ)gt
+ˆmt ← mt
+1−µt
+nt ← νnt−1 + (1− ν)g2
+ˆnt ← nt
+1−νt
+θ t ← θ t−1 − η ˆmt√
+ˆnt +ε
+
+t
+
+[5] also include an algorithm AdaMax that re-
+places the L2 norm with the L∞ norm, removing the
+need for ˆnt and replacing nt and θ t with the follow-
+ing updates:
+
+nt ← max(νnt−1,|gt|)
+θ t ← θ t−1 − η ˆmt
+nt +ε
+
+We can generalize this to RMSProp as well, using
+the L∞ norm in the denominator instead of the L2
+norm, giving what might be called the MaxaProp
+algorithm.
+
+3 Methods
+3.1 NAG revisited
+Adam combines RMSProp with classical momen-
+tum. But as [14] show, NAG is in general supe-
+rior to classical momentum—so how would we go
+about modifying Adam to use NAG instead? First,
+we rewrite the NAG algorithm to be more straight-
+forward and efﬁcient to implement at the cost of
+some intuitive readability. Momentum is most ef-
+fective with a warming schedule, so for complete-
+ness we parameterize µ by t as well. Here, the
+
+Algorithm 7 NAG rewritten
+
+gt ← ∇θ t−1 f (θ t−1)
+mt ← µtmt−1 + gt
+¯mt ← gt + µt+1mt
+θ t ← θ t−1 − η ¯mt
+
+vector ¯m contains the gradient update for the cur-
+
+rent timestep gt in addition to the momentum vector
+update for the next timestep µt+1mt, which needs
+to be applied before taking the gradient at the next
+timestep. We don’t need to apply the momentum
+vector for the current timestep anymore because we
+already applied it in the last update of the parame-
+ters, at timestep t − 1.
+3.2 Applying NAG to Adam
+Ignoring the initialization bias correction terms for
+the moment, Adam’s update rule can be written in
+terms of the previous momentum/norm vectors and
+current gradient update as in (3).
+
+µmt−1
+
+(cid:112)νnt−1 + (1− ν)g2
+(cid:112)νnt−1 + (1− ν)g2
+
+(1− µ)gt
+
+t + ε
+
+− η
+
+θ t ←θ t−1 − η
+
+(3)
+
+t + ε
+
+In rewritten NAG, we would take the ﬁrst part of the
+step and apply it before taking the gradient of the
+cost function f –however, the denominator depends
+on gt, so we can’t take advantage of the trick used
+in NAG for this equation. However, ν is generally
+chosen to be very large (normally > .9), so the dif-
+ference between nt−1 and nt will in general be very
+small. We can then replace nt with nt−1 without los-
+ing too much accuracy:
+µmt−1
+θ t ←θ t−1 − η
+√
+nt−1 + ε
+(1− µ)gt
+
+(cid:112)νnt−1 + (1− ν)g2
+
+− η
+
+t + ε
+
+(4)
+
+The the ﬁrst term in the expression in (4) no longer
+depends on gt, meaning here we can use the Nes-
+terov trick; this give us the following expressions for
+¯mt and θ t:
+
+¯mt ← (1− µt)gt + µt+1mt
+θ t ← θ t−1 − η ¯mt√
+vt +ε
+All that’s left is to determine how to include the
+initialization bias correction terms, taking into con-
+sideration that gt comes from the current timestep
+but mt comes from the subsequent timestep. This
+gives us the following, ﬁnal form of the Nesterov-
+accelerated adaptive moment estimation (Nadam)
+algorithm. AdaMax can make use of the Nesterov
+acceleration trick identically (NadaMax).
+
+Algorithm 8 Nesterov-accelerated adaptive moment
+estimation
+gt ← ∇θ t−1 f (θ t−1)
+ˆg ← gt
+1−∏t
+i=1 µi
+mt ← µmt−1 + (1− µ)gt
+ˆmt ← mt
+1−∏t+1
+nt ← νnt−1 + (1− ν)g2
+ˆnt ← nt
+1−νt
+¯mt ← (1− µt)ˆgt + µt+1 ˆmt
+θ t ← θ t−1 − η ¯mt√
+ˆnt +ε
+
+i=1 µi
+
+t
+
+4 Experiments
+
+To test this algorithm, we compared the perfor-
+mance of nine algorithms–GD, Momentum, NAG,
+RMSProp, Adam, Nadam, MaxaProp, AdaMax,
+and Nadamax–on three benchmarks–word2vec [10],
+MNIST image classiﬁcation [7], and LSTM lan-
+guage models [17]. All algorithms used ν = .999
+and ε = 1e−8 as suggested in [5], with a momen-
+tum schedule given by µt = µ(1− .5× .96 t
+250 ) with
+µ = .99, similar to the recommendation in [14].
+Only the learning rate η differed across algorithms
+and experiments. The algorithms were all coded us-
+ing Google’s TensorFlow [1] API and the experi-
+ments were done using the built-in TensorFlow mod-
+els, making only small edits to the default settings.
+All algorithms used initialization bias correction.
+
+4.1 Word2Vec
+Word2vec [10] word embeddings were trained us-
+ing each of the nine algorithms. Approximately
+100MB of cleaned text2 from Wikipedia were used
+as the source text, and any word not in the top 50000
+words was replaced with UNK. 128-dimensional vec-
+tors with a left and right context size of 1 were
+trained using noise-contrastive estimation with 64
+negative samples. Validation was done using the
+word analogy task; we report the average cosine dif-
+ferene ( 1−cossim(x,y)
+) between the analogy vector and
+the embedding of the correct answer to the analogy.
+The best results were achieved when, each column
+of the embedding vector had a 50% chance to be
+dropped during training. The results are in Figure 1.
+
+2
+
+2http://mattmahoney.net/dc/text8.zip
+
+Test loss
+
+Test loss
+
+Test loss
+
+Mom
+.361
+
+NAG
+GD
+.368
+.358
+RMS Adam Nadam
+.284
+.316
+Maxa A-max N-max
+.346
+.355
+
+.356
+
+.325
+
+Test loss
+
+Test loss
+
+Test loss
+
+Mom
+.0263
+
+NAG
+GD
+.0202
+.0283
+RMS Adam Nadam
+.0172
+.0183
+Maxa A-max N-max
+.0195
+.0204
+
+.0175
+
+.0231
+
+Figure 1: Training of word2vec word embeddings
+
+Figure 2: Training of handwritten digit recognition
+
+The methods with RMSProp produced word vec-
+tors that represented relationships between words
+signiﬁcantly better than the other methods, but RM-
+SProp with Nesterov momentum (Nadam) clearly
+outperformed RMSProp with no momentum and
+with classical momentum (Adam). Notice also that
+the algorithms with NAG consistently outperform
+the algorithms witn classical momentum.
+
+Image Recognition
+
+4.2
+MNIST [7] is a classic benchmark for testing algo-
+rithms. We train a CNN with two convolutional lay-
+ers of 5× 5 ﬁlters of depth 32 and depth 64 alternat-
+ing with 2 × 2 max pooling layers with a stride of
+2, followed by a fully connected layer of 512 nodes
+and a softmax layer on top of that–this is the default
+model in TensorFlow’s basic MNIST CNN model.
+The annealing schedule was modiﬁed to decay faster
+and the model was trained for more epochs in order
+to smooth out the error graphs. The results are given
+in Figure 2.
+
+In this benchmark, Nadam receives the lowest de-
+velopment error–as predicted–but on the test set, all
+momentum-based methods underperform their sim-
+ple counterparts without momentum. However, [5]
+use a larger CNN and ﬁnd that Adam achieves the
+lowest performance. Furthermore, the hyperparam-
+eters here have not been tuned for this task (except
+
+the global learning rate), and in other training runs
+Nadam performed noticeably better with a higher
+value of ε.
+
+4.3 LSTM Language Model
+The ﬁnal benchmark we present is the task of pre-
+dicting the next word of a sentence given the pre-
+vious words in a sentence. The dataset used here
+comes from the Penn TreeBank [8], and the model
+uses a two-layer stacked LSTM with 200 cells at
+each layer, reproducing [17] on a smaller scale. All
+default settings in the small TensorFlow implemen-
+tation were retained, with the exception that the
+model included L2 regularization in order to offset
+the lack of dropout. The results of training are pre-
+sented in Figure 3.
+
+In this benchmark, algorithms that incorporated
+RMSProp or MaxaProp did noticeably worse than
+gradient descent and those that only use momen-
+tum, and tuning hyperparameters makes little differ-
+ence. It’s unclear why this is–it’s conceivable that
+the assumptions RMS/MaxaProp make about how
+features are represented don’t hold in the case of
+language models, LSTMs, or recurrent NNs more
+broadly. It’s also curious that classical momentum
+outperformed Nesterov momentum, although that
+may be due to the relatively small size of the mod-
+els. Crucially, even though Nadam wasn’t the op-
+
+Incorporating Nesterov Momentum into Adam
+
+Timothy Dozat
+
+1
+
+Introduction
+
+When attempting to improve the performance of a
+deep learning system, there are more or less three
+approaches one can take: the ﬁrst is to improve the
+structure of the model, perhaps adding another layer,
+switching from simple recurrent units to LSTM cells
+[4], or–in the realm of NLP–taking advantage of
+syntactic parses (e.g. as in [13, et seq.]); another ap-
+proach is to improve the initialization of the model,
+guaranteeing that the early-stage gradients have cer-
+tain beneﬁcial properties [3], or building in large
+amounts of sparsity [6], or taking advantage of prin-
+ciples of linear algebra [15]; the ﬁnal approach is to
+try a more powerful learning algorithm, such as in-
+cluding a decaying sum over the previous gradients
+in the update [12], by dividing each parameter up-
+date by the L2 norm of the previous updates for that
+parameter [2], or even by foregoing ﬁrst-order algo-
+rithms for more powerful but more computationally
+costly second order algorithms [9]. This paper has
+as its goal the third option—improving the quality
+of the ﬁnal solution by using a faster, more powerful
+learning algorithm.
+
+2 Related Work
+
+2.1 Momentum-based algorithms
+Gradient descent is a simple, well-known, and gen-
+erally very robust optimization algorithm where the
+gradient of the function to be minimized with re-
+spect to the parameters (∇ f (θ t−1)) is computed, and
+a portion η of that gradient is subtracted off of the
+parameters:
+
+Classical momentum [12] accumulates a decaying
+
+Algorithm 1 Gradient Descent
+
+gt ← ∇θ t−1 f (θ t−1)
+θ t ← θ t−1 − ηgt
+
+sum (with decay constant µ) of the previous gradi-
+ents into a momentum vector m, and using that in-
+stead of the true gradient. This has the advantage of
+accelerating gradient descent learning along dimen-
+sions where the gradient remains relatively consis-
+tent across training steps and slowing it along turbu-
+lent dimensions where the gradient is signiﬁcantly
+oscillating.
+
+Algorithm 2 Classical Momentum
+
+gt ← ∇θ t−1 f (θ t−1)
+mt ← µmt−1 + gt
+θ t ← θ t−1 − ηmt
+
+[14] show that Nesterov’s accelerated gradient
+(NAG) [11]–which has a provably better bound than
+gradient descent–can be rewritten as a kind of im-
+proved momentum. If we can substitute the deﬁni-
+tion for mt in place of the symbol mt in the parame-
+ter update as in (2)
+
+θ t ←θ t−1 − ηmt
+θ t ←θ t−1 − ηµmt−1 − ηgt
+
+(1)
+(2)
+
+we can see that the term mt−1 doesn’t depend on
+the current gradient gt—so in principle, we can get
+a superior step direction by applying the momentum
+vector to the parameters before computing the gradi-
+ent. The authors provide empirical evidence that this
+algorithm is superior to the gradient descent, classi-
+
+Algorithm 3 Nesterov’s accelerated gradient
+
+gt ← ∇θ t−1 f (θ t−1 − ηµmt−1)
+mt ← µmt−1 + gt
+θ t ← θ t−1 − ηmt
+
+cal momentum, and Hessian-Free [9] algorithms for
+conventionally difﬁcult optimization objectives.
+
+2.2 L2 norm-based algorithms
+[2] present adaptive subgradient descent (Ada-
+Grad), which divides η of every step by the L2 norm
+of all previous gradients; this slows down learning
+along dimensions that have already changed signiﬁ-
+cantly and speeds up learning along dimensions that
+have only changed slightly, stabilizing the model’s
+representation of common features and allowing it
+to rapidly “catch up” its representation of rare fea-
+tures.1
+
+Algorithm 4 AdaGrad
+gt ← ∇θ t−1 f (θ t−1)
+nt ← nt−1 + g2
+θ t ← θ t−1 − η gt√
+nt +ε
+
+t
+
+One notable problem with AdaGrad is that the
+norm vector n eventually becomes so large that
+training slows to a halt, preventing the model from
+reaching the local minimum; [16] go on to motivate
+RMSProp, an alternative to AdaGrad that replaces
+the sum in nt with a decaying mean parameterized
+here by ν. This allows the model to continue to learn
+indeﬁnitely.
+
+Algorithm 5 RMSProp
+gt ← ∇θ t−1 f (θ t−1)
+nt ← νnt−1 + (1− ν)g2
+θ t ← θ t−1 − η gt√
+nt +ε
+
+t
+
+2.3 Combination
+One might ask if combining the momentum-based
+and norm-based methods might provide the ad-
+vantages of both.
+In fact, [5] successfully do so
+
+1Most implementations of this kind of algorithm include an
+ε parameter to keep the denominator from being too small and
+resulting in an irrecoverably large step
+
+with adaptive moment estimation (Adam), combin-
+ing classical momentum (using a decaying mean in-
+stead of a decaying sum) with RMSProp to improve
+performance on a number of benchmarks. In their
+algorithm, they include initialization bias correction
+terms, which offset some of the instability that ini-
+tializing m and n to 0 can create.
+
+Algorithm 6 Adam
+gt ← ∇θ t−1 f (θ t−1)
+mt ← µmt−1 + (1− µ)gt
+ˆmt ← mt
+1−µt
+nt ← νnt−1 + (1− ν)g2
+ˆnt ← nt
+1−νt
+θ t ← θ t−1 − η ˆmt√
+ˆnt +ε
+
+t
+
+[5] also include an algorithm AdaMax that re-
+places the L2 norm with the L∞ norm, removing the
+need for ˆnt and replacing nt and θ t with the follow-
+ing updates:
+
+nt ← max(νnt−1,|gt|)
+θ t ← θ t−1 − η ˆmt
+nt +ε
+
+We can generalize this to RMSProp as well, using
+the L∞ norm in the denominator instead of the L2
+norm, giving what might be called the MaxaProp
+algorithm.
+
+3 Methods
+3.1 NAG revisited
+Adam combines RMSProp with classical momen-
+tum. But as [14] show, NAG is in general supe-
+rior to classical momentum—so how would we go
+about modifying Adam to use NAG instead? First,
+we rewrite the NAG algorithm to be more straight-
+forward and efﬁcient to implement at the cost of
+some intuitive readability. Momentum is most ef-
+fective with a warming schedule, so for complete-
+ness we parameterize µ by t as well. Here, the
+
+Algorithm 7 NAG rewritten
+
+gt ← ∇θ t−1 f (θ t−1)
+mt ← µtmt−1 + gt
+¯mt ← gt + µt+1mt
+θ t ← θ t−1 − η ¯mt
+
+vector ¯m contains the gradient update for the cur-
+
+rent timestep gt in addition to the momentum vector
+update for the next timestep µt+1mt, which needs
+to be applied before taking the gradient at the next
+timestep. We don’t need to apply the momentum
+vector for the current timestep anymore because we
+already applied it in the last update of the parame-
+ters, at timestep t − 1.
+3.2 Applying NAG to Adam
+Ignoring the initialization bias correction terms for
+the moment, Adam’s update rule can be written in
+terms of the previous momentum/norm vectors and
+current gradient update as in (3).
+
+µmt−1
+
+(cid:112)νnt−1 + (1− ν)g2
+(cid:112)νnt−1 + (1− ν)g2
+
+(1− µ)gt
+
+t + ε
+
+− η
+
+θ t ←θ t−1 − η
+
+(3)
+
+t + ε
+
+In rewritten NAG, we would take the ﬁrst part of the
+step and apply it before taking the gradient of the
+cost function f –however, the denominator depends
+on gt, so we can’t take advantage of the trick used
+in NAG for this equation. However, ν is generally
+chosen to be very large (normally > .9), so the dif-
+ference between nt−1 and nt will in general be very
+small. We can then replace nt with nt−1 without los-
+ing too much accuracy:
+µmt−1
+θ t ←θ t−1 − η
+√
+nt−1 + ε
+(1− µ)gt
+
+(cid:112)νnt−1 + (1− ν)g2
+
+− η
+
+t + ε
+
+(4)
+
+The the ﬁrst term in the expression in (4) no longer
+depends on gt, meaning here we can use the Nes-
+terov trick; this give us the following expressions for
+¯mt and θ t:
+
+¯mt ← (1− µt)gt + µt+1mt
+θ t ← θ t−1 − η ¯mt√
+vt +ε
+All that’s left is to determine how to include the
+initialization bias correction terms, taking into con-
+sideration that gt comes from the current timestep
+but mt comes from the subsequent timestep. This
+gives us the following, ﬁnal form of the Nesterov-
+accelerated adaptive moment estimation (Nadam)
+algorithm. AdaMax can make use of the Nesterov
+acceleration trick identically (NadaMax).
+
+Algorithm 8 Nesterov-accelerated adaptive moment
+estimation
+gt ← ∇θ t−1 f (θ t−1)
+ˆg ← gt
+1−∏t
+i=1 µi
+mt ← µmt−1 + (1− µ)gt
+ˆmt ← mt
+1−∏t+1
+nt ← νnt−1 + (1− ν)g2
+ˆnt ← nt
+1−νt
+¯mt ← (1− µt)ˆgt + µt+1 ˆmt
+θ t ← θ t−1 − η ¯mt√
+ˆnt +ε
+
+i=1 µi
+
+t
+
+4 Experiments
+
+To test this algorithm, we compared the perfor-
+mance of nine algorithms–GD, Momentum, NAG,
+RMSProp, Adam, Nadam, MaxaProp, AdaMax,
+and Nadamax–on three benchmarks–word2vec [10],
+MNIST image classiﬁcation [7], and LSTM lan-
+guage models [17]. All algorithms used ν = .999
+and ε = 1e−8 as suggested in [5], with a momen-
+tum schedule given by µt = µ(1− .5× .96 t
+250 ) with
+µ = .99, similar to the recommendation in [14].
+Only the learning rate η differed across algorithms
+and experiments. The algorithms were all coded us-
+ing Google’s TensorFlow [1] API and the experi-
+ments were done using the built-in TensorFlow mod-
+els, making only small edits to the default settings.
+All algorithms used initialization bias correction.
+
+4.1 Word2Vec
+Word2vec [10] word embeddings were trained us-
+ing each of the nine algorithms. Approximately
+100MB of cleaned text2 from Wikipedia were used
+as the source text, and any word not in the top 50000
+words was replaced with UNK. 128-dimensional vec-
+tors with a left and right context size of 1 were
+trained using noise-contrastive estimation with 64
+negative samples. Validation was done using the
+word analogy task; we report the average cosine dif-
+ferene ( 1−cossim(x,y)
+) between the analogy vector and
+the embedding of the correct answer to the analogy.
+The best results were achieved when, each column
+of the embedding vector had a 50% chance to be
+dropped during training. The results are in Figure 1.
+
+2
+
+2http://mattmahoney.net/dc/text8.zip
+
+Test loss
+
+Test loss
+
+Test loss
+
+Mom
+.361
+
+NAG
+GD
+.368
+.358
+RMS Adam Nadam
+.284
+.316
+Maxa A-max N-max
+.346
+.355
+
+.356
+
+.325
+
+Test loss
+
+Test loss
+
+Test loss
+
+Mom
+.0263
+
+NAG
+GD
+.0202
+.0283
+RMS Adam Nadam
+.0172
+.0183
+Maxa A-max N-max
+.0195
+.0204
+
+.0175
+
+.0231
+
+Figure 1: Training of word2vec word embeddings
+
+Figure 2: Training of handwritten digit recognition
+
+The methods with RMSProp produced word vec-
+tors that represented relationships between words
+signiﬁcantly better than the other methods, but RM-
+SProp with Nesterov momentum (Nadam) clearly
+outperformed RMSProp with no momentum and
+with classical momentum (Adam). Notice also that
+the algorithms with NAG consistently outperform
+the algorithms witn classical momentum.
+
+Image Recognition
+
+4.2
+MNIST [7] is a classic benchmark for testing algo-
+rithms. We train a CNN with two convolutional lay-
+ers of 5× 5 ﬁlters of depth 32 and depth 64 alternat-
+ing with 2 × 2 max pooling layers with a stride of
+2, followed by a fully connected layer of 512 nodes
+and a softmax layer on top of that–this is the default
+model in TensorFlow’s basic MNIST CNN model.
+The annealing schedule was modiﬁed to decay faster
+and the model was trained for more epochs in order
+to smooth out the error graphs. The results are given
+in Figure 2.
+
+In this benchmark, Nadam receives the lowest de-
+velopment error–as predicted–but on the test set, all
+momentum-based methods underperform their sim-
+ple counterparts without momentum. However, [5]
+use a larger CNN and ﬁnd that Adam achieves the
+lowest performance. Furthermore, the hyperparam-
+eters here have not been tuned for this task (except
+
+the global learning rate), and in other training runs
+Nadam performed noticeably better with a higher
+value of ε.
+
+4.3 LSTM Language Model
+The ﬁnal benchmark we present is the task of pre-
+dicting the next word of a sentence given the pre-
+vious words in a sentence. The dataset used here
+comes from the Penn TreeBank [8], and the model
+uses a two-layer stacked LSTM with 200 cells at
+each layer, reproducing [17] on a smaller scale. All
+default settings in the small TensorFlow implemen-
+tation were retained, with the exception that the
+model included L2 regularization in order to offset
+the lack of dropout. The results of training are pre-
+sented in Figure 3.
+
+In this benchmark, algorithms that incorporated
+RMSProp or MaxaProp did noticeably worse than
+gradient descent and those that only use momen-
+tum, and tuning hyperparameters makes little differ-
+ence. It’s unclear why this is–it’s conceivable that
+the assumptions RMS/MaxaProp make about how
+features are represented don’t hold in the case of
+language models, LSTMs, or recurrent NNs more
+broadly. It’s also curious that classical momentum
+outperformed Nesterov momentum, although that
+may be due to the relatively small size of the mod-
+els. Crucially, even though Nadam wasn’t the op-
+
+default settings, random ﬂuctuations that arise from
+dropout, or possibly even slight overﬁtting (which
+can be clearly seen in Nadam–but not in RMSProp–
+when hyperparameters are tuned). Finally, in the
+LSTM-LM, we ﬁnd that using RMSProp hinders
+performance, even when hyperparameters are exten-
+sively tuned, but when it is included anyway, adding
+Nesterov momentum to it as in Nadam improves it
+over not using any momentum or only using classi-
+cal momentum.
+
+In two of the three benchmarks, we found a rather
+signiﬁcant difference between the performance of
+models trained with Adam and that of those trained
+with Nadam—why might this be? When the de-
+nominator of RMSProp is small, the effective step
+size of a parameter update becomes very large, and
+when the denominator is large, the model requires
+a lot of work to change what it’s learned–so ensur-
+ing the quality of the step direction and reducing as
+much noise as possible becomes critical. We can
+understand classical momentum as being a version
+of Nesterov momentum that applies an old, outdated
+momentum vector that only uses past gradients to
+the parameter updates, rather than the most recent,
+up-to-date momentum vector computed using the
+current gradient as well.
+It logically follows then
+that Nesterov momentum would produce a gradient
+update superior to classical momentum, which RM-
+SProp can then take full advantage of.
+
+for different
+
+6 Conclusion
+Adam essentially combines two algorithms known
+to work well
+reasons–momentum,
+which points the model in a better direction, and
+RMSProp, which adapts how far the model goes in
+that direction on a per-parameter basis. However,
+Nesterov momentum is theoretically and often em-
+pirically superior to momentum—so it makes sense
+to see how this affects the result of combining the
+two approaches. We compared Adam and Nadam
+(Adam with Nesterov momentum), in addition to a
+slew of related algorithms, and ﬁnd the in most cases
+the improvement of Nadam over Adam is fairly dra-
+matic. While Nadam wasn’t always the best algo-
+rithm to chose, it seems like if one is going to use
+momentum with RMSProp to train their model, they
+may as well use Nesterov momentum.
+
+Test perp
+
+Test perp
+
+Test perp
+
+Mom
+99.3
+
+NAG
+GD
+100.8
+99.8
+RMS Adam Nadam
+106.7
+105.5
+Maxa A-max N-max
+106.3
+107.0
+
+111.0
+
+108.5
+
+Figure 3: Training of a Penn TreeBank language model
+
+timal algorithm in this case, it signiﬁcantly outper-
+formed Adam, supporting our hypothesis that using
+Nesterov momentum will improve Adam.
+
+5 Discussion
+
+While the results are a little messy, we can in-
+fer a number of things:
+the ﬁrst is that the hith-
+erto untested MaxaProp-based methods, including
+AdaMax and NadaMax, generally do worse than at
+least some of the other algorithms. In the word2vec
+task, the algorithms with Nesterov momentum con-
+sistently achieve better results than the ones with
+only classical momentum, supporting the intuition
+behind the hypothesis that Nadam should be better
+than Adam. We also see that Nadam produces by
+far the best word vectors for this task when dropout
+is included (which is not normally done but in our
+experiments categorically improves results). With
+the MNIST task, we ﬁnd that including RMSProp
+makes a signiﬁcant difference in the quality of the
+ﬁnal classiﬁer, likely owing to RMSProp’s ability to
+adapt to different depths. Nadam performed best on
+the development set, but contra [5], RMSProp sur-
+passed it on the test set. This may be due to the
+smaller size of our model, the relative easiness of the
+task (CIFAR-10 might make a better benchmark in
+a less time-sensitive setting), our choice to only use
+
+Incorporating Nesterov Momentum into Adam
+
+Timothy Dozat
+
+1
+
+Introduction
+
+When attempting to improve the performance of a
+deep learning system, there are more or less three
+approaches one can take: the ﬁrst is to improve the
+structure of the model, perhaps adding another layer,
+switching from simple recurrent units to LSTM cells
+[4], or–in the realm of NLP–taking advantage of
+syntactic parses (e.g. as in [13, et seq.]); another ap-
+proach is to improve the initialization of the model,
+guaranteeing that the early-stage gradients have cer-
+tain beneﬁcial properties [3], or building in large
+amounts of sparsity [6], or taking advantage of prin-
+ciples of linear algebra [15]; the ﬁnal approach is to
+try a more powerful learning algorithm, such as in-
+cluding a decaying sum over the previous gradients
+in the update [12], by dividing each parameter up-
+date by the L2 norm of the previous updates for that
+parameter [2], or even by foregoing ﬁrst-order algo-
+rithms for more powerful but more computationally
+costly second order algorithms [9]. This paper has
+as its goal the third option—improving the quality
+of the ﬁnal solution by using a faster, more powerful
+learning algorithm.
+
+2 Related Work
+
+2.1 Momentum-based algorithms
+Gradient descent is a simple, well-known, and gen-
+erally very robust optimization algorithm where the
+gradient of the function to be minimized with re-
+spect to the parameters (∇ f (θ t−1)) is computed, and
+a portion η of that gradient is subtracted off of the
+parameters:
+
+Classical momentum [12] accumulates a decaying
+
+Algorithm 1 Gradient Descent
+
+gt ← ∇θ t−1 f (θ t−1)
+θ t ← θ t−1 − ηgt
+
+sum (with decay constant µ) of the previous gradi-
+ents into a momentum vector m, and using that in-
+stead of the true gradient. This has the advantage of
+accelerating gradient descent learning along dimen-
+sions where the gradient remains relatively consis-
+tent across training steps and slowing it along turbu-
+lent dimensions where the gradient is signiﬁcantly
+oscillating.
+
+Algorithm 2 Classical Momentum
+
+gt ← ∇θ t−1 f (θ t−1)
+mt ← µmt−1 + gt
+θ t ← θ t−1 − ηmt
+
+[14] show that Nesterov’s accelerated gradient
+(NAG) [11]–which has a provably better bound than
+gradient descent–can be rewritten as a kind of im-
+proved momentum. If we can substitute the deﬁni-
+tion for mt in place of the symbol mt in the parame-
+ter update as in (2)
+
+θ t ←θ t−1 − ηmt
+θ t ←θ t−1 − ηµmt−1 − ηgt
+
+(1)
+(2)
+
+we can see that the term mt−1 doesn’t depend on
+the current gradient gt—so in principle, we can get
+a superior step direction by applying the momentum
+vector to the parameters before computing the gradi-
+ent. The authors provide empirical evidence that this
+algorithm is superior to the gradient descent, classi-
+
+Algorithm 3 Nesterov’s accelerated gradient
+
+gt ← ∇θ t−1 f (θ t−1 − ηµmt−1)
+mt ← µmt−1 + gt
+θ t ← θ t−1 − ηmt
+
+cal momentum, and Hessian-Free [9] algorithms for
+conventionally difﬁcult optimization objectives.
+
+2.2 L2 norm-based algorithms
+[2] present adaptive subgradient descent (Ada-
+Grad), which divides η of every step by the L2 norm
+of all previous gradients; this slows down learning
+along dimensions that have already changed signiﬁ-
+cantly and speeds up learning along dimensions that
+have only changed slightly, stabilizing the model’s
+representation of common features and allowing it
+to rapidly “catch up” its representation of rare fea-
+tures.1
+
+Algorithm 4 AdaGrad
+gt ← ∇θ t−1 f (θ t−1)
+nt ← nt−1 + g2
+θ t ← θ t−1 − η gt√
+nt +ε
+
+t
+
+One notable problem with AdaGrad is that the
+norm vector n eventually becomes so large that
+training slows to a halt, preventing the model from
+reaching the local minimum; [16] go on to motivate
+RMSProp, an alternative to AdaGrad that replaces
+the sum in nt with a decaying mean parameterized
+here by ν. This allows the model to continue to learn
+indeﬁnitely.
+
+Algorithm 5 RMSProp
+gt ← ∇θ t−1 f (θ t−1)
+nt ← νnt−1 + (1− ν)g2
+θ t ← θ t−1 − η gt√
+nt +ε
+
+t
+
+2.3 Combination
+One might ask if combining the momentum-based
+and norm-based methods might provide the ad-
+vantages of both.
+In fact, [5] successfully do so
+
+1Most implementations of this kind of algorithm include an
+ε parameter to keep the denominator from being too small and
+resulting in an irrecoverably large step
+
+with adaptive moment estimation (Adam), combin-
+ing classical momentum (using a decaying mean in-
+stead of a decaying sum) with RMSProp to improve
+performance on a number of benchmarks. In their
+algorithm, they include initialization bias correction
+terms, which offset some of the instability that ini-
+tializing m and n to 0 can create.
+
+Algorithm 6 Adam
+gt ← ∇θ t−1 f (θ t−1)
+mt ← µmt−1 + (1− µ)gt
+ˆmt ← mt
+1−µt
+nt ← νnt−1 + (1− ν)g2
+ˆnt ← nt
+1−νt
+θ t ← θ t−1 − η ˆmt√
+ˆnt +ε
+
+t
+
+[5] also include an algorithm AdaMax that re-
+places the L2 norm with the L∞ norm, removing the
+need for ˆnt and replacing nt and θ t with the follow-
+ing updates:
+
+nt ← max(νnt−1,|gt|)
+θ t ← θ t−1 − η ˆmt
+nt +ε
+
+We can generalize this to RMSProp as well, using
+the L∞ norm in the denominator instead of the L2
+norm, giving what might be called the MaxaProp
+algorithm.
+
+3 Methods
+3.1 NAG revisited
+Adam combines RMSProp with classical momen-
+tum. But as [14] show, NAG is in general supe-
+rior to classical momentum—so how would we go
+about modifying Adam to use NAG instead? First,
+we rewrite the NAG algorithm to be more straight-
+forward and efﬁcient to implement at the cost of
+some intuitive readability. Momentum is most ef-
+fective with a warming schedule, so for complete-
+ness we parameterize µ by t as well. Here, the
+
+Algorithm 7 NAG rewritten
+
+gt ← ∇θ t−1 f (θ t−1)
+mt ← µtmt−1 + gt
+¯mt ← gt + µt+1mt
+θ t ← θ t−1 − η ¯mt
+
+vector ¯m contains the gradient update for the cur-
+
+rent timestep gt in addition to the momentum vector
+update for the next timestep µt+1mt, which needs
+to be applied before taking the gradient at the next
+timestep. We don’t need to apply the momentum
+vector for the current timestep anymore because we
+already applied it in the last update of the parame-
+ters, at timestep t − 1.
+3.2 Applying NAG to Adam
+Ignoring the initialization bias correction terms for
+the moment, Adam’s update rule can be written in
+terms of the previous momentum/norm vectors and
+current gradient update as in (3).
+
+µmt−1
+
+(cid:112)νnt−1 + (1− ν)g2
+(cid:112)νnt−1 + (1− ν)g2
+
+(1− µ)gt
+
+t + ε
+
+− η
+
+θ t ←θ t−1 − η
+
+(3)
+
+t + ε
+
+In rewritten NAG, we would take the ﬁrst part of the
+step and apply it before taking the gradient of the
+cost function f –however, the denominator depends
+on gt, so we can’t take advantage of the trick used
+in NAG for this equation. However, ν is generally
+chosen to be very large (normally > .9), so the dif-
+ference between nt−1 and nt will in general be very
+small. We can then replace nt with nt−1 without los-
+ing too much accuracy:
+µmt−1
+θ t ←θ t−1 − η
+√
+nt−1 + ε
+(1− µ)gt
+
+(cid:112)νnt−1 + (1− ν)g2
+
+− η
+
+t + ε
+
+(4)
+
+The the ﬁrst term in the expression in (4) no longer
+depends on gt, meaning here we can use the Nes-
+terov trick; this give us the following expressions for
+¯mt and θ t:
+
+¯mt ← (1− µt)gt + µt+1mt
+θ t ← θ t−1 − η ¯mt√
+vt +ε
+All that’s left is to determine how to include the
+initialization bias correction terms, taking into con-
+sideration that gt comes from the current timestep
+but mt comes from the subsequent timestep. This
+gives us the following, ﬁnal form of the Nesterov-
+accelerated adaptive moment estimation (Nadam)
+algorithm. AdaMax can make use of the Nesterov
+acceleration trick identically (NadaMax).
+
+Algorithm 8 Nesterov-accelerated adaptive moment
+estimation
+gt ← ∇θ t−1 f (θ t−1)
+ˆg ← gt
+1−∏t
+i=1 µi
+mt ← µmt−1 + (1− µ)gt
+ˆmt ← mt
+1−∏t+1
+nt ← νnt−1 + (1− ν)g2
+ˆnt ← nt
+1−νt
+¯mt ← (1− µt)ˆgt + µt+1 ˆmt
+θ t ← θ t−1 − η ¯mt√
+ˆnt +ε
+
+i=1 µi
+
+t
+
+4 Experiments
+
+To test this algorithm, we compared the perfor-
+mance of nine algorithms–GD, Momentum, NAG,
+RMSProp, Adam, Nadam, MaxaProp, AdaMax,
+and Nadamax–on three benchmarks–word2vec [10],
+MNIST image classiﬁcation [7], and LSTM lan-
+guage models [17]. All algorithms used ν = .999
+and ε = 1e−8 as suggested in [5], with a momen-
+tum schedule given by µt = µ(1− .5× .96 t
+250 ) with
+µ = .99, similar to the recommendation in [14].
+Only the learning rate η differed across algorithms
+and experiments. The algorithms were all coded us-
+ing Google’s TensorFlow [1] API and the experi-
+ments were done using the built-in TensorFlow mod-
+els, making only small edits to the default settings.
+All algorithms used initialization bias correction.
+
+4.1 Word2Vec
+Word2vec [10] word embeddings were trained us-
+ing each of the nine algorithms. Approximately
+100MB of cleaned text2 from Wikipedia were used
+as the source text, and any word not in the top 50000
+words was replaced with UNK. 128-dimensional vec-
+tors with a left and right context size of 1 were
+trained using noise-contrastive estimation with 64
+negative samples. Validation was done using the
+word analogy task; we report the average cosine dif-
+ferene ( 1−cossim(x,y)
+) between the analogy vector and
+the embedding of the correct answer to the analogy.
+The best results were achieved when, each column
+of the embedding vector had a 50% chance to be
+dropped during training. The results are in Figure 1.
+
+2
+
+2http://mattmahoney.net/dc/text8.zip
+
+Test loss
+
+Test loss
+
+Test loss
+
+Mom
+.361
+
+NAG
+GD
+.368
+.358
+RMS Adam Nadam
+.284
+.316
+Maxa A-max N-max
+.346
+.355
+
+.356
+
+.325
+
+Test loss
+
+Test loss
+
+Test loss
+
+Mom
+.0263
+
+NAG
+GD
+.0202
+.0283
+RMS Adam Nadam
+.0172
+.0183
+Maxa A-max N-max
+.0195
+.0204
+
+.0175
+
+.0231
+
+Figure 1: Training of word2vec word embeddings
+
+Figure 2: Training of handwritten digit recognition
+
+The methods with RMSProp produced word vec-
+tors that represented relationships between words
+signiﬁcantly better than the other methods, but RM-
+SProp with Nesterov momentum (Nadam) clearly
+outperformed RMSProp with no momentum and
+with classical momentum (Adam). Notice also that
+the algorithms with NAG consistently outperform
+the algorithms witn classical momentum.
+
+Image Recognition
+
+4.2
+MNIST [7] is a classic benchmark for testing algo-
+rithms. We train a CNN with two convolutional lay-
+ers of 5× 5 ﬁlters of depth 32 and depth 64 alternat-
+ing with 2 × 2 max pooling layers with a stride of
+2, followed by a fully connected layer of 512 nodes
+and a softmax layer on top of that–this is the default
+model in TensorFlow’s basic MNIST CNN model.
+The annealing schedule was modiﬁed to decay faster
+and the model was trained for more epochs in order
+to smooth out the error graphs. The results are given
+in Figure 2.
+
+In this benchmark, Nadam receives the lowest de-
+velopment error–as predicted–but on the test set, all
+momentum-based methods underperform their sim-
+ple counterparts without momentum. However, [5]
+use a larger CNN and ﬁnd that Adam achieves the
+lowest performance. Furthermore, the hyperparam-
+eters here have not been tuned for this task (except
+
+the global learning rate), and in other training runs
+Nadam performed noticeably better with a higher
+value of ε.
+
+4.3 LSTM Language Model
+The ﬁnal benchmark we present is the task of pre-
+dicting the next word of a sentence given the pre-
+vious words in a sentence. The dataset used here
+comes from the Penn TreeBank [8], and the model
+uses a two-layer stacked LSTM with 200 cells at
+each layer, reproducing [17] on a smaller scale. All
+default settings in the small TensorFlow implemen-
+tation were retained, with the exception that the
+model included L2 regularization in order to offset
+the lack of dropout. The results of training are pre-
+sented in Figure 3.
+
+In this benchmark, algorithms that incorporated
+RMSProp or MaxaProp did noticeably worse than
+gradient descent and those that only use momen-
+tum, and tuning hyperparameters makes little differ-
+ence. It’s unclear why this is–it’s conceivable that
+the assumptions RMS/MaxaProp make about how
+features are represented don’t hold in the case of
+language models, LSTMs, or recurrent NNs more
+broadly. It’s also curious that classical momentum
+outperformed Nesterov momentum, although that
+may be due to the relatively small size of the mod-
+els. Crucially, even though Nadam wasn’t the op-
+
+default settings, random ﬂuctuations that arise from
+dropout, or possibly even slight overﬁtting (which
+can be clearly seen in Nadam–but not in RMSProp–
+when hyperparameters are tuned). Finally, in the
+LSTM-LM, we ﬁnd that using RMSProp hinders
+performance, even when hyperparameters are exten-
+sively tuned, but when it is included anyway, adding
+Nesterov momentum to it as in Nadam improves it
+over not using any momentum or only using classi-
+cal momentum.
+
+In two of the three benchmarks, we found a rather
+signiﬁcant difference between the performance of
+models trained with Adam and that of those trained
+with Nadam—why might this be? When the de-
+nominator of RMSProp is small, the effective step
+size of a parameter update becomes very large, and
+when the denominator is large, the model requires
+a lot of work to change what it’s learned–so ensur-
+ing the quality of the step direction and reducing as
+much noise as possible becomes critical. We can
+understand classical momentum as being a version
+of Nesterov momentum that applies an old, outdated
+momentum vector that only uses past gradients to
+the parameter updates, rather than the most recent,
+up-to-date momentum vector computed using the
+current gradient as well.
+It logically follows then
+that Nesterov momentum would produce a gradient
+update superior to classical momentum, which RM-
+SProp can then take full advantage of.
+
+for different
+
+6 Conclusion
+Adam essentially combines two algorithms known
+to work well
+reasons–momentum,
+which points the model in a better direction, and
+RMSProp, which adapts how far the model goes in
+that direction on a per-parameter basis. However,
+Nesterov momentum is theoretically and often em-
+pirically superior to momentum—so it makes sense
+to see how this affects the result of combining the
+two approaches. We compared Adam and Nadam
+(Adam with Nesterov momentum), in addition to a
+slew of related algorithms, and ﬁnd the in most cases
+the improvement of Nadam over Adam is fairly dra-
+matic. While Nadam wasn’t always the best algo-
+rithm to chose, it seems like if one is going to use
+momentum with RMSProp to train their model, they
+may as well use Nesterov momentum.
+
+Test perp
+
+Test perp
+
+Test perp
+
+Mom
+99.3
+
+NAG
+GD
+100.8
+99.8
+RMS Adam Nadam
+106.7
+105.5
+Maxa A-max N-max
+106.3
+107.0
+
+111.0
+
+108.5
+
+Figure 3: Training of a Penn TreeBank language model
+
+timal algorithm in this case, it signiﬁcantly outper-
+formed Adam, supporting our hypothesis that using
+Nesterov momentum will improve Adam.
+
+5 Discussion
+
+While the results are a little messy, we can in-
+fer a number of things:
+the ﬁrst is that the hith-
+erto untested MaxaProp-based methods, including
+AdaMax and NadaMax, generally do worse than at
+least some of the other algorithms. In the word2vec
+task, the algorithms with Nesterov momentum con-
+sistently achieve better results than the ones with
+only classical momentum, supporting the intuition
+behind the hypothesis that Nadam should be better
+than Adam. We also see that Nadam produces by
+far the best word vectors for this task when dropout
+is included (which is not normally done but in our
+experiments categorically improves results). With
+the MNIST task, we ﬁnd that including RMSProp
+makes a signiﬁcant difference in the quality of the
+ﬁnal classiﬁer, likely owing to RMSProp’s ability to
+adapt to different depths. Nadam performed best on
+the development set, but contra [5], RMSProp sur-
+passed it on the test set. This may be due to the
+smaller size of our model, the relative easiness of the
+task (CIFAR-10 might make a better benchmark in
+a less time-sensitive setting), our choice to only use
+
+References
+
+[1] Mart´ın Abadi, Ashish Agarwal, Paul Barham,
+Eugene Brevdo, Zhifeng Chen, Craig Citro,
+Greg S. Corrado, Andy Davis, Jeffrey Dean,
+Matthieu Devin, Sanjay Ghemawat,
+Ian
+Goodfellow, Andrew Harp, Geoffrey Irving,
+Michael Isard, Yangqing Jia, Rafal Jozefow-
+icz, Lukasz Kaiser, Manjunath Kudlur, Josh
+Levenberg, Dan Man´e, Rajat Monga, Sherry
+Moore, Derek Murray, Chris Olah, Mike
+Schuster, Jonathon Shlens, Benoit Steiner, Ilya
+Sutskever, Kunal Talwar, Paul Tucker, Vin-
+cent Vanhoucke, Vijay Vasudevan, Fernanda
+Vi´egas, Oriol Vinyals, Pete Warden, Martin
+Wattenberg, Martin Wicke, Yuan Yu, and Xi-
+aoqiang Zheng.
+TensorFlow: Large-scale
+machine learning on heterogeneous systems,
+2015. Software available from tensorﬂow.org.
+John Duchi, Elad Hazan, and Yoram Singer.
+Adaptive subgradient methods for online learn-
+ing and stochastic optimization. The Journal
+of Machine Learning Research, 12:2121–2159,
+2011.
+
+[2]
+
+[3] Xavier Glorot, Antoine Bordes, and Yoshua
+Bengio. Deep sparse rectiﬁer neural networks.
+In International Conference on Artiﬁcial Intel-
+ligence and Statistics, pages 315–323, 2011.
+
+[4] Sepp Hochreiter and J¨urgen Schmidhuber.
+Long short-term memory. Neural computation,
+9(8):1735–1780, 1997.
+
+[5] Diederik Kingma and Jimmy Ba. Adam: A
+arXiv
+
+method for stochastic optimization.
+preprint arXiv:1412.6980, 2014.
+
+[6] Quoc V. Le, Navdeep Jaitly, and Geoffrey E.
+Hinton. A simple way to initialize recur-
+rent networks of rectiﬁed linear units. CoRR,
+abs/1504.00941, 2015.
+
+[7] Yann LeCun, Corinna Cortes, and Christo-
+pher JC Burges. The mnist database of hand-
+written digits, 1998.
+
+[8] Mitchell P Marcus, Mary Ann Marcinkiewicz,
+and Beatrice Santorini. Building a large an-
+notated corpus of english: The penn tree-
+bank. Computational linguistics, 19(2):313–
+330, 1993.
+
+[9]
+
+James Martens. Deep learning via hessian-free
+In Proceedings of the 27th In-
+optimization.
+ternational Conference on Machine Learning
+(ICML-10), pages 735–742, 2010.
+
+[10] Tomas Mikolov, Ilya Sutskever, Kai Chen,
+Greg S Corrado, and Jeff Dean. Distributed
+representations of words and phrases and their
+compositionality. In Advances in neural infor-
+mation processing systems, pages 3111–3119,
+2013.
+
+[11] Yurii Nesterov. A method of solving a convex
+programming problem with convergence rate
+O(1/k2). In Soviet Mathematics Doklady, vol-
+ume 27, pages 372–376, 1983.
+
+[12] Boris Teodorovich Polyak. Some methods of
+speeding up the convergence of iteration meth-
+ods. USSR Computational Mathematics and
+Mathematical Physics, 4(5):1–17, 1964.
+
+[13] Richard Socher, Cliff C Lin, Andrew Y Ng,
+and Chris Manning. Parsing natural scenes
+and natural language with recursive neural net-
+In Proceedings of the 28th interna-
+works.
+tional conference on machine learning (ICML-
+11), pages 129–136, 2011.
+
+[14] Ilya Sutskever, James Martens, George Dahl,
+and Geoffrey Hinton. On the importance of ini-
+tialization and momentum in deep learning. In
+Proceedings of the 30th International Confer-
+ence on Machine Learning (ICML-13), pages
+1139–1147, 2013.
+
+[15] Sachin S Talathi and Aniket Vartak.
+
+Im-
+proving performance of recurrent neural net-
+arXiv preprint
+work with relu nonlinearity.
+arXiv:1511.03771, 2015.
+
+[16] Tijmen Tieleman and Geoffrey Hinton. Lec-
+ture 6.5-rmsprop: Divide the gradient by a run-
+ning average of its recent magnitude. COURS-
+ERA: Neural Networks for Machine Learning,
+4, 2012.
+
+[17] Wojciech Zaremba, Ilya Sutskever, and Oriol
+Vinyals. Recurrent neural network regulariza-
+tion. CoRR, abs/1409.2329, 2014.
+
+

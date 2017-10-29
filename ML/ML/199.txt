@@ -1,0 +1,1939 @@
+Scanning probe microscopy based on reinforcement learninga)
+
+Eric Yue Ma1, b)
+1Department of Applied Physics, Stanford University, California, US
+
+(Dated: 11 December 2015)
+
+Keywords: machine learning, neural network, reinforcement learning, scanning probe microscopy
+
+Scanning probe microscopy (SPM) has become
+an indispensable tool
+for characterizing the
+nanoscale. The core of its working principle in-
+volves raster-scanning a sharp tip in contact with
+a sample of interest, while maintaining a constant
+tip-sample interaction. This is achieved via stan-
+dard proportional-integral (PI) feedback in virtu-
+ally all industrial implementations. Here we ex-
+plore 1) the possibility of using machine learning
+to automatically ﬁnd the optimal PI parameters
+and 2) feedback based on a Markov decision pro-
+cess (MDP) reinforcement learning model, free
+from any explicit PI feedback. PI parameters
+automatically selected by a neural-network-based
+approach achieve excellent feedback performance.
+The MDP model is shown to perform basic feed-
+back, but with inferior performance than that of
+PI feedback, possibly due to the intrinsic unpre-
+dictability of sample topography. These proof-
+of-concepts open up new opportunities for SPM
+feedback optimization under a wide range of con-
+ditions.
+
+I.
+
+INTRODUCTION
+
+Scanning probe microscopy (SPM) characterizes ex-
+tremely small, often down to subatomic scale features,
+and has become an indispensable tool for a growing com-
+munity of scientists and engineers from condensed matter
+physics, material science, quantum chemistry, molecular
+biology and semiconductor industry. In an SPM, a sharp
+tip is brought close to the surface of the sample of in-
+terest. The interaction between the atoms on the tip
+apex and those on the sample surface yields some measur-
+able quantity (e.g. the deﬂection of a micro-cantilever in
+atomic force microscope (AFM), or the quantum tunnel-
+ing current in a scanning tunneling microscope (STM));
+through feedback on this quantity while moving the tip
+on the sample surface in a raster-scan fashion, a con-
+stant tip-sample interaction is maintained, and high spa-
+tial resolution topography images can be obtained. Many
+other electrical, magnetic and chemical properties can be
+simultaneously measured with specialized tips.
+
+a)CS229 project ﬁnal report.
+b)Electronic mail: yuema@stanford.edu
+
+To the best knowledge of the author, all current
+commercially available SPMs utilize some variation of
+a proportional-integral (PI) feedback control scheme
+(the derivative (D) in a standard proportional-integral-
+derivative (PID) feedback scheme is usually not used due
+to the susceptibility to measurement noise). While the
+PI feedback can handle most scanning conditions given
+the optimal parameters, ﬁnding those parameters is of-
+ten tedious and requires substantial empirical knowledge.
+Moreover, the optimal values can be drastically diﬀer-
+ent for diﬀerent tip type, sample surface roughness and
+even scan speed. Automatic, or semi-automatic tuning
+of PI parameters in an SPM setting has previously been
+proposed, based on the standard Ziegler-Nichols or relay
+method1–3, but has not been widely available in common
+SPMs.
+
+Here we aim to explore the possibility of using ma-
+chine learning to improve the performance, robustness,
+and ease of use of an SPM. We aim to achieve two pro-
+gressive goals: 1) automatic tuning of PI feedback param-
+eters using machine learning algorithms, and 2) a MDP-
+based reinforcement learning model capable of pixel-by-
+pixel feedback, free from an explicit PI feedback scheme.
+Its performance will be compared to the standard PI feed-
+back with optimal parameters. Preliminary conclusion
+on the feasibility, advantages and disadvantages of such
+MDP model will be drawn based on the results.
+
+II. METHODS
+
+A. SPM simulator
+
+A simple but realistic SPM simulator is implemented in
+MATLAB. The state of the simulator is described by just
+two quantities: zs is the height of the sample surface at
+the point currently underneath the tip, measured with
+respect to a ﬁxed reference; zt is the height of a ﬁxed
+part of the tip, measured from the same reference. If zs
+and zt are given, the simulator calculates the tip-sample
+interaction signal s which only depends on the diﬀerence
+between zs and zt: s(zs, zt) = s(zt − zs) (Fig. 1A, B).
+
+The working principle of an SPM is as follows: zs is
+what we want to measure but it cannot be measured
+directly; zt is measurable and controllable, usually via
+a piezoelectric device; if s(zt − zs) is a constant, zt −
+zs is also a constant. When the tip moves across the
+sample surface, zs changes in an unknown way according
+to zs(x, y). If we control zt to maintain the value of s as
+
+Scanning probe microscopy based on reinforcement learninga)
+
+Eric Yue Ma1, b)
+1Department of Applied Physics, Stanford University, California, US
+
+(Dated: 11 December 2015)
+
+Keywords: machine learning, neural network, reinforcement learning, scanning probe microscopy
+
+Scanning probe microscopy (SPM) has become
+an indispensable tool
+for characterizing the
+nanoscale. The core of its working principle in-
+volves raster-scanning a sharp tip in contact with
+a sample of interest, while maintaining a constant
+tip-sample interaction. This is achieved via stan-
+dard proportional-integral (PI) feedback in virtu-
+ally all industrial implementations. Here we ex-
+plore 1) the possibility of using machine learning
+to automatically ﬁnd the optimal PI parameters
+and 2) feedback based on a Markov decision pro-
+cess (MDP) reinforcement learning model, free
+from any explicit PI feedback. PI parameters
+automatically selected by a neural-network-based
+approach achieve excellent feedback performance.
+The MDP model is shown to perform basic feed-
+back, but with inferior performance than that of
+PI feedback, possibly due to the intrinsic unpre-
+dictability of sample topography. These proof-
+of-concepts open up new opportunities for SPM
+feedback optimization under a wide range of con-
+ditions.
+
+I.
+
+INTRODUCTION
+
+Scanning probe microscopy (SPM) characterizes ex-
+tremely small, often down to subatomic scale features,
+and has become an indispensable tool for a growing com-
+munity of scientists and engineers from condensed matter
+physics, material science, quantum chemistry, molecular
+biology and semiconductor industry. In an SPM, a sharp
+tip is brought close to the surface of the sample of in-
+terest. The interaction between the atoms on the tip
+apex and those on the sample surface yields some measur-
+able quantity (e.g. the deﬂection of a micro-cantilever in
+atomic force microscope (AFM), or the quantum tunnel-
+ing current in a scanning tunneling microscope (STM));
+through feedback on this quantity while moving the tip
+on the sample surface in a raster-scan fashion, a con-
+stant tip-sample interaction is maintained, and high spa-
+tial resolution topography images can be obtained. Many
+other electrical, magnetic and chemical properties can be
+simultaneously measured with specialized tips.
+
+a)CS229 project ﬁnal report.
+b)Electronic mail: yuema@stanford.edu
+
+To the best knowledge of the author, all current
+commercially available SPMs utilize some variation of
+a proportional-integral (PI) feedback control scheme
+(the derivative (D) in a standard proportional-integral-
+derivative (PID) feedback scheme is usually not used due
+to the susceptibility to measurement noise). While the
+PI feedback can handle most scanning conditions given
+the optimal parameters, ﬁnding those parameters is of-
+ten tedious and requires substantial empirical knowledge.
+Moreover, the optimal values can be drastically diﬀer-
+ent for diﬀerent tip type, sample surface roughness and
+even scan speed. Automatic, or semi-automatic tuning
+of PI parameters in an SPM setting has previously been
+proposed, based on the standard Ziegler-Nichols or relay
+method1–3, but has not been widely available in common
+SPMs.
+
+Here we aim to explore the possibility of using ma-
+chine learning to improve the performance, robustness,
+and ease of use of an SPM. We aim to achieve two pro-
+gressive goals: 1) automatic tuning of PI feedback param-
+eters using machine learning algorithms, and 2) a MDP-
+based reinforcement learning model capable of pixel-by-
+pixel feedback, free from an explicit PI feedback scheme.
+Its performance will be compared to the standard PI feed-
+back with optimal parameters. Preliminary conclusion
+on the feasibility, advantages and disadvantages of such
+MDP model will be drawn based on the results.
+
+II. METHODS
+
+A. SPM simulator
+
+A simple but realistic SPM simulator is implemented in
+MATLAB. The state of the simulator is described by just
+two quantities: zs is the height of the sample surface at
+the point currently underneath the tip, measured with
+respect to a ﬁxed reference; zt is the height of a ﬁxed
+part of the tip, measured from the same reference. If zs
+and zt are given, the simulator calculates the tip-sample
+interaction signal s which only depends on the diﬀerence
+between zs and zt: s(zs, zt) = s(zt − zs) (Fig. 1A, B).
+
+The working principle of an SPM is as follows: zs is
+what we want to measure but it cannot be measured
+directly; zt is measurable and controllable, usually via
+a piezoelectric device; if s(zt − zs) is a constant, zt −
+zs is also a constant. When the tip moves across the
+sample surface, zs changes in an unknown way according
+to zs(x, y). If we control zt to maintain the value of s as
+
+B. PI feedback and automatic parameter tuning
+
+2
+
+We implement a PI feedback control with manually
+adjustable parameters to demonstrate its behavior ﬁrst.
+In this model, the tip raster scans on the sample surface
+in discrete time steps (δt), with the following update rule
+for zt, given parameters (P, I) and the set point s0:
+
+z(i)
+t
+
+:= z(i−1)
+
+t
+
++ P (s − s0) + I
+
+(s − s0)δt.
+
+t(cid:88)
+
+0
+
+Note that while in many common PID controllers the
+feedback output replaces the previous value, in an SPM
+it is usually added to the previous value. To simulate the
+real-world behavior of PI feedback, a small white noise
+term is added to the output of the simulator, i.e. s =
+s(zt− zs) + η, where  is a random variable with uniform
+distribution between ± 1
+2 , and η controls the magnitude
+of the noise.
+
+Now we make a few assumptions to simplify our sim-
+ulation. First, we will only use 1D line scans instead of
+full 2D scans to evaluate the performance of PI feedback
+(i.e. tip only moves in one direction x). This is because
+2D scans are simply arrays of individual 1D scans. Sec-
+ond, we assume that each line scan takes 1 second, and
+our PI controller operates at 250 Hz. Therefore δt = 4
+millisecond and the number of pixels in one scan is 250
+(reasonable values for real SPMs). Third, we ﬁx s0 to be
+1 and the noise magnitude η to be 0.2. This roughly cor-
+responds to setting the tip-sample contact force at ∼1 nN
+(common practice in real experiments) with a ±0.1 nN
+readout error (typical value, limited by the instrument).
+Results with a randomly generated 1D sample topog-
+raphy and arbitrary combinations of PI parameters can
+now be generated by executing the PI feedback within
+the simulator. These results are used as the data set to
+evaluate the performance of the feedback. Brutal-force
+exploration of the parameter space is carried out to iden-
+tify whether a globally optimal parameter combination
+exists and whether there are multiple local minima.
+
+We then attempt to ﬁnd the optimal PI parameters
+by ﬁtting a small number of data points with a neural
+network with one hidden layer and 10/5 hidden sigmoid
+neurons, ﬁrst in the full parameter space, and then within
+the perimeter of the global minimum of the ﬁrst step.
+Back-propagation with Bayesian regularization and 70-
+30 cross-validation is used for training. Finding the min-
+imum of the ﬁtted smooth function is trivial.
+
+C. MDP-based feedback
+
+Finally we build a reinforcement learning model based
+on MDP for pixel-by-pixel control of tip-sample interac-
+tion without any explicit PI feedback. A discretized state
+(s − s0, the value of error) and action (∆zt, how much
+and what direction to move the tip for the next point)
+space is used.
+Initially the transition probabilities are
+
+FIG. 1. (a) Illustration of zs, zt and s. In this illustration an
+atomic force microscopy (AFM) conﬁguration is used, where
+s is the deﬂection of a micro-cantilever with the tip at its
+end, measured by the reﬂection of a laser beam. When the
+tip is not in contact with the sample, there is 0 deﬂection.
+(b) When the tip comes in contact with the sample surface,
+the cantilever is deﬂected, thus s increases, in this case to a
+predeﬁned set point s0. (c) If s is maintained at s0 while the
+tip scans across the sample surface, zt(x) becomes a faithful
+representation of zs(x). The feedback is never perfect, and
+can be evaluated by the feedback error (s(x) − s0).
+
+close to a constant s0 (the ”set point”) as possible, we
+would have zt(x, y) = zs(x, y) + constant, for all x, y. zt
+would thus contain all the information we want (usually
+we are only interested in the variation of zs, and do not
+care about the constant) (Fig. 1B, C).
+For simplicity we model s(zt − zs) with the conﬁgura-
+tion of an atomic force microscopy (AFM) (Fig. 1), in
+which
+
+s(zt − zs) = max{0,−A((zt − zs) − z0), A > 0}.
+
+Here z0 is the diﬀerence in height between the tip and
+the sample when they just come into contact. The above
+formula is from the fact that, for small deﬂection, the
+change in laser beam position s is linearly proportional
+to (zt − zs) (which is in turn proportional to the tip-
+sample contact force, since the cantilever is a linear spring
+for small deﬂection). The deﬂection is obviously 0 when
+the tip is not yet in contact with the sample. Because
+we are free to choose the reference point for zt, we can
+set z0 to be 0. Also for simplicity we can assume all
+the quantities are already properly non-dimensionalized,
+and set A = 14. Therefore the simpliﬁed formula for s
+becomes
+
+s(zt − zs) = max{0,−(zt − zs)}.
+
+Scanning probe microscopy based on reinforcement learninga)
+
+Eric Yue Ma1, b)
+1Department of Applied Physics, Stanford University, California, US
+
+(Dated: 11 December 2015)
+
+Keywords: machine learning, neural network, reinforcement learning, scanning probe microscopy
+
+Scanning probe microscopy (SPM) has become
+an indispensable tool
+for characterizing the
+nanoscale. The core of its working principle in-
+volves raster-scanning a sharp tip in contact with
+a sample of interest, while maintaining a constant
+tip-sample interaction. This is achieved via stan-
+dard proportional-integral (PI) feedback in virtu-
+ally all industrial implementations. Here we ex-
+plore 1) the possibility of using machine learning
+to automatically ﬁnd the optimal PI parameters
+and 2) feedback based on a Markov decision pro-
+cess (MDP) reinforcement learning model, free
+from any explicit PI feedback. PI parameters
+automatically selected by a neural-network-based
+approach achieve excellent feedback performance.
+The MDP model is shown to perform basic feed-
+back, but with inferior performance than that of
+PI feedback, possibly due to the intrinsic unpre-
+dictability of sample topography. These proof-
+of-concepts open up new opportunities for SPM
+feedback optimization under a wide range of con-
+ditions.
+
+I.
+
+INTRODUCTION
+
+Scanning probe microscopy (SPM) characterizes ex-
+tremely small, often down to subatomic scale features,
+and has become an indispensable tool for a growing com-
+munity of scientists and engineers from condensed matter
+physics, material science, quantum chemistry, molecular
+biology and semiconductor industry. In an SPM, a sharp
+tip is brought close to the surface of the sample of in-
+terest. The interaction between the atoms on the tip
+apex and those on the sample surface yields some measur-
+able quantity (e.g. the deﬂection of a micro-cantilever in
+atomic force microscope (AFM), or the quantum tunnel-
+ing current in a scanning tunneling microscope (STM));
+through feedback on this quantity while moving the tip
+on the sample surface in a raster-scan fashion, a con-
+stant tip-sample interaction is maintained, and high spa-
+tial resolution topography images can be obtained. Many
+other electrical, magnetic and chemical properties can be
+simultaneously measured with specialized tips.
+
+a)CS229 project ﬁnal report.
+b)Electronic mail: yuema@stanford.edu
+
+To the best knowledge of the author, all current
+commercially available SPMs utilize some variation of
+a proportional-integral (PI) feedback control scheme
+(the derivative (D) in a standard proportional-integral-
+derivative (PID) feedback scheme is usually not used due
+to the susceptibility to measurement noise). While the
+PI feedback can handle most scanning conditions given
+the optimal parameters, ﬁnding those parameters is of-
+ten tedious and requires substantial empirical knowledge.
+Moreover, the optimal values can be drastically diﬀer-
+ent for diﬀerent tip type, sample surface roughness and
+even scan speed. Automatic, or semi-automatic tuning
+of PI parameters in an SPM setting has previously been
+proposed, based on the standard Ziegler-Nichols or relay
+method1–3, but has not been widely available in common
+SPMs.
+
+Here we aim to explore the possibility of using ma-
+chine learning to improve the performance, robustness,
+and ease of use of an SPM. We aim to achieve two pro-
+gressive goals: 1) automatic tuning of PI feedback param-
+eters using machine learning algorithms, and 2) a MDP-
+based reinforcement learning model capable of pixel-by-
+pixel feedback, free from an explicit PI feedback scheme.
+Its performance will be compared to the standard PI feed-
+back with optimal parameters. Preliminary conclusion
+on the feasibility, advantages and disadvantages of such
+MDP model will be drawn based on the results.
+
+II. METHODS
+
+A. SPM simulator
+
+A simple but realistic SPM simulator is implemented in
+MATLAB. The state of the simulator is described by just
+two quantities: zs is the height of the sample surface at
+the point currently underneath the tip, measured with
+respect to a ﬁxed reference; zt is the height of a ﬁxed
+part of the tip, measured from the same reference. If zs
+and zt are given, the simulator calculates the tip-sample
+interaction signal s which only depends on the diﬀerence
+between zs and zt: s(zs, zt) = s(zt − zs) (Fig. 1A, B).
+
+The working principle of an SPM is as follows: zs is
+what we want to measure but it cannot be measured
+directly; zt is measurable and controllable, usually via
+a piezoelectric device; if s(zt − zs) is a constant, zt −
+zs is also a constant. When the tip moves across the
+sample surface, zs changes in an unknown way according
+to zs(x, y). If we control zt to maintain the value of s as
+
+B. PI feedback and automatic parameter tuning
+
+2
+
+We implement a PI feedback control with manually
+adjustable parameters to demonstrate its behavior ﬁrst.
+In this model, the tip raster scans on the sample surface
+in discrete time steps (δt), with the following update rule
+for zt, given parameters (P, I) and the set point s0:
+
+z(i)
+t
+
+:= z(i−1)
+
+t
+
++ P (s − s0) + I
+
+(s − s0)δt.
+
+t(cid:88)
+
+0
+
+Note that while in many common PID controllers the
+feedback output replaces the previous value, in an SPM
+it is usually added to the previous value. To simulate the
+real-world behavior of PI feedback, a small white noise
+term is added to the output of the simulator, i.e. s =
+s(zt− zs) + η, where  is a random variable with uniform
+distribution between ± 1
+2 , and η controls the magnitude
+of the noise.
+
+Now we make a few assumptions to simplify our sim-
+ulation. First, we will only use 1D line scans instead of
+full 2D scans to evaluate the performance of PI feedback
+(i.e. tip only moves in one direction x). This is because
+2D scans are simply arrays of individual 1D scans. Sec-
+ond, we assume that each line scan takes 1 second, and
+our PI controller operates at 250 Hz. Therefore δt = 4
+millisecond and the number of pixels in one scan is 250
+(reasonable values for real SPMs). Third, we ﬁx s0 to be
+1 and the noise magnitude η to be 0.2. This roughly cor-
+responds to setting the tip-sample contact force at ∼1 nN
+(common practice in real experiments) with a ±0.1 nN
+readout error (typical value, limited by the instrument).
+Results with a randomly generated 1D sample topog-
+raphy and arbitrary combinations of PI parameters can
+now be generated by executing the PI feedback within
+the simulator. These results are used as the data set to
+evaluate the performance of the feedback. Brutal-force
+exploration of the parameter space is carried out to iden-
+tify whether a globally optimal parameter combination
+exists and whether there are multiple local minima.
+
+We then attempt to ﬁnd the optimal PI parameters
+by ﬁtting a small number of data points with a neural
+network with one hidden layer and 10/5 hidden sigmoid
+neurons, ﬁrst in the full parameter space, and then within
+the perimeter of the global minimum of the ﬁrst step.
+Back-propagation with Bayesian regularization and 70-
+30 cross-validation is used for training. Finding the min-
+imum of the ﬁtted smooth function is trivial.
+
+C. MDP-based feedback
+
+Finally we build a reinforcement learning model based
+on MDP for pixel-by-pixel control of tip-sample interac-
+tion without any explicit PI feedback. A discretized state
+(s − s0, the value of error) and action (∆zt, how much
+and what direction to move the tip for the next point)
+space is used.
+Initially the transition probabilities are
+
+FIG. 1. (a) Illustration of zs, zt and s. In this illustration an
+atomic force microscopy (AFM) conﬁguration is used, where
+s is the deﬂection of a micro-cantilever with the tip at its
+end, measured by the reﬂection of a laser beam. When the
+tip is not in contact with the sample, there is 0 deﬂection.
+(b) When the tip comes in contact with the sample surface,
+the cantilever is deﬂected, thus s increases, in this case to a
+predeﬁned set point s0. (c) If s is maintained at s0 while the
+tip scans across the sample surface, zt(x) becomes a faithful
+representation of zs(x). The feedback is never perfect, and
+can be evaluated by the feedback error (s(x) − s0).
+
+close to a constant s0 (the ”set point”) as possible, we
+would have zt(x, y) = zs(x, y) + constant, for all x, y. zt
+would thus contain all the information we want (usually
+we are only interested in the variation of zs, and do not
+care about the constant) (Fig. 1B, C).
+For simplicity we model s(zt − zs) with the conﬁgura-
+tion of an atomic force microscopy (AFM) (Fig. 1), in
+which
+
+s(zt − zs) = max{0,−A((zt − zs) − z0), A > 0}.
+
+Here z0 is the diﬀerence in height between the tip and
+the sample when they just come into contact. The above
+formula is from the fact that, for small deﬂection, the
+change in laser beam position s is linearly proportional
+to (zt − zs) (which is in turn proportional to the tip-
+sample contact force, since the cantilever is a linear spring
+for small deﬂection). The deﬂection is obviously 0 when
+the tip is not yet in contact with the sample. Because
+we are free to choose the reference point for zt, we can
+set z0 to be 0. Also for simplicity we can assume all
+the quantities are already properly non-dimensionalized,
+and set A = 14. Therefore the simpliﬁed formula for s
+becomes
+
+s(zt − zs) = max{0,−(zt − zs)}.
+
+assumed to be equal, and the value function V and pol-
+icy Π random. Each line scan on a randomly generated
+1D sample topography is a trial, after which the MDP
+is updated. A new optimized value function V ∗ is then
+obtained via value iteration, which implicitly deﬁnes the
+new policy Π∗ which acts greedily on V ∗.
+
+III. RESULTS AND DISCUSSIONS
+
+A. PI feedback with manually adjustable parameters
+
+Results with four diﬀerent combinations of (P, I) are
+shown in Fig. 2. Here zs(x) is a smoothed square wave
+with moderate height, representing the cross section of
+e.g. a common optical grating. Intuitively, if (P, I) is too
+large, the tip tends to overreact and starts to self-oscillate
+(this is the case even if we do not add the noise term); if
+(P, I) is too small, zt cannot follow zs; a moderate (P, I)
+results in zt being a reasonably faithful representation of
+zs. We are not going to discuss in detail the strategy
+of tuning (P, I) manually, because our goal here is to
+enable auto-tuning of (P, I), even without much a priori
+knowledge or experience.
+
+B. Automatic tuning of PI parameters
+
+J(P, I) =(cid:80)
+
+One would naively think that it is a straightforward
+optimization problem with the sum of absolute error
+i |s(i)−s0| being the objective function (usu-
+ally we can tolerate sharp but narrow spikes, but not
+moderate and broad peaks in feedback error, thus ab-
+solute value works better than squared), and there is no
+need to invoke any machine learning. However, the objec-
+tive function cannot be written in closed form, and brutal
+force calculations with the simulator (Fig. 3) show that
+although a robust global minimum exists, the objective
+function is non-convex due to the existence of numerous
+local minima that depend on the detailed topography
+(Fig. 3b).
+We propose to implement a regression with a moderate
+number of points {((P (j), I (j)), J(P, I)(j))}, each j from
+a randomly generated line topography (zs), and then ﬁnd
+the global minimum of the ﬁtted function J∗(P, I). One
+can iterate in an increasingly small parameter space if
+necessary. The motivation is two-fold: First, in a real
+experiment it is impractical to try hundreds of thou-
+sands combinations to map out the full parameter space
+as in Fig. 3b. It is however easy to do a 2D scan with
+a few hundred lines with diﬀerent parameters for each
+line. Second, by ﬁtting with a relatively small number
+of points from randomly generated lines, we may avoid
+the shallow, small-scale and detail-dependent local min-
+ima and obtain a function J∗(P, I) that is more suitable
+for ﬁnding the global minimum (in a real sample there
+are always random topography variations between lines,
+
+3
+
+FIG. 2. Results of PI feedback simulation with diﬀerent com-
+binations of (P, I) values. (a, b) If P and/or I is too large,
+the tip will self-oscillate, with characteristics depending on
+the speciﬁc combination. (c) If P and I are too small, the tip
+cannot track the sample surface well. (d) An optimal com-
+bination of (P, I) makes zt a faithful representation of zs. zt
+is oﬀsetted for ease of comparison. Note that the feedback
+error is s− s0 instead of zt − zs: The latter is unknown in real
+experiments.
+
+Scanning probe microscopy based on reinforcement learninga)
+
+Eric Yue Ma1, b)
+1Department of Applied Physics, Stanford University, California, US
+
+(Dated: 11 December 2015)
+
+Keywords: machine learning, neural network, reinforcement learning, scanning probe microscopy
+
+Scanning probe microscopy (SPM) has become
+an indispensable tool
+for characterizing the
+nanoscale. The core of its working principle in-
+volves raster-scanning a sharp tip in contact with
+a sample of interest, while maintaining a constant
+tip-sample interaction. This is achieved via stan-
+dard proportional-integral (PI) feedback in virtu-
+ally all industrial implementations. Here we ex-
+plore 1) the possibility of using machine learning
+to automatically ﬁnd the optimal PI parameters
+and 2) feedback based on a Markov decision pro-
+cess (MDP) reinforcement learning model, free
+from any explicit PI feedback. PI parameters
+automatically selected by a neural-network-based
+approach achieve excellent feedback performance.
+The MDP model is shown to perform basic feed-
+back, but with inferior performance than that of
+PI feedback, possibly due to the intrinsic unpre-
+dictability of sample topography. These proof-
+of-concepts open up new opportunities for SPM
+feedback optimization under a wide range of con-
+ditions.
+
+I.
+
+INTRODUCTION
+
+Scanning probe microscopy (SPM) characterizes ex-
+tremely small, often down to subatomic scale features,
+and has become an indispensable tool for a growing com-
+munity of scientists and engineers from condensed matter
+physics, material science, quantum chemistry, molecular
+biology and semiconductor industry. In an SPM, a sharp
+tip is brought close to the surface of the sample of in-
+terest. The interaction between the atoms on the tip
+apex and those on the sample surface yields some measur-
+able quantity (e.g. the deﬂection of a micro-cantilever in
+atomic force microscope (AFM), or the quantum tunnel-
+ing current in a scanning tunneling microscope (STM));
+through feedback on this quantity while moving the tip
+on the sample surface in a raster-scan fashion, a con-
+stant tip-sample interaction is maintained, and high spa-
+tial resolution topography images can be obtained. Many
+other electrical, magnetic and chemical properties can be
+simultaneously measured with specialized tips.
+
+a)CS229 project ﬁnal report.
+b)Electronic mail: yuema@stanford.edu
+
+To the best knowledge of the author, all current
+commercially available SPMs utilize some variation of
+a proportional-integral (PI) feedback control scheme
+(the derivative (D) in a standard proportional-integral-
+derivative (PID) feedback scheme is usually not used due
+to the susceptibility to measurement noise). While the
+PI feedback can handle most scanning conditions given
+the optimal parameters, ﬁnding those parameters is of-
+ten tedious and requires substantial empirical knowledge.
+Moreover, the optimal values can be drastically diﬀer-
+ent for diﬀerent tip type, sample surface roughness and
+even scan speed. Automatic, or semi-automatic tuning
+of PI parameters in an SPM setting has previously been
+proposed, based on the standard Ziegler-Nichols or relay
+method1–3, but has not been widely available in common
+SPMs.
+
+Here we aim to explore the possibility of using ma-
+chine learning to improve the performance, robustness,
+and ease of use of an SPM. We aim to achieve two pro-
+gressive goals: 1) automatic tuning of PI feedback param-
+eters using machine learning algorithms, and 2) a MDP-
+based reinforcement learning model capable of pixel-by-
+pixel feedback, free from an explicit PI feedback scheme.
+Its performance will be compared to the standard PI feed-
+back with optimal parameters. Preliminary conclusion
+on the feasibility, advantages and disadvantages of such
+MDP model will be drawn based on the results.
+
+II. METHODS
+
+A. SPM simulator
+
+A simple but realistic SPM simulator is implemented in
+MATLAB. The state of the simulator is described by just
+two quantities: zs is the height of the sample surface at
+the point currently underneath the tip, measured with
+respect to a ﬁxed reference; zt is the height of a ﬁxed
+part of the tip, measured from the same reference. If zs
+and zt are given, the simulator calculates the tip-sample
+interaction signal s which only depends on the diﬀerence
+between zs and zt: s(zs, zt) = s(zt − zs) (Fig. 1A, B).
+
+The working principle of an SPM is as follows: zs is
+what we want to measure but it cannot be measured
+directly; zt is measurable and controllable, usually via
+a piezoelectric device; if s(zt − zs) is a constant, zt −
+zs is also a constant. When the tip moves across the
+sample surface, zs changes in an unknown way according
+to zs(x, y). If we control zt to maintain the value of s as
+
+B. PI feedback and automatic parameter tuning
+
+2
+
+We implement a PI feedback control with manually
+adjustable parameters to demonstrate its behavior ﬁrst.
+In this model, the tip raster scans on the sample surface
+in discrete time steps (δt), with the following update rule
+for zt, given parameters (P, I) and the set point s0:
+
+z(i)
+t
+
+:= z(i−1)
+
+t
+
++ P (s − s0) + I
+
+(s − s0)δt.
+
+t(cid:88)
+
+0
+
+Note that while in many common PID controllers the
+feedback output replaces the previous value, in an SPM
+it is usually added to the previous value. To simulate the
+real-world behavior of PI feedback, a small white noise
+term is added to the output of the simulator, i.e. s =
+s(zt− zs) + η, where  is a random variable with uniform
+distribution between ± 1
+2 , and η controls the magnitude
+of the noise.
+
+Now we make a few assumptions to simplify our sim-
+ulation. First, we will only use 1D line scans instead of
+full 2D scans to evaluate the performance of PI feedback
+(i.e. tip only moves in one direction x). This is because
+2D scans are simply arrays of individual 1D scans. Sec-
+ond, we assume that each line scan takes 1 second, and
+our PI controller operates at 250 Hz. Therefore δt = 4
+millisecond and the number of pixels in one scan is 250
+(reasonable values for real SPMs). Third, we ﬁx s0 to be
+1 and the noise magnitude η to be 0.2. This roughly cor-
+responds to setting the tip-sample contact force at ∼1 nN
+(common practice in real experiments) with a ±0.1 nN
+readout error (typical value, limited by the instrument).
+Results with a randomly generated 1D sample topog-
+raphy and arbitrary combinations of PI parameters can
+now be generated by executing the PI feedback within
+the simulator. These results are used as the data set to
+evaluate the performance of the feedback. Brutal-force
+exploration of the parameter space is carried out to iden-
+tify whether a globally optimal parameter combination
+exists and whether there are multiple local minima.
+
+We then attempt to ﬁnd the optimal PI parameters
+by ﬁtting a small number of data points with a neural
+network with one hidden layer and 10/5 hidden sigmoid
+neurons, ﬁrst in the full parameter space, and then within
+the perimeter of the global minimum of the ﬁrst step.
+Back-propagation with Bayesian regularization and 70-
+30 cross-validation is used for training. Finding the min-
+imum of the ﬁtted smooth function is trivial.
+
+C. MDP-based feedback
+
+Finally we build a reinforcement learning model based
+on MDP for pixel-by-pixel control of tip-sample interac-
+tion without any explicit PI feedback. A discretized state
+(s − s0, the value of error) and action (∆zt, how much
+and what direction to move the tip for the next point)
+space is used.
+Initially the transition probabilities are
+
+FIG. 1. (a) Illustration of zs, zt and s. In this illustration an
+atomic force microscopy (AFM) conﬁguration is used, where
+s is the deﬂection of a micro-cantilever with the tip at its
+end, measured by the reﬂection of a laser beam. When the
+tip is not in contact with the sample, there is 0 deﬂection.
+(b) When the tip comes in contact with the sample surface,
+the cantilever is deﬂected, thus s increases, in this case to a
+predeﬁned set point s0. (c) If s is maintained at s0 while the
+tip scans across the sample surface, zt(x) becomes a faithful
+representation of zs(x). The feedback is never perfect, and
+can be evaluated by the feedback error (s(x) − s0).
+
+close to a constant s0 (the ”set point”) as possible, we
+would have zt(x, y) = zs(x, y) + constant, for all x, y. zt
+would thus contain all the information we want (usually
+we are only interested in the variation of zs, and do not
+care about the constant) (Fig. 1B, C).
+For simplicity we model s(zt − zs) with the conﬁgura-
+tion of an atomic force microscopy (AFM) (Fig. 1), in
+which
+
+s(zt − zs) = max{0,−A((zt − zs) − z0), A > 0}.
+
+Here z0 is the diﬀerence in height between the tip and
+the sample when they just come into contact. The above
+formula is from the fact that, for small deﬂection, the
+change in laser beam position s is linearly proportional
+to (zt − zs) (which is in turn proportional to the tip-
+sample contact force, since the cantilever is a linear spring
+for small deﬂection). The deﬂection is obviously 0 when
+the tip is not yet in contact with the sample. Because
+we are free to choose the reference point for zt, we can
+set z0 to be 0. Also for simplicity we can assume all
+the quantities are already properly non-dimensionalized,
+and set A = 14. Therefore the simpliﬁed formula for s
+becomes
+
+s(zt − zs) = max{0,−(zt − zs)}.
+
+assumed to be equal, and the value function V and pol-
+icy Π random. Each line scan on a randomly generated
+1D sample topography is a trial, after which the MDP
+is updated. A new optimized value function V ∗ is then
+obtained via value iteration, which implicitly deﬁnes the
+new policy Π∗ which acts greedily on V ∗.
+
+III. RESULTS AND DISCUSSIONS
+
+A. PI feedback with manually adjustable parameters
+
+Results with four diﬀerent combinations of (P, I) are
+shown in Fig. 2. Here zs(x) is a smoothed square wave
+with moderate height, representing the cross section of
+e.g. a common optical grating. Intuitively, if (P, I) is too
+large, the tip tends to overreact and starts to self-oscillate
+(this is the case even if we do not add the noise term); if
+(P, I) is too small, zt cannot follow zs; a moderate (P, I)
+results in zt being a reasonably faithful representation of
+zs. We are not going to discuss in detail the strategy
+of tuning (P, I) manually, because our goal here is to
+enable auto-tuning of (P, I), even without much a priori
+knowledge or experience.
+
+B. Automatic tuning of PI parameters
+
+J(P, I) =(cid:80)
+
+One would naively think that it is a straightforward
+optimization problem with the sum of absolute error
+i |s(i)−s0| being the objective function (usu-
+ally we can tolerate sharp but narrow spikes, but not
+moderate and broad peaks in feedback error, thus ab-
+solute value works better than squared), and there is no
+need to invoke any machine learning. However, the objec-
+tive function cannot be written in closed form, and brutal
+force calculations with the simulator (Fig. 3) show that
+although a robust global minimum exists, the objective
+function is non-convex due to the existence of numerous
+local minima that depend on the detailed topography
+(Fig. 3b).
+We propose to implement a regression with a moderate
+number of points {((P (j), I (j)), J(P, I)(j))}, each j from
+a randomly generated line topography (zs), and then ﬁnd
+the global minimum of the ﬁtted function J∗(P, I). One
+can iterate in an increasingly small parameter space if
+necessary. The motivation is two-fold: First, in a real
+experiment it is impractical to try hundreds of thou-
+sands combinations to map out the full parameter space
+as in Fig. 3b. It is however easy to do a 2D scan with
+a few hundred lines with diﬀerent parameters for each
+line. Second, by ﬁtting with a relatively small number
+of points from randomly generated lines, we may avoid
+the shallow, small-scale and detail-dependent local min-
+ima and obtain a function J∗(P, I) that is more suitable
+for ﬁnding the global minimum (in a real sample there
+are always random topography variations between lines,
+
+3
+
+FIG. 2. Results of PI feedback simulation with diﬀerent com-
+binations of (P, I) values. (a, b) If P and/or I is too large,
+the tip will self-oscillate, with characteristics depending on
+the speciﬁc combination. (c) If P and I are too small, the tip
+cannot track the sample surface well. (d) An optimal com-
+bination of (P, I) makes zt a faithful representation of zs. zt
+is oﬀsetted for ease of comparison. Note that the feedback
+error is s− s0 instead of zt − zs: The latter is unknown in real
+experiments.
+
+4
+
+FIG. 3. The true topography (zs) (a) and log-sum-error vs.
+(P, I) plot (b) for two randomly generated lines. The other
+parameters are identical to those used in Fig. 2. The plots in
+(b) are 400 by 400 spanning a large parameter space. Note
+that log-sum-error function is non-convex in small scales, with
+local minima depending on the details. Whereas the global
+minimum is robust and well deﬁned in large scales.
+
+which will serve the same purpose as the randomness in-
+troduced in this simulation).
+
+We use a neural network with one hidden layer for the
+regression. Neural networks are universal function ap-
+proximators and are particularly suited for ﬁtting highly
+nonlinear functions. The speciﬁc procedure is as follows:
+First, 400 randomly generated line topography (zs) and
+randomly picked (P, I) are fed into the simulator with
+PI feedback. The feature matrix is simply all the (P, I)
+values. The simulator returns the log-sum-error, which
+is recorded in the target matrix. Both matrices are then
+used to train a neural network with one hidden layer
+and 10 hidden neurons, using back-propagation, Bayesian
+regularization on the weights, and 70-30 cross-validation
+(Fig. 4a, b). The global minimum of the ﬁtted function
+is (easily) found, and a second iteration ﬁnds the precise
+minimum with 200 additional data points and a second
+neural network with 5 hidden neurons (Fig. 4c, d). Over-
+all the neural network ﬁtting agrees well with the ”true
+value” in Fig. 3b.
+(P, I) selected this way results in
+excellent performance (Fig. 4e).
+
+We emphasize that such auto-tuning procedure could
+be highly practical and useful in real experiments. Scan-
+ning at 1 Hz, the 600 lines needed for a good result only
+takes 10 minutes (the time for training and minimum
+ﬁnding are negligible in comparison), a very reasonable
+time for a typical hour-long SPM session. In addition,
+the optimal (P, I) for diﬀerent tip type, controller setting,
+scan speed and sample roughness can be very diﬀerent,
+but by obtaining training examples under the exact same
+
+FIG. 4. Automatic PI parameter tuning based on neural net-
+work. (a) The neural network consists of one hidden layer
+with 5/10 hidden neurons. (b) Typical training curve with
+400 data points and 10 hidden neurons. Back-propagation
+with Bayesian regularization and 70-30 cross-validation is
+used for training. (c) Regression result with 400 data points
+(grey) and 10 hidden neurons, showing good agreement with
+those in Fig. 3b. (d) Second iteration centered around the
+minimum of the ﬁrst pass result, with 200 data points (grey)
+and 5 hidden neurons. The ﬁne minimum is labeled by the
+red cross. (e) Scan performance on a randomly generated
+line topography with optimal (P, I) from (d). zt tracks zs
+very well.
+
+Scanning probe microscopy based on reinforcement learninga)
+
+Eric Yue Ma1, b)
+1Department of Applied Physics, Stanford University, California, US
+
+(Dated: 11 December 2015)
+
+Keywords: machine learning, neural network, reinforcement learning, scanning probe microscopy
+
+Scanning probe microscopy (SPM) has become
+an indispensable tool
+for characterizing the
+nanoscale. The core of its working principle in-
+volves raster-scanning a sharp tip in contact with
+a sample of interest, while maintaining a constant
+tip-sample interaction. This is achieved via stan-
+dard proportional-integral (PI) feedback in virtu-
+ally all industrial implementations. Here we ex-
+plore 1) the possibility of using machine learning
+to automatically ﬁnd the optimal PI parameters
+and 2) feedback based on a Markov decision pro-
+cess (MDP) reinforcement learning model, free
+from any explicit PI feedback. PI parameters
+automatically selected by a neural-network-based
+approach achieve excellent feedback performance.
+The MDP model is shown to perform basic feed-
+back, but with inferior performance than that of
+PI feedback, possibly due to the intrinsic unpre-
+dictability of sample topography. These proof-
+of-concepts open up new opportunities for SPM
+feedback optimization under a wide range of con-
+ditions.
+
+I.
+
+INTRODUCTION
+
+Scanning probe microscopy (SPM) characterizes ex-
+tremely small, often down to subatomic scale features,
+and has become an indispensable tool for a growing com-
+munity of scientists and engineers from condensed matter
+physics, material science, quantum chemistry, molecular
+biology and semiconductor industry. In an SPM, a sharp
+tip is brought close to the surface of the sample of in-
+terest. The interaction between the atoms on the tip
+apex and those on the sample surface yields some measur-
+able quantity (e.g. the deﬂection of a micro-cantilever in
+atomic force microscope (AFM), or the quantum tunnel-
+ing current in a scanning tunneling microscope (STM));
+through feedback on this quantity while moving the tip
+on the sample surface in a raster-scan fashion, a con-
+stant tip-sample interaction is maintained, and high spa-
+tial resolution topography images can be obtained. Many
+other electrical, magnetic and chemical properties can be
+simultaneously measured with specialized tips.
+
+a)CS229 project ﬁnal report.
+b)Electronic mail: yuema@stanford.edu
+
+To the best knowledge of the author, all current
+commercially available SPMs utilize some variation of
+a proportional-integral (PI) feedback control scheme
+(the derivative (D) in a standard proportional-integral-
+derivative (PID) feedback scheme is usually not used due
+to the susceptibility to measurement noise). While the
+PI feedback can handle most scanning conditions given
+the optimal parameters, ﬁnding those parameters is of-
+ten tedious and requires substantial empirical knowledge.
+Moreover, the optimal values can be drastically diﬀer-
+ent for diﬀerent tip type, sample surface roughness and
+even scan speed. Automatic, or semi-automatic tuning
+of PI parameters in an SPM setting has previously been
+proposed, based on the standard Ziegler-Nichols or relay
+method1–3, but has not been widely available in common
+SPMs.
+
+Here we aim to explore the possibility of using ma-
+chine learning to improve the performance, robustness,
+and ease of use of an SPM. We aim to achieve two pro-
+gressive goals: 1) automatic tuning of PI feedback param-
+eters using machine learning algorithms, and 2) a MDP-
+based reinforcement learning model capable of pixel-by-
+pixel feedback, free from an explicit PI feedback scheme.
+Its performance will be compared to the standard PI feed-
+back with optimal parameters. Preliminary conclusion
+on the feasibility, advantages and disadvantages of such
+MDP model will be drawn based on the results.
+
+II. METHODS
+
+A. SPM simulator
+
+A simple but realistic SPM simulator is implemented in
+MATLAB. The state of the simulator is described by just
+two quantities: zs is the height of the sample surface at
+the point currently underneath the tip, measured with
+respect to a ﬁxed reference; zt is the height of a ﬁxed
+part of the tip, measured from the same reference. If zs
+and zt are given, the simulator calculates the tip-sample
+interaction signal s which only depends on the diﬀerence
+between zs and zt: s(zs, zt) = s(zt − zs) (Fig. 1A, B).
+
+The working principle of an SPM is as follows: zs is
+what we want to measure but it cannot be measured
+directly; zt is measurable and controllable, usually via
+a piezoelectric device; if s(zt − zs) is a constant, zt −
+zs is also a constant. When the tip moves across the
+sample surface, zs changes in an unknown way according
+to zs(x, y). If we control zt to maintain the value of s as
+
+B. PI feedback and automatic parameter tuning
+
+2
+
+We implement a PI feedback control with manually
+adjustable parameters to demonstrate its behavior ﬁrst.
+In this model, the tip raster scans on the sample surface
+in discrete time steps (δt), with the following update rule
+for zt, given parameters (P, I) and the set point s0:
+
+z(i)
+t
+
+:= z(i−1)
+
+t
+
++ P (s − s0) + I
+
+(s − s0)δt.
+
+t(cid:88)
+
+0
+
+Note that while in many common PID controllers the
+feedback output replaces the previous value, in an SPM
+it is usually added to the previous value. To simulate the
+real-world behavior of PI feedback, a small white noise
+term is added to the output of the simulator, i.e. s =
+s(zt− zs) + η, where  is a random variable with uniform
+distribution between ± 1
+2 , and η controls the magnitude
+of the noise.
+
+Now we make a few assumptions to simplify our sim-
+ulation. First, we will only use 1D line scans instead of
+full 2D scans to evaluate the performance of PI feedback
+(i.e. tip only moves in one direction x). This is because
+2D scans are simply arrays of individual 1D scans. Sec-
+ond, we assume that each line scan takes 1 second, and
+our PI controller operates at 250 Hz. Therefore δt = 4
+millisecond and the number of pixels in one scan is 250
+(reasonable values for real SPMs). Third, we ﬁx s0 to be
+1 and the noise magnitude η to be 0.2. This roughly cor-
+responds to setting the tip-sample contact force at ∼1 nN
+(common practice in real experiments) with a ±0.1 nN
+readout error (typical value, limited by the instrument).
+Results with a randomly generated 1D sample topog-
+raphy and arbitrary combinations of PI parameters can
+now be generated by executing the PI feedback within
+the simulator. These results are used as the data set to
+evaluate the performance of the feedback. Brutal-force
+exploration of the parameter space is carried out to iden-
+tify whether a globally optimal parameter combination
+exists and whether there are multiple local minima.
+
+We then attempt to ﬁnd the optimal PI parameters
+by ﬁtting a small number of data points with a neural
+network with one hidden layer and 10/5 hidden sigmoid
+neurons, ﬁrst in the full parameter space, and then within
+the perimeter of the global minimum of the ﬁrst step.
+Back-propagation with Bayesian regularization and 70-
+30 cross-validation is used for training. Finding the min-
+imum of the ﬁtted smooth function is trivial.
+
+C. MDP-based feedback
+
+Finally we build a reinforcement learning model based
+on MDP for pixel-by-pixel control of tip-sample interac-
+tion without any explicit PI feedback. A discretized state
+(s − s0, the value of error) and action (∆zt, how much
+and what direction to move the tip for the next point)
+space is used.
+Initially the transition probabilities are
+
+FIG. 1. (a) Illustration of zs, zt and s. In this illustration an
+atomic force microscopy (AFM) conﬁguration is used, where
+s is the deﬂection of a micro-cantilever with the tip at its
+end, measured by the reﬂection of a laser beam. When the
+tip is not in contact with the sample, there is 0 deﬂection.
+(b) When the tip comes in contact with the sample surface,
+the cantilever is deﬂected, thus s increases, in this case to a
+predeﬁned set point s0. (c) If s is maintained at s0 while the
+tip scans across the sample surface, zt(x) becomes a faithful
+representation of zs(x). The feedback is never perfect, and
+can be evaluated by the feedback error (s(x) − s0).
+
+close to a constant s0 (the ”set point”) as possible, we
+would have zt(x, y) = zs(x, y) + constant, for all x, y. zt
+would thus contain all the information we want (usually
+we are only interested in the variation of zs, and do not
+care about the constant) (Fig. 1B, C).
+For simplicity we model s(zt − zs) with the conﬁgura-
+tion of an atomic force microscopy (AFM) (Fig. 1), in
+which
+
+s(zt − zs) = max{0,−A((zt − zs) − z0), A > 0}.
+
+Here z0 is the diﬀerence in height between the tip and
+the sample when they just come into contact. The above
+formula is from the fact that, for small deﬂection, the
+change in laser beam position s is linearly proportional
+to (zt − zs) (which is in turn proportional to the tip-
+sample contact force, since the cantilever is a linear spring
+for small deﬂection). The deﬂection is obviously 0 when
+the tip is not yet in contact with the sample. Because
+we are free to choose the reference point for zt, we can
+set z0 to be 0. Also for simplicity we can assume all
+the quantities are already properly non-dimensionalized,
+and set A = 14. Therefore the simpliﬁed formula for s
+becomes
+
+s(zt − zs) = max{0,−(zt − zs)}.
+
+assumed to be equal, and the value function V and pol-
+icy Π random. Each line scan on a randomly generated
+1D sample topography is a trial, after which the MDP
+is updated. A new optimized value function V ∗ is then
+obtained via value iteration, which implicitly deﬁnes the
+new policy Π∗ which acts greedily on V ∗.
+
+III. RESULTS AND DISCUSSIONS
+
+A. PI feedback with manually adjustable parameters
+
+Results with four diﬀerent combinations of (P, I) are
+shown in Fig. 2. Here zs(x) is a smoothed square wave
+with moderate height, representing the cross section of
+e.g. a common optical grating. Intuitively, if (P, I) is too
+large, the tip tends to overreact and starts to self-oscillate
+(this is the case even if we do not add the noise term); if
+(P, I) is too small, zt cannot follow zs; a moderate (P, I)
+results in zt being a reasonably faithful representation of
+zs. We are not going to discuss in detail the strategy
+of tuning (P, I) manually, because our goal here is to
+enable auto-tuning of (P, I), even without much a priori
+knowledge or experience.
+
+B. Automatic tuning of PI parameters
+
+J(P, I) =(cid:80)
+
+One would naively think that it is a straightforward
+optimization problem with the sum of absolute error
+i |s(i)−s0| being the objective function (usu-
+ally we can tolerate sharp but narrow spikes, but not
+moderate and broad peaks in feedback error, thus ab-
+solute value works better than squared), and there is no
+need to invoke any machine learning. However, the objec-
+tive function cannot be written in closed form, and brutal
+force calculations with the simulator (Fig. 3) show that
+although a robust global minimum exists, the objective
+function is non-convex due to the existence of numerous
+local minima that depend on the detailed topography
+(Fig. 3b).
+We propose to implement a regression with a moderate
+number of points {((P (j), I (j)), J(P, I)(j))}, each j from
+a randomly generated line topography (zs), and then ﬁnd
+the global minimum of the ﬁtted function J∗(P, I). One
+can iterate in an increasingly small parameter space if
+necessary. The motivation is two-fold: First, in a real
+experiment it is impractical to try hundreds of thou-
+sands combinations to map out the full parameter space
+as in Fig. 3b. It is however easy to do a 2D scan with
+a few hundred lines with diﬀerent parameters for each
+line. Second, by ﬁtting with a relatively small number
+of points from randomly generated lines, we may avoid
+the shallow, small-scale and detail-dependent local min-
+ima and obtain a function J∗(P, I) that is more suitable
+for ﬁnding the global minimum (in a real sample there
+are always random topography variations between lines,
+
+3
+
+FIG. 2. Results of PI feedback simulation with diﬀerent com-
+binations of (P, I) values. (a, b) If P and/or I is too large,
+the tip will self-oscillate, with characteristics depending on
+the speciﬁc combination. (c) If P and I are too small, the tip
+cannot track the sample surface well. (d) An optimal com-
+bination of (P, I) makes zt a faithful representation of zs. zt
+is oﬀsetted for ease of comparison. Note that the feedback
+error is s− s0 instead of zt − zs: The latter is unknown in real
+experiments.
+
+4
+
+FIG. 3. The true topography (zs) (a) and log-sum-error vs.
+(P, I) plot (b) for two randomly generated lines. The other
+parameters are identical to those used in Fig. 2. The plots in
+(b) are 400 by 400 spanning a large parameter space. Note
+that log-sum-error function is non-convex in small scales, with
+local minima depending on the details. Whereas the global
+minimum is robust and well deﬁned in large scales.
+
+which will serve the same purpose as the randomness in-
+troduced in this simulation).
+
+We use a neural network with one hidden layer for the
+regression. Neural networks are universal function ap-
+proximators and are particularly suited for ﬁtting highly
+nonlinear functions. The speciﬁc procedure is as follows:
+First, 400 randomly generated line topography (zs) and
+randomly picked (P, I) are fed into the simulator with
+PI feedback. The feature matrix is simply all the (P, I)
+values. The simulator returns the log-sum-error, which
+is recorded in the target matrix. Both matrices are then
+used to train a neural network with one hidden layer
+and 10 hidden neurons, using back-propagation, Bayesian
+regularization on the weights, and 70-30 cross-validation
+(Fig. 4a, b). The global minimum of the ﬁtted function
+is (easily) found, and a second iteration ﬁnds the precise
+minimum with 200 additional data points and a second
+neural network with 5 hidden neurons (Fig. 4c, d). Over-
+all the neural network ﬁtting agrees well with the ”true
+value” in Fig. 3b.
+(P, I) selected this way results in
+excellent performance (Fig. 4e).
+
+We emphasize that such auto-tuning procedure could
+be highly practical and useful in real experiments. Scan-
+ning at 1 Hz, the 600 lines needed for a good result only
+takes 10 minutes (the time for training and minimum
+ﬁnding are negligible in comparison), a very reasonable
+time for a typical hour-long SPM session. In addition,
+the optimal (P, I) for diﬀerent tip type, controller setting,
+scan speed and sample roughness can be very diﬀerent,
+but by obtaining training examples under the exact same
+
+FIG. 4. Automatic PI parameter tuning based on neural net-
+work. (a) The neural network consists of one hidden layer
+with 5/10 hidden neurons. (b) Typical training curve with
+400 data points and 10 hidden neurons. Back-propagation
+with Bayesian regularization and 70-30 cross-validation is
+used for training. (c) Regression result with 400 data points
+(grey) and 10 hidden neurons, showing good agreement with
+those in Fig. 3b. (d) Second iteration centered around the
+minimum of the ﬁrst pass result, with 200 data points (grey)
+and 5 hidden neurons. The ﬁne minimum is labeled by the
+red cross. (e) Scan performance on a randomly generated
+line topography with optimal (P, I) from (d). zt tracks zs
+very well.
+
+condition as real data taking, the selected (P, I) is guar-
+anteed optimal for the speciﬁc measurement.
+
+We note that several other methods (e.g. biased ran-
+dom walk) may also overcome the many local minima to
+arrive at the global minimum, likely at a faster speed.
+The sampling+ﬁtting method may be more robust over-
+all, but a real-world implementation is needed to evaluate
+and make conclusive comparisons.
+
+C. MDP-based reinforcement learning feedback
+
+In this section we explore the possibility of using rein-
+forcement learning to realize pixel-by-pixel feedback con-
+trol without any explicit feedback model (e.g. PID feed-
+back). At a high level, it is similar to the invert pendulum
+problem. The physical dynamics is in fact simpler, as no
+derivatives of location coordinates are involved. However
+the random variation of zs between pixels (time steps)
+may pose a signiﬁcant challenge to eﬃcient learning. Ide-
+ally the model should learn about both the tip-sample
+interaction and the feature of zs, to achieve good track-
+ing.
+
+The MDP model is setup as in Table I.
+
+TABLE I. MDP setup.
+
+S
+
+A
+
+Psa
+
+γ
+
+R
+
+error (s− s0)
+discretized
+
+∆zt
+discretized
+
+on
+
+Depends
+tip-sample
+interaction
+and zs
+
+0.5-0.9 −|s − s0|
+
+The implementation of the MDP follows the descrip-
+tion in Methods. A decision (how to update zt) is made
+according to current state (error value) and policy at each
+pixel; the MDP and the associated optimal value func-
+tion and policy are updated after each complete line scan.
+The typical results with the states being s − s0 ∈ [−2, 5]
+discretized into 30 states, and actions being ∆zt ∈ [−5, 5]
+discretized into 30 states, and γ = 0.9 are shown in Fig.
+5.
+
+It is evident that in general the model does track zs,
+and the error does get smaller after more trials. But
+the learning is quite stochastic and seems to stop after
+a moderate number of trials (Fig. 5(a)), although an
+optimal performance has not been achieved (compare the
+bottom panel in Fig. 5(d) with that in Fig. 4(e)). Having
+more states in state or action space, tuning γ or going
+to a continuous-value state space does not qualitatively
+solve the issue, and more often makes the learning even
+less robust.
+
+One of the major causes of the non-ideal performance
+is likely the randomness in zs. Going back to the in-
+verted pendulum problem, it is obvious that if at every
+time step, a random oﬀset of pendulum angle or cart posi-
+tion comparable to the actual increment due to physics is
+added, the MDP will not be able to learn or perform well.
+
+5
+
+FIG. 5. Typical results with MDP-based feedback. (a) A
+typical learning curve. (b) A randomly generated 2D zs map,
+as the ”true value” topography for the MDP model to track.
+It contains 100 lines, hence 100 trials. (c) The resulting zt.
+(d) The line plots at various stages of the learning process, as
+indicated by the arrows in (c). Inset shows the pixel-by-pixel
+behavior of zt.
+
+Similarly in the SPM case, the error due to the unpre-
+dictable zs at the current point is comparable to that due
+to tip-sample interaction and the action taken in the last
+point, therefore instead of learning about both the tip-
+sample interaction and the feature of zs, the model ends
+up learning about neither. A possible way to improve
+is to learn at a single point ﬁrst, but doing so would be
+equivalent to measuring the tip-sample interaction and
+feed forward in subsequent scans. The potential ﬂexibil-
+ity to accommodate diﬀerent scan speed and sample fea-
+ture is also completely lost. Therefore the lesson learned
+is that an MDP-based reinforcement learning model can-
+not learn well in a system with excess noise due to the
+intrinsic randomness in the transition probabilities (e.g.
+stock market). Certain form of partially observed MDP
+(POMDP) may mitigate the problem, but is beyond the
+scope of this work.
+
+Scanning probe microscopy based on reinforcement learninga)
+
+Eric Yue Ma1, b)
+1Department of Applied Physics, Stanford University, California, US
+
+(Dated: 11 December 2015)
+
+Keywords: machine learning, neural network, reinforcement learning, scanning probe microscopy
+
+Scanning probe microscopy (SPM) has become
+an indispensable tool
+for characterizing the
+nanoscale. The core of its working principle in-
+volves raster-scanning a sharp tip in contact with
+a sample of interest, while maintaining a constant
+tip-sample interaction. This is achieved via stan-
+dard proportional-integral (PI) feedback in virtu-
+ally all industrial implementations. Here we ex-
+plore 1) the possibility of using machine learning
+to automatically ﬁnd the optimal PI parameters
+and 2) feedback based on a Markov decision pro-
+cess (MDP) reinforcement learning model, free
+from any explicit PI feedback. PI parameters
+automatically selected by a neural-network-based
+approach achieve excellent feedback performance.
+The MDP model is shown to perform basic feed-
+back, but with inferior performance than that of
+PI feedback, possibly due to the intrinsic unpre-
+dictability of sample topography. These proof-
+of-concepts open up new opportunities for SPM
+feedback optimization under a wide range of con-
+ditions.
+
+I.
+
+INTRODUCTION
+
+Scanning probe microscopy (SPM) characterizes ex-
+tremely small, often down to subatomic scale features,
+and has become an indispensable tool for a growing com-
+munity of scientists and engineers from condensed matter
+physics, material science, quantum chemistry, molecular
+biology and semiconductor industry. In an SPM, a sharp
+tip is brought close to the surface of the sample of in-
+terest. The interaction between the atoms on the tip
+apex and those on the sample surface yields some measur-
+able quantity (e.g. the deﬂection of a micro-cantilever in
+atomic force microscope (AFM), or the quantum tunnel-
+ing current in a scanning tunneling microscope (STM));
+through feedback on this quantity while moving the tip
+on the sample surface in a raster-scan fashion, a con-
+stant tip-sample interaction is maintained, and high spa-
+tial resolution topography images can be obtained. Many
+other electrical, magnetic and chemical properties can be
+simultaneously measured with specialized tips.
+
+a)CS229 project ﬁnal report.
+b)Electronic mail: yuema@stanford.edu
+
+To the best knowledge of the author, all current
+commercially available SPMs utilize some variation of
+a proportional-integral (PI) feedback control scheme
+(the derivative (D) in a standard proportional-integral-
+derivative (PID) feedback scheme is usually not used due
+to the susceptibility to measurement noise). While the
+PI feedback can handle most scanning conditions given
+the optimal parameters, ﬁnding those parameters is of-
+ten tedious and requires substantial empirical knowledge.
+Moreover, the optimal values can be drastically diﬀer-
+ent for diﬀerent tip type, sample surface roughness and
+even scan speed. Automatic, or semi-automatic tuning
+of PI parameters in an SPM setting has previously been
+proposed, based on the standard Ziegler-Nichols or relay
+method1–3, but has not been widely available in common
+SPMs.
+
+Here we aim to explore the possibility of using ma-
+chine learning to improve the performance, robustness,
+and ease of use of an SPM. We aim to achieve two pro-
+gressive goals: 1) automatic tuning of PI feedback param-
+eters using machine learning algorithms, and 2) a MDP-
+based reinforcement learning model capable of pixel-by-
+pixel feedback, free from an explicit PI feedback scheme.
+Its performance will be compared to the standard PI feed-
+back with optimal parameters. Preliminary conclusion
+on the feasibility, advantages and disadvantages of such
+MDP model will be drawn based on the results.
+
+II. METHODS
+
+A. SPM simulator
+
+A simple but realistic SPM simulator is implemented in
+MATLAB. The state of the simulator is described by just
+two quantities: zs is the height of the sample surface at
+the point currently underneath the tip, measured with
+respect to a ﬁxed reference; zt is the height of a ﬁxed
+part of the tip, measured from the same reference. If zs
+and zt are given, the simulator calculates the tip-sample
+interaction signal s which only depends on the diﬀerence
+between zs and zt: s(zs, zt) = s(zt − zs) (Fig. 1A, B).
+
+The working principle of an SPM is as follows: zs is
+what we want to measure but it cannot be measured
+directly; zt is measurable and controllable, usually via
+a piezoelectric device; if s(zt − zs) is a constant, zt −
+zs is also a constant. When the tip moves across the
+sample surface, zs changes in an unknown way according
+to zs(x, y). If we control zt to maintain the value of s as
+
+B. PI feedback and automatic parameter tuning
+
+2
+
+We implement a PI feedback control with manually
+adjustable parameters to demonstrate its behavior ﬁrst.
+In this model, the tip raster scans on the sample surface
+in discrete time steps (δt), with the following update rule
+for zt, given parameters (P, I) and the set point s0:
+
+z(i)
+t
+
+:= z(i−1)
+
+t
+
++ P (s − s0) + I
+
+(s − s0)δt.
+
+t(cid:88)
+
+0
+
+Note that while in many common PID controllers the
+feedback output replaces the previous value, in an SPM
+it is usually added to the previous value. To simulate the
+real-world behavior of PI feedback, a small white noise
+term is added to the output of the simulator, i.e. s =
+s(zt− zs) + η, where  is a random variable with uniform
+distribution between ± 1
+2 , and η controls the magnitude
+of the noise.
+
+Now we make a few assumptions to simplify our sim-
+ulation. First, we will only use 1D line scans instead of
+full 2D scans to evaluate the performance of PI feedback
+(i.e. tip only moves in one direction x). This is because
+2D scans are simply arrays of individual 1D scans. Sec-
+ond, we assume that each line scan takes 1 second, and
+our PI controller operates at 250 Hz. Therefore δt = 4
+millisecond and the number of pixels in one scan is 250
+(reasonable values for real SPMs). Third, we ﬁx s0 to be
+1 and the noise magnitude η to be 0.2. This roughly cor-
+responds to setting the tip-sample contact force at ∼1 nN
+(common practice in real experiments) with a ±0.1 nN
+readout error (typical value, limited by the instrument).
+Results with a randomly generated 1D sample topog-
+raphy and arbitrary combinations of PI parameters can
+now be generated by executing the PI feedback within
+the simulator. These results are used as the data set to
+evaluate the performance of the feedback. Brutal-force
+exploration of the parameter space is carried out to iden-
+tify whether a globally optimal parameter combination
+exists and whether there are multiple local minima.
+
+We then attempt to ﬁnd the optimal PI parameters
+by ﬁtting a small number of data points with a neural
+network with one hidden layer and 10/5 hidden sigmoid
+neurons, ﬁrst in the full parameter space, and then within
+the perimeter of the global minimum of the ﬁrst step.
+Back-propagation with Bayesian regularization and 70-
+30 cross-validation is used for training. Finding the min-
+imum of the ﬁtted smooth function is trivial.
+
+C. MDP-based feedback
+
+Finally we build a reinforcement learning model based
+on MDP for pixel-by-pixel control of tip-sample interac-
+tion without any explicit PI feedback. A discretized state
+(s − s0, the value of error) and action (∆zt, how much
+and what direction to move the tip for the next point)
+space is used.
+Initially the transition probabilities are
+
+FIG. 1. (a) Illustration of zs, zt and s. In this illustration an
+atomic force microscopy (AFM) conﬁguration is used, where
+s is the deﬂection of a micro-cantilever with the tip at its
+end, measured by the reﬂection of a laser beam. When the
+tip is not in contact with the sample, there is 0 deﬂection.
+(b) When the tip comes in contact with the sample surface,
+the cantilever is deﬂected, thus s increases, in this case to a
+predeﬁned set point s0. (c) If s is maintained at s0 while the
+tip scans across the sample surface, zt(x) becomes a faithful
+representation of zs(x). The feedback is never perfect, and
+can be evaluated by the feedback error (s(x) − s0).
+
+close to a constant s0 (the ”set point”) as possible, we
+would have zt(x, y) = zs(x, y) + constant, for all x, y. zt
+would thus contain all the information we want (usually
+we are only interested in the variation of zs, and do not
+care about the constant) (Fig. 1B, C).
+For simplicity we model s(zt − zs) with the conﬁgura-
+tion of an atomic force microscopy (AFM) (Fig. 1), in
+which
+
+s(zt − zs) = max{0,−A((zt − zs) − z0), A > 0}.
+
+Here z0 is the diﬀerence in height between the tip and
+the sample when they just come into contact. The above
+formula is from the fact that, for small deﬂection, the
+change in laser beam position s is linearly proportional
+to (zt − zs) (which is in turn proportional to the tip-
+sample contact force, since the cantilever is a linear spring
+for small deﬂection). The deﬂection is obviously 0 when
+the tip is not yet in contact with the sample. Because
+we are free to choose the reference point for zt, we can
+set z0 to be 0. Also for simplicity we can assume all
+the quantities are already properly non-dimensionalized,
+and set A = 14. Therefore the simpliﬁed formula for s
+becomes
+
+s(zt − zs) = max{0,−(zt − zs)}.
+
+assumed to be equal, and the value function V and pol-
+icy Π random. Each line scan on a randomly generated
+1D sample topography is a trial, after which the MDP
+is updated. A new optimized value function V ∗ is then
+obtained via value iteration, which implicitly deﬁnes the
+new policy Π∗ which acts greedily on V ∗.
+
+III. RESULTS AND DISCUSSIONS
+
+A. PI feedback with manually adjustable parameters
+
+Results with four diﬀerent combinations of (P, I) are
+shown in Fig. 2. Here zs(x) is a smoothed square wave
+with moderate height, representing the cross section of
+e.g. a common optical grating. Intuitively, if (P, I) is too
+large, the tip tends to overreact and starts to self-oscillate
+(this is the case even if we do not add the noise term); if
+(P, I) is too small, zt cannot follow zs; a moderate (P, I)
+results in zt being a reasonably faithful representation of
+zs. We are not going to discuss in detail the strategy
+of tuning (P, I) manually, because our goal here is to
+enable auto-tuning of (P, I), even without much a priori
+knowledge or experience.
+
+B. Automatic tuning of PI parameters
+
+J(P, I) =(cid:80)
+
+One would naively think that it is a straightforward
+optimization problem with the sum of absolute error
+i |s(i)−s0| being the objective function (usu-
+ally we can tolerate sharp but narrow spikes, but not
+moderate and broad peaks in feedback error, thus ab-
+solute value works better than squared), and there is no
+need to invoke any machine learning. However, the objec-
+tive function cannot be written in closed form, and brutal
+force calculations with the simulator (Fig. 3) show that
+although a robust global minimum exists, the objective
+function is non-convex due to the existence of numerous
+local minima that depend on the detailed topography
+(Fig. 3b).
+We propose to implement a regression with a moderate
+number of points {((P (j), I (j)), J(P, I)(j))}, each j from
+a randomly generated line topography (zs), and then ﬁnd
+the global minimum of the ﬁtted function J∗(P, I). One
+can iterate in an increasingly small parameter space if
+necessary. The motivation is two-fold: First, in a real
+experiment it is impractical to try hundreds of thou-
+sands combinations to map out the full parameter space
+as in Fig. 3b. It is however easy to do a 2D scan with
+a few hundred lines with diﬀerent parameters for each
+line. Second, by ﬁtting with a relatively small number
+of points from randomly generated lines, we may avoid
+the shallow, small-scale and detail-dependent local min-
+ima and obtain a function J∗(P, I) that is more suitable
+for ﬁnding the global minimum (in a real sample there
+are always random topography variations between lines,
+
+3
+
+FIG. 2. Results of PI feedback simulation with diﬀerent com-
+binations of (P, I) values. (a, b) If P and/or I is too large,
+the tip will self-oscillate, with characteristics depending on
+the speciﬁc combination. (c) If P and I are too small, the tip
+cannot track the sample surface well. (d) An optimal com-
+bination of (P, I) makes zt a faithful representation of zs. zt
+is oﬀsetted for ease of comparison. Note that the feedback
+error is s− s0 instead of zt − zs: The latter is unknown in real
+experiments.
+
+4
+
+FIG. 3. The true topography (zs) (a) and log-sum-error vs.
+(P, I) plot (b) for two randomly generated lines. The other
+parameters are identical to those used in Fig. 2. The plots in
+(b) are 400 by 400 spanning a large parameter space. Note
+that log-sum-error function is non-convex in small scales, with
+local minima depending on the details. Whereas the global
+minimum is robust and well deﬁned in large scales.
+
+which will serve the same purpose as the randomness in-
+troduced in this simulation).
+
+We use a neural network with one hidden layer for the
+regression. Neural networks are universal function ap-
+proximators and are particularly suited for ﬁtting highly
+nonlinear functions. The speciﬁc procedure is as follows:
+First, 400 randomly generated line topography (zs) and
+randomly picked (P, I) are fed into the simulator with
+PI feedback. The feature matrix is simply all the (P, I)
+values. The simulator returns the log-sum-error, which
+is recorded in the target matrix. Both matrices are then
+used to train a neural network with one hidden layer
+and 10 hidden neurons, using back-propagation, Bayesian
+regularization on the weights, and 70-30 cross-validation
+(Fig. 4a, b). The global minimum of the ﬁtted function
+is (easily) found, and a second iteration ﬁnds the precise
+minimum with 200 additional data points and a second
+neural network with 5 hidden neurons (Fig. 4c, d). Over-
+all the neural network ﬁtting agrees well with the ”true
+value” in Fig. 3b.
+(P, I) selected this way results in
+excellent performance (Fig. 4e).
+
+We emphasize that such auto-tuning procedure could
+be highly practical and useful in real experiments. Scan-
+ning at 1 Hz, the 600 lines needed for a good result only
+takes 10 minutes (the time for training and minimum
+ﬁnding are negligible in comparison), a very reasonable
+time for a typical hour-long SPM session. In addition,
+the optimal (P, I) for diﬀerent tip type, controller setting,
+scan speed and sample roughness can be very diﬀerent,
+but by obtaining training examples under the exact same
+
+FIG. 4. Automatic PI parameter tuning based on neural net-
+work. (a) The neural network consists of one hidden layer
+with 5/10 hidden neurons. (b) Typical training curve with
+400 data points and 10 hidden neurons. Back-propagation
+with Bayesian regularization and 70-30 cross-validation is
+used for training. (c) Regression result with 400 data points
+(grey) and 10 hidden neurons, showing good agreement with
+those in Fig. 3b. (d) Second iteration centered around the
+minimum of the ﬁrst pass result, with 200 data points (grey)
+and 5 hidden neurons. The ﬁne minimum is labeled by the
+red cross. (e) Scan performance on a randomly generated
+line topography with optimal (P, I) from (d). zt tracks zs
+very well.
+
+condition as real data taking, the selected (P, I) is guar-
+anteed optimal for the speciﬁc measurement.
+
+We note that several other methods (e.g. biased ran-
+dom walk) may also overcome the many local minima to
+arrive at the global minimum, likely at a faster speed.
+The sampling+ﬁtting method may be more robust over-
+all, but a real-world implementation is needed to evaluate
+and make conclusive comparisons.
+
+C. MDP-based reinforcement learning feedback
+
+In this section we explore the possibility of using rein-
+forcement learning to realize pixel-by-pixel feedback con-
+trol without any explicit feedback model (e.g. PID feed-
+back). At a high level, it is similar to the invert pendulum
+problem. The physical dynamics is in fact simpler, as no
+derivatives of location coordinates are involved. However
+the random variation of zs between pixels (time steps)
+may pose a signiﬁcant challenge to eﬃcient learning. Ide-
+ally the model should learn about both the tip-sample
+interaction and the feature of zs, to achieve good track-
+ing.
+
+The MDP model is setup as in Table I.
+
+TABLE I. MDP setup.
+
+S
+
+A
+
+Psa
+
+γ
+
+R
+
+error (s− s0)
+discretized
+
+∆zt
+discretized
+
+on
+
+Depends
+tip-sample
+interaction
+and zs
+
+0.5-0.9 −|s − s0|
+
+The implementation of the MDP follows the descrip-
+tion in Methods. A decision (how to update zt) is made
+according to current state (error value) and policy at each
+pixel; the MDP and the associated optimal value func-
+tion and policy are updated after each complete line scan.
+The typical results with the states being s − s0 ∈ [−2, 5]
+discretized into 30 states, and actions being ∆zt ∈ [−5, 5]
+discretized into 30 states, and γ = 0.9 are shown in Fig.
+5.
+
+It is evident that in general the model does track zs,
+and the error does get smaller after more trials. But
+the learning is quite stochastic and seems to stop after
+a moderate number of trials (Fig. 5(a)), although an
+optimal performance has not been achieved (compare the
+bottom panel in Fig. 5(d) with that in Fig. 4(e)). Having
+more states in state or action space, tuning γ or going
+to a continuous-value state space does not qualitatively
+solve the issue, and more often makes the learning even
+less robust.
+
+One of the major causes of the non-ideal performance
+is likely the randomness in zs. Going back to the in-
+verted pendulum problem, it is obvious that if at every
+time step, a random oﬀset of pendulum angle or cart posi-
+tion comparable to the actual increment due to physics is
+added, the MDP will not be able to learn or perform well.
+
+5
+
+FIG. 5. Typical results with MDP-based feedback. (a) A
+typical learning curve. (b) A randomly generated 2D zs map,
+as the ”true value” topography for the MDP model to track.
+It contains 100 lines, hence 100 trials. (c) The resulting zt.
+(d) The line plots at various stages of the learning process, as
+indicated by the arrows in (c). Inset shows the pixel-by-pixel
+behavior of zt.
+
+Similarly in the SPM case, the error due to the unpre-
+dictable zs at the current point is comparable to that due
+to tip-sample interaction and the action taken in the last
+point, therefore instead of learning about both the tip-
+sample interaction and the feature of zs, the model ends
+up learning about neither. A possible way to improve
+is to learn at a single point ﬁrst, but doing so would be
+equivalent to measuring the tip-sample interaction and
+feed forward in subsequent scans. The potential ﬂexibil-
+ity to accommodate diﬀerent scan speed and sample fea-
+ture is also completely lost. Therefore the lesson learned
+is that an MDP-based reinforcement learning model can-
+not learn well in a system with excess noise due to the
+intrinsic randomness in the transition probabilities (e.g.
+stock market). Certain form of partially observed MDP
+(POMDP) may mitigate the problem, but is beyond the
+scope of this work.
+
+6
+
+IV. CONCLUSION AND FUTURE WORK
+
+needed.
+
+PI feedback is still the predictable, robust feedback
+method for SPM. A simple neural network ﬁtting of a few
+hundred line scans implemented in this work can reliably
+ﬁnd the optimal (P, I) parameters in a large parameter
+space, making it practical for a wide range of tip/sample
+conditions.
+
+A simple MDP-based model on the other hand, does
+not oﬀer the same level of robustness and performance.
+More advanced reinforcement learning model might be
+
+1K. H. Ang, G. Chong, and Y. Li, “Pid control system analy-
+sis, design, and technology,” Control Systems Technology, IEEE
+Transactions on 13, 559–576 (2005).
+2X. Zhou, X. Dong, Y. Zhang, and Y. Fang, “Automatic tuning
+of pi controller for atomic force microscope based on relay with
+hysteresis,” in Control Applications,(CCA) & Intelligent Con-
+trol,(ISIC), 2009 IEEE (IEEE, 2009) pp. 1271–1275.
+3D. Y. Abramovitch, S. Hoen, and R. Workman, “Semi-automatic
+tuning of pid gains for atomic force microscopes,” Asian Journal
+of Control 11, 188–195 (2009).
+4For the more technical-minded, this is equivalent to making all
+the location values in nm (nanometer), s in nN (nano-newton)
+and the spring constant of the cantilever 1 N/m.
+
+
